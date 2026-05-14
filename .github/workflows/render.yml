@@ -36,32 +36,21 @@ jobs:
       - name: Decode payload
         id: payload
         run: |
-          # From repository_dispatch: payload is in the event body
+          # From repository_dispatch: client_payload IS the render payload directly
+          # (jobId, module, videos, segments, callouts, effects, textOverlays, callbackUrl)
           # From workflow_dispatch: payload is base64-encoded input
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo '${{ toJson(github.event.client_payload) }}' > payload.json
-            JOB_ID=$(cat payload.json | jq -r '.payload.jobId // "unknown"')
+            echo '${{ toJson(github.event.client_payload) }}' > render-payload.json
+            JOB_ID=$(cat render-payload.json | jq -r '.jobId // "unknown"')
           else
-            echo "${{ inputs.payload_json }}" | base64 -d > payload.json
-            JOB_ID=$(cat payload.json | jq -r '.jobId // "unknown"')
+            echo "${{ inputs.payload_json }}" | base64 -d > render-payload.json
+            JOB_ID=$(cat render-payload.json | jq -r '.jobId // "unknown"')
           fi
           echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
           echo "📦 Payload decoded for job: $JOB_ID"
-          cat payload.json | jq '.payload.segments | length' | xargs -I {} echo "   Segments: {}"
-
-      - name: Extract inner payload
-        run: |
-          # repository_dispatch wraps in { decision, payload }
-          # Extract just the payload part
-          if cat payload.json | jq -e '.payload' > /dev/null 2>&1; then
-            cat payload.json | jq '.payload' > render-payload.json
-          else
-            cp payload.json render-payload.json
-          fi
-          echo "📋 Render payload ready"
-          cat render-payload.json | jq '{ 
-            module: .module.name, 
-            segments: (.segments | length), 
+          cat render-payload.json | jq '{
+            module: .module.name,
+            segments: (.segments | length),
             callouts: (.callouts | length),
             textOverlays: (.textOverlays | length),
             effects: (.effects | length),
