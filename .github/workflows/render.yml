@@ -69,12 +69,97 @@ jobs:
           path: out/showcase-${{ steps.payload.outputs.job_id }}.mp4
           retention-days: 7
 
+      - name: Upload to Dropbox
+        id: dropbox
+        if: success()
+        run: |
+          JOB_ID="${{ steps.payload.outputs.job_id }}"
+          MP4_FILE="out/showcase-${JOB_ID}.mp4"
+          DROPBOX_PATH="/ProductShowcaseTemp/${JOB_ID}/showcase-${JOB_ID}.mp4"
+
+          if [ ! -f "$MP4_FILE" ]; then
+            echo "❌ MP4 file not found: $MP4_FILE"
+            echo "dropbox_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Get fresh access token using refresh token
+          TOKEN_RESPONSE=$(curl -s -X POST https://api.dropboxapi.com/oauth2/token \
+            -d grant_type=refresh_token \
+            -d "refresh_token=${{ secrets.DROPBOX_REFRESH_TOKEN }}" \
+            -d "client_id=${{ secrets.DROPBOX_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.DROPBOX_CLIENT_SECRET }}")
+          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
+
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "❌ Failed to get Dropbox access token"
+            echo "$TOKEN_RESPONSE"
+            echo "dropbox_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FILE_SIZE=$(stat -c%s "$MP4_FILE")
+          echo "📤 Uploading ${FILE_SIZE} bytes to Dropbox: ${DROPBOX_PATH}"
+
+          # Upload file (up to 150MB via single upload)
+          UPLOAD_RESPONSE=$(curl -s -X POST https://content.dropboxapi.com/2/files/upload \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            -H "Dropbox-API-Arg: {\"path\":\"${DROPBOX_PATH}\",\"mode\":\"overwrite\",\"autorename\":false,\"mute\":false}" \
+            --data-binary "@${MP4_FILE}")
+
+          UPLOADED_PATH=$(echo "$UPLOAD_RESPONSE" | jq -r '.path_display // empty')
+          if [ -z "$UPLOADED_PATH" ]; then
+            echo "❌ Dropbox upload failed"
+            echo "$UPLOAD_RESPONSE"
+            echo "dropbox_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "✅ Uploaded to: $UPLOADED_PATH"
+
+          # Create shared link
+          SHARE_RESPONSE=$(curl -s -X POST https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"path\":\"${UPLOADED_PATH}\",\"settings\":{\"requested_visibility\":\"public\",\"audience\":\"public\",\"access\":\"viewer\"}}")
+
+          SHARE_URL=$(echo "$SHARE_RESPONSE" | jq -r '.url // empty')
+          # Handle case where link already exists
+          if [ -z "$SHARE_URL" ]; then
+            SHARE_URL=$(echo "$SHARE_RESPONSE" | jq -r '.error.shared_link_already_exists.metadata.url // empty')
+          fi
+
+          if [ -z "$SHARE_URL" ]; then
+            echo "❌ Failed to create share link"
+            echo "$SHARE_RESPONSE"
+            echo "dropbox_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Convert to direct download URL
+          DIRECT_URL=$(echo "$SHARE_URL" | sed 's|www.dropbox.com|dl.dropboxusercontent.com|' | sed 's|dl=0|dl=1|')
+          if ! echo "$DIRECT_URL" | grep -q "dl=1"; then
+            DIRECT_URL="${DIRECT_URL}$(echo "$DIRECT_URL" | grep -q '?' && echo '&' || echo '?')dl=1"
+          fi
+
+          echo "🔗 Direct URL: $DIRECT_URL"
+          echo "dropbox_url=$DIRECT_URL" >> "$GITHUB_OUTPUT"
+
       - name: Notify n8n (callback)
         if: always()
         run: |
           JOB_ID="${{ steps.payload.outputs.job_id }}"
           STATUS="${{ job.status }}"
           CALLBACK_URL="${{ github.event.client_payload.callbackUrl || '' }}"
+          DROPBOX_URL="${{ steps.dropbox.outputs.dropbox_url || '' }}"
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Use Dropbox URL as mp4Url if available, otherwise artifact URL
+          if [ -n "$DROPBOX_URL" ]; then
+            MP4_URL="$DROPBOX_URL"
+          else
+            MP4_URL="$ARTIFACT_URL"
+          fi
 
           if [ -n "$CALLBACK_URL" ]; then
             curl -s -X POST "$CALLBACK_URL" \
@@ -82,7 +167,8 @@ jobs:
               -d "{
                 \"jobId\": \"$JOB_ID\",
                 \"status\": \"$STATUS\",
-                \"artifactUrl\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                \"mp4Url\": \"$MP4_URL\",
+                \"artifactUrl\": \"$ARTIFACT_URL\"
               }" || echo "⚠️ Callback failed (non-fatal)"
           fi
           echo "📤 Render $STATUS for job $JOB_ID"
