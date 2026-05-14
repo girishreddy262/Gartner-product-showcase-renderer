@@ -1,0 +1,99 @@
+name: Render Product Showcase
+
+on:
+  repository_dispatch:
+    types: [render-showcase]
+
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      payload_json:
+        description: 'Base64-encoded payload JSON'
+        required: true
+        type: string
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chrome dependencies
+        run: npx remotion browser ensure
+
+      - name: Decode payload
+        id: payload
+        run: |
+          # From repository_dispatch: payload is in the event body
+          # From workflow_dispatch: payload is base64-encoded input
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo '${{ toJson(github.event.client_payload) }}' > payload.json
+            JOB_ID=$(cat payload.json | jq -r '.payload.jobId // "unknown"')
+          else
+            echo "${{ inputs.payload_json }}" | base64 -d > payload.json
+            JOB_ID=$(cat payload.json | jq -r '.jobId // "unknown"')
+          fi
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "📦 Payload decoded for job: $JOB_ID"
+          cat payload.json | jq '.payload.segments | length' | xargs -I {} echo "   Segments: {}"
+
+      - name: Extract inner payload
+        run: |
+          # repository_dispatch wraps in { decision, payload }
+          # Extract just the payload part
+          if cat payload.json | jq -e '.payload' > /dev/null 2>&1; then
+            cat payload.json | jq '.payload' > render-payload.json
+          else
+            cp payload.json render-payload.json
+          fi
+          echo "📋 Render payload ready"
+          cat render-payload.json | jq '{ 
+            module: .module.name, 
+            segments: (.segments | length), 
+            callouts: (.callouts | length),
+            textOverlays: (.textOverlays | length),
+            effects: (.effects | length),
+            audioPlacements: (.audioPlacements | length)
+          }'
+
+      - name: Render video
+        run: npx tsx src/render.ts render-payload.json out/showcase-${{ steps.payload.outputs.job_id }}.mp4
+        env:
+          REMOTION_PAYLOAD: $(cat render-payload.json)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-${{ steps.payload.outputs.job_id }}
+          path: out/showcase-${{ steps.payload.outputs.job_id }}.mp4
+          retention-days: 7
+
+      - name: Notify n8n (callback)
+        if: always()
+        run: |
+          JOB_ID="${{ steps.payload.outputs.job_id }}"
+          STATUS="${{ job.status }}"
+          CALLBACK_URL="${{ github.event.client_payload.callbackUrl || '' }}"
+
+          if [ -n "$CALLBACK_URL" ]; then
+            curl -s -X POST "$CALLBACK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"jobId\": \"$JOB_ID\",
+                \"status\": \"$STATUS\",
+                \"artifactUrl\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+              }" || echo "⚠️ Callback failed (non-fatal)"
+          fi
+          echo "📤 Render $STATUS for job $JOB_ID"

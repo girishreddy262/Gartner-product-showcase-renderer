@@ -1,0 +1,93 @@
+{
+  "module": { "name": "Core HR" },
+  "videos": [],
+  "audios": [],
+  "segments": [
+    {
+      "id": "slide_001",
+      "kind": "slide-intro",
+      "title": "Core HR Module",
+      "subtitle": "Enterprise-grade HR management",
+      "moduleIconId": "core-hr",
+      "textStyles": {
+        "title": { "fontSize": 96, "fontWeight": 700, "color": "#FFFFFF" }
+      },
+      "startMs": 0,
+      "durationMs": 6000,
+      "x": 0, "y": 0, "width": 1920, "height": 1080
+    },
+    {
+      "id": "slide_002",
+      "kind": "slide-journey",
+      "title": "User Journey",
+      "rows": [
+        {
+          "id": "row_001",
+          "dual": false,
+          "personaIds": ["aiden-lee"],
+          "name": "Aiden Lee",
+          "designation": "Head of TA",
+          "description": "Reviews open positions and sets hiring goals"
+        },
+        {
+          "id": "row_002",
+          "dual": false,
+          "personaIds": ["rachel-palmer"],
+          "name": "Rachel Palmer",
+          "designation": "Recruiter",
+          "description": "Sources candidates and manages pipeline"
+        }
+      ],
+      "textStyles": {},
+      "startMs": 6000,
+      "durationMs": 8000,
+      "x": 0, "y": 0, "width": 1920, "height": 1080
+    },
+    {
+      "id": "slide_003",
+      "kind": "slide-keygoals",
+      "title": "Key Goals",
+      "bullets": [
+        { "id": "b1", "text": "Reduce time-to-hire by 40%" },
+        { "id": "b2", "text": "Improve candidate experience score to 4.5+" },
+        { "id": "b3", "text": "Automate 80% of screening workflows" }
+      ],
+      "textStyles": {},
+      "startMs": 14000,
+      "durationMs": 6000,
+      "x": 0, "y": 0, "width": 1920, "height": 1080
+    }
+  ],
+  "audioPlacements": [],
+  "callouts": [
+    {
+      "id": "co_001",
+      "text": "AI-powered screening",
+      "x": 700,
+      "y": 800,
+      "width": 500,
+      "startMs": 15000,
+      "durationMs": 4000
+    }
+  ],
+  "effects": [],
+  "textOverlays": [
+    {
+      "id": "txt_001",
+      "text": "Powered by Darwinbox",
+      "x": 1300,
+      "y": 50,
+      "fontSize": 32,
+      "fontWeight": 500,
+      "italic": false,
+      "color": "#8B92A3",
+      "startMs": 0,
+      "durationMs": 20000,
+      "animIn": "fade",
+      "animInAt": 0,
+      "animOut": "fade",
+      "animOutAt": 19
+    }
+  ],
+  "jobId": "ps_test_001"
+}

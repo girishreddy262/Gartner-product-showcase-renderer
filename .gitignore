@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+*.mp4
+.env
+payload.json
+render-payload.json
