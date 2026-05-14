@@ -4,8 +4,8 @@
   "description": "Remotion-based video renderer for Darwinbox Product Showcase Editor",
   "scripts": {
     "render": "npx tsx src/render.ts",
-    "preview": "npx remotion preview src/index.ts",
-    "build": "npx remotion render src/index.ts ProductShowcase out/output.mp4"
+    "preview": "npx remotion preview src/index.tsx",
+    "build": "npx remotion render src/index.tsx ProductShowcase out/output.mp4"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.0",

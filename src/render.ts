@@ -74,7 +74,7 @@ process.env.REMOTION_PAYLOAD = rawPayload;
 // Run Remotion render
 const cmd = [
   'npx remotion render',
-  'src/index.ts',
+  'src/index.tsx',
   'ProductShowcase',
   `"${outputPath}"`,
   `--frames=${frames}`,
