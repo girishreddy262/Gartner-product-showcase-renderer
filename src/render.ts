@@ -71,14 +71,18 @@ if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 // Set payload as env var for Remotion to pick up
 process.env.REMOTION_PAYLOAD = rawPayload;
 
+// Write props to a temp file (avoids shell escaping issues with large JSON)
+const propsPath = resolve(outDir, '_render-props.json');
+const { writeFileSync } = require('fs');
+writeFileSync(propsPath, JSON.stringify({ payload }));
+
 // Run Remotion render
 const cmd = [
   'npx remotion render',
   'src/index.tsx',
   'ProductShowcase',
   `"${outputPath}"`,
-  `--frames=${frames}`,
-  `--props='${JSON.stringify({ payload })}'`,
+  `--props="${propsPath}"`,
   '--codec=h264',
   '--image-format=jpeg',
   '--quality=80',
