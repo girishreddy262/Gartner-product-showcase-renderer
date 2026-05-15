@@ -31,4 +31,4 @@ jobs:
       - name: Confirm site URL
         run: |
           echo "✅ Site deployed to:"
-          echo "https://remotionlambda-apsouth1-9dlkcsayxl.s3.ap-south-1.amazonaws.com/sites/product-showcase/index.html"
+          echo "https://remotionlambda-apsouth1-9dlkcsayxl.s3.ap-south-1.amazonaws.com/sites/product-showcase-v315/index.html"
