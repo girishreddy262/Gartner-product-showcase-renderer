@@ -11,6 +11,7 @@ import { tokens, satoshiFontFaceCSS } from './tokens';
 import { SlideRenderer } from './slides/SlideRenderer';
 import { TextOverlayComp } from './overlays/TextOverlay';
 import { CalloutComp } from './overlays/Callout';
+import { CustomerCardComp } from './overlays/CustomerCard';
 import { useZoomTransform, SpotlightComp } from './effects/Effects';
 import { ASSETS } from './assets';
 
@@ -141,18 +142,26 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         })}
 
         {/* === CALLOUTS === */}
-        {payload.callouts.map(c => (
-          <Sequence
-            key={c.id}
-            from={msToFrames(c.startMs)}
-            durationInFrames={msToFrames(c.durationMs)}
-            name={`Callout: ${c.text?.substring(0, 20)}`}
-          >
-            <AbsoluteFill>
-              <CalloutComp callout={c} />
-            </AbsoluteFill>
-          </Sequence>
-        ))}
+        {payload.callouts.map(c => {
+          const startFrame = msToFrames(c.startMs);
+          const durFrames = msToFrames(c.durationMs);
+          return (
+            <Sequence
+              key={c.id}
+              from={startFrame}
+              durationInFrames={durFrames}
+              name={`Callout: ${c.text?.substring(0, 20)}`}
+            >
+              <AbsoluteFill>
+                <CalloutComp
+                  callout={c}
+                  startFrame={startFrame}
+                  durationFrames={durFrames}
+                />
+              </AbsoluteFill>
+            </Sequence>
+          );
+        })}
 
         {/* === TEXT OVERLAYS === */}
         {(payload.textOverlays || []).map(t => {
@@ -168,6 +177,28 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               <AbsoluteFill>
                 <TextOverlayComp
                   overlay={t}
+                  startFrame={startFrame}
+                  durationFrames={durFrames}
+                />
+              </AbsoluteFill>
+            </Sequence>
+          );
+        })}
+
+        {/* === CUSTOMER CARD OVERLAYS === */}
+        {(payload.customerCards || []).map(c => {
+          const startFrame = msToFrames(c.startMs);
+          const durFrames = msToFrames(c.durationMs);
+          return (
+            <Sequence
+              key={c.id}
+              from={startFrame}
+              durationInFrames={durFrames}
+              name={`CustomerCard: ${c.employees || ''}`}
+            >
+              <AbsoluteFill>
+                <CustomerCardComp
+                  card={c}
                   startFrame={startFrame}
                   durationFrames={durFrames}
                 />

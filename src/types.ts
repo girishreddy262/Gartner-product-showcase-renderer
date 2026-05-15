@@ -69,29 +69,52 @@ export interface JourneyRow {
   id: string;
   dual: boolean;
   personaIds: (string | null)[];
+  customIconUrl?: string | null; // alternative to avatar — uploaded image per row
+  useCustomIcon?: boolean; // toggle between avatar and custom icon
   name: string;
   designation: string;
   description: string;
+}
+
+export interface JourneyFooterCard {
+  enabled: boolean;
+  label: string;     // e.g. "Model 2"
+  body: string;      // e.g. "Darwinbox (Complete ESS)\nPartner (Processing)"
+  showRriveLogo: boolean;
 }
 
 export interface JourneySegment extends BaseSegment {
   kind: 'slide-journey';
   title: string;
   rows: JourneyRow[];
+  highlightUpToRow: number; // 0 = none, 1 = row 1 only, 2 = rows 1+2, etc
+  endJourney: boolean; // when true, last connector segment doesn't extend below last tick
+  footerCard?: JourneyFooterCard;
   textStyles: TextStyles;
 }
 
 export interface FocusColumn {
   id: string;
   iconId: string | null;
+  customIconUrl?: string | null;
   heading: string;
-  body: string;
+  body: string;       // bullet items separated by newline (used in v1)
+}
+
+export interface FocusStatPill {
+  id: string;
+  iconUrl?: string | null;
+  text: string;       // e.g. "250+ Clients Globally"
+  // For v3 stat bar: text is split label + value (text2)
+  text2?: string;
 }
 
 export interface FocusSegment extends BaseSegment {
   kind: 'slide-focus';
   title: string;
+  variation: 1 | 2 | 3; // 1=bullets, 2=2 pills, 3=long stat bar
   columns: FocusColumn[];
+  statPills?: FocusStatPill[]; // 2 for v2, 4 for v3
   textStyles: TextStyles;
 }
 
@@ -100,10 +123,20 @@ export interface KeyGoalsBullet {
   text: string;
 }
 
+export interface KeyGoalsCustomerStat {
+  id: string;
+  iconKind: 'headcount' | 'industry' | 'countries' | 'custom';
+  customIconUrl?: string | null;
+  text: string; // e.g. "20k+ Employees"
+}
+
 export interface KeyGoalsSegment extends BaseSegment {
   kind: 'slide-keygoals';
   title: string;
-  bullets: KeyGoalsBullet[];
+  bullets: KeyGoalsBullet[];           // legacy left as-is, now treated as goals
+  customerLogoUrl?: string | null;
+  customerStats?: KeyGoalsCustomerStat[];
+  mapHighlightCountries?: string[];    // ISO codes or names selected in property panel
   textStyles: TextStyles;
 }
 
@@ -141,6 +174,11 @@ export interface Callout {
   width: number;
   startMs: number;
   durationMs: number;
+  // Animation properties (same as text overlay)
+  animIn?: string;
+  animInAt?: number;
+  animOut?: string;
+  animOutAt?: number;
 }
 
 export interface TextOverlay {
@@ -154,6 +192,25 @@ export interface TextOverlay {
   color: string;
   startMs: number;
   durationMs: number;
+  animIn: string;
+  animInAt: number;
+  animOut: string;
+  animOutAt: number;
+}
+
+// New: customer card overlay (like callout/text — draggable, with animations)
+export interface CustomerCardOverlay {
+  id: string;
+  x: number;
+  y: number;
+  startMs: number;
+  durationMs: number;
+  logoUrl?: string | null;
+  employees: string;     // e.g. "1.5K+"
+  industry: string;      // e.g. "Data Solutions & Analytics"
+  location: string;      // e.g. "USA"
+  body: string;          // description text
+  // Animation properties
   animIn: string;
   animInAt: number;
   animOut: string;
@@ -194,6 +251,7 @@ export interface ShowcasePayload {
   callouts: Callout[];
   effects: Effect[];
   textOverlays: TextOverlay[];
+  customerCards?: CustomerCardOverlay[];
   frameUrl?: string;
   jobId: string;
 }
