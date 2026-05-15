@@ -20,15 +20,6 @@ const defaultPayload: ShowcasePayload = {
   jobId: 'preview',
 };
 
-// Read payload from env or use default
-function getPayload(): ShowcasePayload {
-  try {
-    const raw = process.env.REMOTION_PAYLOAD;
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return defaultPayload;
-}
-
 function getTotalDuration(payload: ShowcasePayload): number {
   let maxMs = 0;
   for (const s of payload.segments) {
@@ -47,25 +38,26 @@ function getTotalDuration(payload: ShowcasePayload): number {
     const end = e.startMs + e.durationMs;
     if (end > maxMs) maxMs = end;
   }
-  // Minimum 1 second
   return Math.max(maxMs, 1000);
 }
 
 export const RemotionRoot: React.FC = () => {
-  const payload = getPayload();
-  const totalMs = getTotalDuration(payload);
-  const durationInFrames = Math.ceil((totalMs / 1000) * FPS);
-
   return (
     <>
       <Composition
         id="ProductShowcase"
         component={ProductShowcase}
-        durationInFrames={durationInFrames}
+        durationInFrames={30}
         fps={FPS}
         width={tokens.canvasW}
         height={tokens.canvasH}
-        defaultProps={{ payload }}
+        defaultProps={{ payload: defaultPayload }}
+        calculateMetadata={({ props }) => {
+          const p = props.payload || defaultPayload;
+          const totalMs = getTotalDuration(p);
+          const frames = Math.ceil((totalMs / 1000) * FPS);
+          return { durationInFrames: frames, props };
+        }}
       />
     </>
   );
