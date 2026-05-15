@@ -22,7 +22,7 @@ jobs:
         run: npm ci
 
       - name: Deploy site to Lambda
-        run: npx remotion lambda sites create src/index.tsx --site-name=product-showcase-v315
+        run: npx remotion lambda sites create src/index.tsx --site-name=product-showcase
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
