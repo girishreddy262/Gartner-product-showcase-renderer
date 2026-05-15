@@ -79,7 +79,7 @@ async function main() {
       composition: 'ProductShowcase',
       codec: 'h264',
       inputProps: { payload },
-      framesPerLambda: 200,
+      framesPerLambda: 150,
       privacy: 'public',
       outName: `showcase-${jobId}.mp4`,
     });
