@@ -8,11 +8,12 @@
     "build": "npx remotion render src/index.tsx ProductShowcase out/output.mp4"
   },
   "dependencies": {
-    "@remotion/cli": "^4.0.0",
-    "@remotion/media-utils": "^4.0.0",
-    "remotion": "^4.0.0",
+    "@remotion/cli": "4.0.461",
+    "@remotion/lambda": "4.0.461",
+    "@remotion/media-utils": "4.0.461",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "remotion": "4.0.461",
     "tsx": "^4.7.0"
   },
   "devDependencies": {
