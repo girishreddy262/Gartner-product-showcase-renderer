@@ -1,5 +1,5 @@
 import React from 'react';
-import { useCurrentFrame, useVideoConfig, interpolate, spring } from 'remotion';
+import { useCurrentFrame, useVideoConfig, interpolate, spring, Easing } from 'remotion';
 import type { ZoomEffect, SpotlightEffect } from '../types';
 import { tokens } from '../tokens';
 
@@ -20,26 +20,26 @@ export function useZoomTransform(
   for (const z of zooms) {
     const startFrame = Math.round(z.startMs / 1000 * fps);
     const endFrame = Math.round((z.startMs + z.durationMs) / 1000 * fps);
-    const rampFrames = Math.round(fps * 0.4); // 0.4s ease in/out
+    const rampFrames = Math.round(fps * 0.6); // 0.6s ease in/out — slower, smoother
 
     if (currentFrame >= startFrame && currentFrame < endFrame) {
       let zoomProgress: number;
 
       if (currentFrame < startFrame + rampFrames) {
-        // Ease in
+        // Ease in with cubic curve
         zoomProgress = interpolate(
           currentFrame,
           [startFrame, startFrame + rampFrames],
           [0, 1],
-          { extrapolateRight: 'clamp' }
+          { extrapolateRight: 'clamp', easing: Easing.bezier(0.42, 0, 0.58, 1) }
         );
       } else if (currentFrame > endFrame - rampFrames) {
-        // Ease out
+        // Ease out with cubic curve
         zoomProgress = interpolate(
           currentFrame,
           [endFrame - rampFrames, endFrame],
           [1, 0],
-          { extrapolateRight: 'clamp' }
+          { extrapolateRight: 'clamp', easing: Easing.bezier(0.42, 0, 0.58, 1) }
         );
       } else {
         zoomProgress = 1;
