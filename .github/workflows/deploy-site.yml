@@ -22,18 +22,20 @@ jobs:
         run: npm ci
 
       - name: Delete old site (if exists)
-        run: npx remotion lambda sites rm product-showcase --yes
+        run: npx remotion lambda sites rm product-showcase --region=ap-south-1 --yes
         continue-on-error: true
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-south-1
           REMOTION_REGION: ap-south-1
 
       - name: Deploy site to Lambda (fresh)
-        run: npx remotion lambda sites create src/index.tsx --site-name=product-showcase
+        run: npx remotion lambda sites create src/index.tsx --site-name=product-showcase --region=ap-south-1
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-south-1
           REMOTION_REGION: ap-south-1
 
       - name: Confirm site URL
