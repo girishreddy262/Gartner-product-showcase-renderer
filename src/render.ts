@@ -70,70 +70,74 @@ console.log(`\n▶ Triggering Lambda render...`);
 
 const startTime = Date.now();
 
-try {
-  const result = await renderMediaOnLambda({
-    region: REGION,
-    functionName: FUNCTION_NAME,
-    serveUrl: SERVE_URL,
-    composition: 'ProductShowcase',
-    codec: 'h264',
-    inputProps: { payload },
-    framesPerLambda: 20,
-    privacy: 'public',
-    outName: `showcase-${jobId}.mp4`,
-  });
-
-  console.log(`   Render ID: ${result.renderId}`);
-  console.log(`   Bucket: ${result.bucketName}`);
-  console.log(`\n▶ Waiting for render to complete...`);
-
-  let done = false;
-  let outputUrl = '';
-  let outputSize = 0;
-
-  while (!done) {
-    await new Promise(r => setTimeout(r, 2000));
-    const progress = await getRenderProgress({
-      renderId: result.renderId,
-      bucketName: result.bucketName,
-      functionName: FUNCTION_NAME,
+async function main() {
+  try {
+    const result = await renderMediaOnLambda({
       region: REGION,
+      functionName: FUNCTION_NAME,
+      serveUrl: SERVE_URL,
+      composition: 'ProductShowcase',
+      codec: 'h264',
+      inputProps: { payload },
+      framesPerLambda: 20,
+      privacy: 'public',
+      outName: `showcase-${jobId}.mp4`,
     });
 
-    if (progress.done) {
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      outputUrl = `https://${result.bucketName}.s3.${REGION}.amazonaws.com/${progress.outKey}`;
-      outputSize = progress.outputSizeInBytes || 0;
-      console.log(`\n✅ Render complete in ${elapsed}s`);
-      console.log(`   Output: ${outputUrl}`);
-      console.log(`   Size: ${(outputSize / 1024 / 1024).toFixed(1)} MB`);
-      console.log(`   Cost: ${progress.costs?.displayCost || '$0'}`);
-      done = true;
-    } else if (progress.fatalErrorEncountered) {
-      console.error(`\n❌ Render failed`);
-      console.error(`   Errors: ${JSON.stringify(progress.errors)}`);
-      process.exit(1);
-    } else {
-      const pct = Math.round((progress.overallProgress || 0) * 100);
-      const rendered = progress.framesRendered || 0;
-      process.stdout.write(`\r   Progress: ${pct}% (${rendered}/${frames} frames)`);
+    console.log(`   Render ID: ${result.renderId}`);
+    console.log(`   Bucket: ${result.bucketName}`);
+    console.log(`\n▶ Waiting for render to complete...`);
+
+    let done = false;
+    let outputUrl = '';
+    let outputSize = 0;
+
+    while (!done) {
+      await new Promise(r => setTimeout(r, 2000));
+      const progress = await getRenderProgress({
+        renderId: result.renderId,
+        bucketName: result.bucketName,
+        functionName: FUNCTION_NAME,
+        region: REGION,
+      });
+
+      if (progress.done) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        outputUrl = `https://${result.bucketName}.s3.${REGION}.amazonaws.com/${progress.outKey}`;
+        outputSize = progress.outputSizeInBytes || 0;
+        console.log(`\n✅ Render complete in ${elapsed}s`);
+        console.log(`   Output: ${outputUrl}`);
+        console.log(`   Size: ${(outputSize / 1024 / 1024).toFixed(1)} MB`);
+        console.log(`   Cost: ${progress.costs?.displayCost || '$0'}`);
+        done = true;
+      } else if (progress.fatalErrorEncountered) {
+        console.error(`\n❌ Render failed`);
+        console.error(`   Errors: ${JSON.stringify(progress.errors)}`);
+        process.exit(1);
+      } else {
+        const pct = Math.round((progress.overallProgress || 0) * 100);
+        const rendered = progress.framesRendered || 0;
+        process.stdout.write(`\r   Progress: ${pct}% (${rendered}/${frames} frames)`);
+      }
     }
+
+    // Write result for GitHub Actions to read
+    mkdirSync(resolve('out'), { recursive: true });
+    writeFileSync(resolve('out', 'render-result.json'), JSON.stringify({
+      status: 'success',
+      mp4Url: outputUrl,
+      outputSize,
+      renderId: result.renderId,
+      bucketName: result.bucketName,
+      jobId,
+      elapsedMs: Date.now() - startTime,
+    }));
+    console.log(`   Result written to: out/render-result.json`);
+
+  } catch (e: any) {
+    console.error(`\n❌ Lambda render error: ${e.message}`);
+    process.exit(1);
   }
-
-  // Write result for GitHub Actions to read
-  mkdirSync(resolve('out'), { recursive: true });
-  writeFileSync(resolve('out', 'render-result.json'), JSON.stringify({
-    status: 'success',
-    mp4Url: outputUrl,
-    outputSize,
-    renderId: result.renderId,
-    bucketName: result.bucketName,
-    jobId,
-    elapsedMs: Date.now() - startTime,
-  }));
-  console.log(`   Result written to: out/render-result.json`);
-
-} catch (e: any) {
-  console.error(`\n❌ Lambda render error: ${e.message}`);
-  process.exit(1);
 }
+
+main();
