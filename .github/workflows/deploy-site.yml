@@ -21,7 +21,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Deploy site to Lambda
+      - name: Delete old site (if exists)
+        run: npx remotion lambda sites rm product-showcase --yes
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          REMOTION_REGION: ap-south-1
+
+      - name: Deploy site to Lambda (fresh)
         run: npx remotion lambda sites create src/index.tsx --site-name=product-showcase
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -30,5 +38,5 @@ jobs:
 
       - name: Confirm site URL
         run: |
-          echo "✅ Site deployed to:"
-          echo "https://remotionlambda-apsouth1-9dlkcsayxl.s3.ap-south-1.amazonaws.com/sites/product-showcase-v315/index.html"
+          echo "Site deployed to:"
+          echo "https://remotionlambda-apsouth1-9dlkcsayxl.s3.ap-south-1.amazonaws.com/sites/product-showcase/index.html"
