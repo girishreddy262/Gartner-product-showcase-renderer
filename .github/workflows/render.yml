@@ -31,24 +31,27 @@ jobs:
 
       - name: Decode payload
         id: payload
+        env:
+          CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+          PAYLOAD_JSON_B64: ${{ inputs.payload_json }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo '${{ toJson(github.event.client_payload) }}' > render-payload.json
-            JOB_ID=$(cat render-payload.json | jq -r '.jobId // "unknown"')
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            printf '%s' "$CLIENT_PAYLOAD" > render-payload.json
           else
-            echo "${{ inputs.payload_json }}" | base64 -d > render-payload.json
-            JOB_ID=$(cat render-payload.json | jq -r '.jobId // "unknown"')
+            printf '%s' "$PAYLOAD_JSON_B64" | base64 -d > render-payload.json
           fi
+          JOB_ID=$(jq -r '.jobId // "unknown"' render-payload.json)
           echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
-          echo "📦 Payload decoded for job: $JOB_ID"
-          cat render-payload.json | jq '{
+          echo "Payload decoded for job: $JOB_ID"
+          jq '{
             module: .module.name,
             segments: (.segments | length),
             callouts: (.callouts | length),
             textOverlays: (.textOverlays | length),
             effects: (.effects | length),
             audioPlacements: (.audioPlacements | length)
-          }'
+          }' render-payload.json
 
       - name: Render via Lambda
         run: npx tsx src/render.ts render-payload.json
@@ -61,31 +64,32 @@ jobs:
         id: result
         run: |
           if [ -f "out/render-result.json" ]; then
-            MP4_URL=$(cat out/render-result.json | jq -r '.mp4Url // ""')
+            MP4_URL=$(jq -r '.mp4Url // ""' out/render-result.json)
             echo "mp4_url=$MP4_URL" >> "$GITHUB_OUTPUT"
-            echo "📹 Output URL: $MP4_URL"
+            echo "Output URL: $MP4_URL"
           else
             echo "mp4_url=" >> "$GITHUB_OUTPUT"
-            echo "⚠️ No render result file found"
+            echo "No render result file found"
           fi
 
       - name: Notify n8n (callback)
         if: always()
+        env:
+          JOB_ID: ${{ steps.payload.outputs.job_id }}
+          STATUS: ${{ job.status }}
+          CALLBACK_URL: ${{ github.event.client_payload.callbackUrl }}
+          MP4_URL: ${{ steps.result.outputs.mp4_url }}
+          ARTIFACT_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          JOB_ID="${{ steps.payload.outputs.job_id }}"
-          STATUS="${{ job.status }}"
-          CALLBACK_URL="${{ github.event.client_payload.callbackUrl || '' }}"
-          MP4_URL="${{ steps.result.outputs.mp4_url || '' }}"
-          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
           if [ -n "$CALLBACK_URL" ]; then
+            BODY=$(jq -n \
+              --arg jobId "$JOB_ID" \
+              --arg status "$STATUS" \
+              --arg mp4Url "$MP4_URL" \
+              --arg artifactUrl "$ARTIFACT_URL" \
+              '{jobId: $jobId, status: $status, mp4Url: $mp4Url, artifactUrl: $artifactUrl}')
             curl -s -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
-              -d "{
-                \"jobId\": \"$JOB_ID\",
-                \"status\": \"$STATUS\",
-                \"mp4Url\": \"$MP4_URL\",
-                \"artifactUrl\": \"$ARTIFACT_URL\"
-              }" || echo "⚠️ Callback failed (non-fatal)"
+              -d "$BODY" || echo "Callback failed (non-fatal)"
           fi
-          echo "📤 Render $STATUS for job $JOB_ID"
+          echo "Render $STATUS for job $JOB_ID"
