@@ -12,9 +12,9 @@ import { renderMediaOnLambda, getRenderProgress } from '@remotion/lambda/client'
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 
-const REGION = (process.env.REMOTION_REGION || 'us-east-1') as any;
+const REGION = (process.env.REMOTION_REGION || 'ap-south-1') as any;
 const FUNCTION_NAME = process.env.REMOTION_FUNCTION_NAME || 'remotion-render-4-0-461-mem2048mb-disk2048mb-240sec';
-const SERVE_URL = process.env.REMOTION_SERVE_URL || 'https://remotionlambda-useast1-391e2c9c3f.s3.us-east-1.amazonaws.com/sites/product-showcase/index.html';
+const SERVE_URL = process.env.REMOTION_SERVE_URL || 'https://remotionlambda-apsouth1-9dlkcsayxl.s3.ap-south-1.amazonaws.com/sites/product-showcase/index.html';
 
 const args = process.argv.slice(2);
 if (args.length < 1) {

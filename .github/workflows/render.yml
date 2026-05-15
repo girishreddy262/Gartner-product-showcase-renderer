@@ -55,7 +55,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          REMOTION_REGION: us-east-1
+          REMOTION_REGION: ap-south-1
 
       - name: Read render result
         id: result
