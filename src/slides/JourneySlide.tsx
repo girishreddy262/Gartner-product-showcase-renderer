@@ -33,21 +33,32 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Animation is opt-in. Default behavior when seg.animation is not set: 'fade-glow' (the rich animation).
-  // 'none' disables. Other named kinds map to specific behaviors below.
-  const animKind = seg.animation?.kind ?? 'fade-glow';
+  // Animation modes:
+  //   'none'        — all static; no zoom; no glow-in
+  //   'glow-only'   — current row glow-in only; no zoom
+  //   'zoom-glow'   — 30% zoom-pan into the journey area + per-row glow logic (DEFAULT)
+  // Backward-compat: 'fade-glow' maps to 'zoom-glow'
+  let animKind = seg.animation?.kind ?? 'zoom-glow';
+  if (animKind === 'fade-glow') animKind = 'zoom-glow';
   const animOn = animKind !== 'none';
+  const zoomOn = animKind === 'zoom-glow';
 
-  // Animation timing (only used when animOn):
-  // - 0 to 0.5s: title fade in
-  // - 1.0s to 1.5s: highlighted row glow tick animates in
+  // Title fade-in 0-0.5s (only when animOn)
   const titleOpacity = animOn
     ? interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
     : 1;
+
+  // Current-row glow-in 1.0s to 1.5s
   const glowStartFrame = 1.0 * fps;
   const glowEndFrame = 1.5 * fps;
   const glowProgress = animOn
     ? interpolate(frame, [glowStartFrame, glowEndFrame], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
+
+  // Zoom-pan: scale 1.0 → 1.3 over 0–2.0s, easy ease (inOut cubic)
+  // Transform origin: TICK_X column (1259.88), vertical center of journey rows
+  const zoomScale = zoomOn
+    ? interpolate(frame, [0, 2.0 * fps], [1, 1.3], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.inOut(Easing.cubic) })
     : 1;
 
   const rows = seg.rows || [];
@@ -80,6 +91,13 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
     }
   }
 
+  // Zoom transform: scale around (zoomCx, zoomCy) so the journey area grows centered on the ticks
+  const zoomCx = TICK_X;
+  const zoomCy = (ROW_YS[0] + ROW_YS[Math.min(4, Math.max(0, visibleRows.length - 1))]) / 2;
+  const zoomTransform = zoomOn
+    ? `translate(${zoomCx} ${zoomCy}) scale(${zoomScale}) translate(${-zoomCx} ${-zoomCy})`
+    : undefined;
+
   return (
     <svg
       viewBox="0 0 1920 1080"
@@ -87,10 +105,12 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
       style={{ display: 'block' }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Outer bg + inner card */}
+      {/* Outer bg + inner card — DO NOT zoom these */}
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
       <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
 
+      {/* Zoom group — wraps the entire journey content so it scales together */}
+      <g transform={zoomTransform}>
       {/* Title (left) — fades in over 0.5s */}
       {titleLines.map((line, idx) => (
         <text
@@ -158,24 +178,30 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
         <path key={i} d={`M${TICK_X} ${s.y1} V${s.y2}`} stroke={tokens.cyan} strokeWidth={4} />
       ))}
 
-      {/* Rows — staggered fade-in starting at 0.3s */}
+      {/* Rows — visible from frame 0. Per-row glow state based on highlightUpTo:
+         - Past rows (i < highlightUpTo - 1): static full glow
+         - Current row (i === highlightUpTo - 1): glow halo animates 1.0-1.5s
+         - Future rows (i >= highlightUpTo): InactiveTick (no glow) */}
       {visibleRows.map((row, i) => {
-        const rowStartFrame = (0.3 + i * 0.15) * fps;
-        const rowEndFrame = rowStartFrame + 0.4 * fps;
-        const rowOpacity = interpolate(frame, [rowStartFrame, rowEndFrame], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-        const rowTranslateY = interpolate(frame, [rowStartFrame, rowEndFrame], [12, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-        const isGlowRow = i < highlightUpTo;
+        const isCurrentGlowRow = highlightUpTo > 0 && i === highlightUpTo - 1;
+        const isPastGlowRow = highlightUpTo > 0 && i < highlightUpTo - 1;
+        const isGlowRow = isCurrentGlowRow || isPastGlowRow;
+        // Past rows: glow halo always full (1.0).
+        // Current row: glow halo animates 0 → 1 with glowProgress.
+        // Future rows: no glow.
+        const rowGlowProgress = isPastGlowRow ? 1 : (isCurrentGlowRow ? glowProgress : 0);
         return (
-          <g key={row.id} opacity={rowOpacity} transform={`translate(0, ${rowTranslateY})`}>
+          <g key={row.id}>
             <JourneyRowComp
               row={row}
               y={ROW_YS[i]}
               glow={isGlowRow}
-              glowProgress={isGlowRow ? glowProgress : 0}
+              glowProgress={rowGlowProgress}
             />
           </g>
         );
       })}
+      </g>
     </svg>
   );
 };

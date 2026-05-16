@@ -39,6 +39,12 @@ export const CalloutComp: React.FC<{
           extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
         });
         break;
+      case 'slide-right':
+        opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
+        translateX = interpolate(localFrame, [0, animInDur], [60, 0], {
+          extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
+        });
+        break;
       case 'scale':
         opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
         scale = interpolate(localFrame, [0, animInDur], [0.85, 1], {
@@ -57,6 +63,18 @@ export const CalloutComp: React.FC<{
       case 'fade-out-up':
         opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
         translateY = interpolate(localFrame, [outStart, durationFrames], [0, -40], { extrapolateLeft: 'clamp' });
+        break;
+      case 'slide-out-left':
+        opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
+        translateX = interpolate(localFrame, [outStart, durationFrames], [0, -60], { extrapolateLeft: 'clamp', easing: Easing.in(Easing.cubic) });
+        break;
+      case 'slide-out-right':
+        opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
+        translateX = interpolate(localFrame, [outStart, durationFrames], [0, 60], { extrapolateLeft: 'clamp', easing: Easing.in(Easing.cubic) });
+        break;
+      case 'scale-out':
+        opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
+        scale = interpolate(localFrame, [outStart, durationFrames], [1, 0.85], { extrapolateLeft: 'clamp', easing: Easing.in(Easing.cubic) });
         break;
     }
   }
