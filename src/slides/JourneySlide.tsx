@@ -33,14 +33,22 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Animation timing:
+  // Animation is opt-in. Default behavior when seg.animation is not set: 'fade-glow' (the rich animation).
+  // 'none' disables. Other named kinds map to specific behaviors below.
+  const animKind = seg.animation?.kind ?? 'fade-glow';
+  const animOn = animKind !== 'none';
+
+  // Animation timing (only used when animOn):
   // - 0 to 0.5s: title fade in
-  // - 0.3s to 1.0s: rows fade in (staggered)
   // - 1.0s to 1.5s: highlighted row glow tick animates in
-  const titleOpacity = interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  const titleOpacity = animOn
+    ? interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
   const glowStartFrame = 1.0 * fps;
   const glowEndFrame = 1.5 * fps;
-  const glowProgress = interpolate(frame, [glowStartFrame, glowEndFrame], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  const glowProgress = animOn
+    ? interpolate(frame, [glowStartFrame, glowEndFrame], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
 
   const rows = seg.rows || [];
   const visibleRows = rows.slice(0, 5);

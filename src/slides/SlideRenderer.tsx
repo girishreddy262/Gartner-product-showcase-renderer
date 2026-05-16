@@ -1,4 +1,5 @@
 import React from 'react';
+import { useCurrentFrame, interpolate, Easing } from 'remotion';
 import type {
   IntroSegment, EmptySegment, SlideSegment, TextStyles,
 } from '../types';
@@ -27,15 +28,33 @@ const slideBase: React.CSSProperties = {
   color: '#fff', fontFamily: "'Satoshi', sans-serif",
 };
 
-// ─── Intro slide (unchanged from original — works fine) ───
+// ─── Intro slide ───
+// Animation kinds: 'none' | 'fade' | 'fade-up' | 'zoom'
 export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
   const iconUrl = getModuleIconUrl(seg.moduleIconId);
+  const frame = useCurrentFrame();
+  const anim = seg.animation || { kind: 'fade', durationMs: 600 };
+  const animFrames = Math.max(1, Math.round((anim.durationMs ?? 600) / (1000 / 30)));
+
+  let opacity = 1, translateY = 0, scale = 1;
+  if (anim.kind === 'fade' && frame < animFrames) {
+    opacity = interpolate(frame, [0, animFrames], [0, 1], { extrapolateRight: 'clamp' });
+  } else if (anim.kind === 'fade-up' && frame < animFrames) {
+    opacity = interpolate(frame, [0, animFrames], [0, 1], { extrapolateRight: 'clamp' });
+    translateY = interpolate(frame, [0, animFrames], [40, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  } else if (anim.kind === 'zoom' && frame < animFrames) {
+    opacity = interpolate(frame, [0, animFrames], [0, 1], { extrapolateRight: 'clamp' });
+    scale = interpolate(frame, [0, animFrames], [0.9, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  }
+
   return (
     <div style={{
       ...slideBase,
       background: `linear-gradient(135deg, ${tokens.navy900}, ${tokens.navy500})`,
       alignItems: 'center', justifyContent: 'center', textAlign: 'center',
       padding: 80,
+      transform: `translateY(${translateY}px) scale(${scale})`,
+      opacity,
     }}>
       <div style={{
         width: 240, height: 240, borderRadius: '50%',

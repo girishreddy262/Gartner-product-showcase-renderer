@@ -46,6 +46,14 @@ interface BaseSegment {
   y: number;
   width: number;
   height: number;
+  animation?: SlideAnimation;
+}
+
+// Animation config per slide. Each slide kind supports a different set of animation kinds.
+// 'none' = no animation. Default for new slides is 'none'.
+export interface SlideAnimation {
+  kind: string;          // e.g. 'fade', 'zoom-pan-glow', 'stagger', etc. See per-slide allowed values.
+  durationMs?: number;   // animation duration. Defaults are slide-specific.
 }
 
 export interface RecordingSegment extends BaseSegment {

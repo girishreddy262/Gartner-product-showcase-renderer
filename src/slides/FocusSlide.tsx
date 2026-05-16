@@ -26,8 +26,16 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
   const cardY = variation === 1 ? 113.5 : 110;
   const cardH = variation === 1 ? 853 : 860;
 
-  const titleOpacity = interpolate(frame, [0, 0.4 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-  const titleY = interpolate(frame, [0, 0.4 * fps], [-10, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  // Animation opt-in. Default 'stagger' = title fades, then cols fade in left→right.
+  const animKind = seg.animation?.kind ?? 'stagger';
+  const animOn = animKind !== 'none';
+
+  const titleOpacity = animOn
+    ? interpolate(frame, [0, 0.4 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
+  const titleY = animOn
+    ? interpolate(frame, [0, 0.4 * fps], [-10, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 0;
 
   return (
     <svg
@@ -67,8 +75,8 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
       </text>
 
       {/* Columns */}
-      {variation === 1 && <FocusV1Columns columns={seg.columns || []} />}
-      {(variation === 2 || variation === 3) && <FocusV2V3Columns columns={seg.columns || []} />}
+      {variation === 1 && <FocusV1Columns columns={seg.columns || []} animOn={animOn} />}
+      {(variation === 2 || variation === 3) && <FocusV2V3Columns columns={seg.columns || []} animOn={animOn} />}
 
       {/* Stat pills (v2) */}
       {variation === 2 && (
@@ -85,7 +93,7 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
 };
 
 // Variation 1 layout — 4 columns with bullets (left-aligned text starts evenly distributed)
-const FocusV1Columns: React.FC<{ columns: FocusColumn[] }> = ({ columns }) => {
+const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const COL_XS = [200, 600, 1000, 1400];
@@ -94,8 +102,12 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[] }> = ({ columns }) => {
       {columns.slice(0, 4).map((col, i) => {
         const colStart = (0.4 + i * 0.12) * fps;
         const colEnd = colStart + 0.4 * fps;
-        const opacity = interpolate(frame, [colStart, colEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-        const ty = interpolate(frame, [colStart, colEnd], [16, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+        const opacity = animOn
+          ? interpolate(frame, [colStart, colEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+          : 1;
+        const ty = animOn
+          ? interpolate(frame, [colStart, colEnd], [16, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+          : 0;
         const headingLines = (col.heading || '').split('\n');
         const bulletLines = (col.body || '').split('\n').filter(Boolean);
         return (
@@ -138,7 +150,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[] }> = ({ columns }) => {
 };
 
 // Variation 2/3 layout — 4 columns centered (evenly distributed across 1920 width)
-const FocusV2V3Columns: React.FC<{ columns: FocusColumn[] }> = ({ columns }) => {
+const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const COL_CENTERS = [384, 768, 1152, 1536];
@@ -148,8 +160,12 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[] }> = ({ columns }) => 
       {cols.map((col, i) => {
         const colStart = (0.4 + i * 0.12) * fps;
         const colEnd = colStart + 0.4 * fps;
-        const opacity = interpolate(frame, [colStart, colEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-        const ty = interpolate(frame, [colStart, colEnd], [16, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+        const opacity = animOn
+          ? interpolate(frame, [colStart, colEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+          : 1;
+        const ty = animOn
+          ? interpolate(frame, [colStart, colEnd], [16, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+          : 0;
         const headingLines = (col.heading || '').split('\n');
         const iconX = COL_CENTERS[i] - 50;
         return (

@@ -25,10 +25,20 @@ export const KeyGoalsSlide: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
   const goals = (seg.bullets || []).slice(0, 6);
   const stats = (seg.customerStats || []).slice(0, 3);
 
+  // Animation opt-in. Default 'fade-stagger' = customer card fades in, then goals stagger top→bottom.
+  const animKind = seg.animation?.kind ?? 'fade-stagger';
+  const animOn = animKind !== 'none';
+
   // Animation: customer card fades in at 0-0.5s, goals stagger in starting 0.4s
-  const cardOpacity = interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-  const cardTx = interpolate(frame, [0, 0.5 * fps], [-20, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-  const titleOpacity = interpolate(frame, [0.2 * fps, 0.7 * fps], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  const cardOpacity = animOn
+    ? interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
+  const cardTx = animOn
+    ? interpolate(frame, [0, 0.5 * fps], [-20, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 0;
+  const titleOpacity = animOn
+    ? interpolate(frame, [0.2 * fps, 0.7 * fps], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
 
   // Goals are spaced 134px apart, starting at y=395
   const goalYs = goals.map((_, i) => 395 + i * 134);
@@ -121,8 +131,12 @@ export const KeyGoalsSlide: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
         const lines = (goal.text || '').split('\n');
         const goalStart = (0.4 + i * 0.12) * fps;
         const goalEnd = goalStart + 0.4 * fps;
-        const opacity = interpolate(frame, [goalStart, goalEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
-        const tx = interpolate(frame, [goalStart, goalEnd], [20, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+        const opacity = animOn
+          ? interpolate(frame, [goalStart, goalEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+          : 1;
+        const tx = animOn
+          ? interpolate(frame, [goalStart, goalEnd], [20, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+          : 0;
         return (
           <g key={goal.id} opacity={opacity} transform={`translate(${tx}, 0)`}>
             <foreignObject x={1085} y={y - 31} width={62} height={62}>
