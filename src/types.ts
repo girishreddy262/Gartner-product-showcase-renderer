@@ -104,8 +104,9 @@ export interface FocusColumn {
 export interface FocusStatPill {
   id: string;
   iconUrl?: string | null;
-  text: string;       // e.g. "250+ Clients Globally"
-  // For v3 stat bar: text is split label + value (text2)
+  iconKind?: 'locations' | 'clients' | 'configurable' | 'bill' | 'custom'; // For V3 stat bar
+  text: string;       // Multi-line — \n separates lines. e.g. "250+\nClients Globally"
+  // text2 deprecated — kept for backward compat
   text2?: string;
 }
 

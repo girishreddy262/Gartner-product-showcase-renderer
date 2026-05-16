@@ -80,6 +80,7 @@ export const CalloutComp: React.FC<{
       padding: '32px 48px',
       boxSizing: 'border-box' as const,
       wordWrap: 'break-word' as const,
+      whiteSpace: 'pre-wrap' as const,
       textAlign: 'center' as const,
       zIndex: 50,
       transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,

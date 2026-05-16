@@ -1,4 +1,5 @@
 import React from 'react';
+import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
 import { Img } from 'remotion';
 import type { JourneySegment, JourneyRow } from '../types';
 import { tokens } from '../tokens';
@@ -29,6 +30,18 @@ const TICK_X = 1259.88;
 const AVATAR_R = 41;
 
 export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  // Animation timing:
+  // - 0 to 0.5s: title fade in
+  // - 0.3s to 1.0s: rows fade in (staggered)
+  // - 1.0s to 1.5s: highlighted row glow tick animates in
+  const titleOpacity = interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  const glowStartFrame = 1.0 * fps;
+  const glowEndFrame = 1.5 * fps;
+  const glowProgress = interpolate(frame, [glowStartFrame, glowEndFrame], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+
   const rows = seg.rows || [];
   const visibleRows = rows.slice(0, 5);
   const highlightUpTo = Math.max(0, Math.min(seg.highlightUpToRow || 0, visibleRows.length));
@@ -70,7 +83,7 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
       <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
 
-      {/* Title (left) */}
+      {/* Title (left) — fades in over 0.5s */}
       {titleLines.map((line, idx) => (
         <text
           key={idx}
@@ -80,38 +93,48 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
           fontFamily="Satoshi, system-ui, sans-serif"
           fontSize={64}
           fontWeight={700}
+          opacity={titleOpacity}
         >
           {line}
         </text>
       ))}
 
-      {/* Optional footer card (Model X label + body) */}
-      {seg.footerCard && seg.footerCard.enabled && (
-        <g>
-          <rect x={100} y={footerY} width={403} height={165} rx={15} fill={tokens.blueNote} />
-          {seg.footerCard.label && (
-            <text
-              x={130} y={footerY + 48}
-              fill="rgba(255,255,255,0.65)"
-              fontFamily="Satoshi, system-ui, sans-serif"
-              fontSize={20} fontWeight={500}
-            >
-              {seg.footerCard.label}
-            </text>
-          )}
-          {(seg.footerCard.body || '').split('\n').map((line, idx) => (
-            <text
-              key={idx}
-              x={130} y={footerY + 93 + idx * 40}
-              fill="white"
-              fontFamily="Satoshi, system-ui, sans-serif"
-              fontSize={26} fontWeight={700}
-            >
-              {line}
-            </text>
-          ))}
-        </g>
-      )}
+      {/* Optional footer card (Model X label + body) — auto-expands with body lines */}
+      {seg.footerCard && seg.footerCard.enabled && (() => {
+        const bodyLines = (seg.footerCard.body || '').split('\n');
+        const numLines = Math.max(1, bodyLines.length);
+        // Base: 165 height for 2-line body. Add 40px per extra line beyond 2.
+        // Min: 105 (for 1 line, with label). Pad: 30 top, 30 bottom for label.
+        const labelHeight = seg.footerCard.label ? 60 : 20;
+        const bodyHeight = numLines * 40 + 10;
+        const totalH = labelHeight + bodyHeight + 30;
+        return (
+          <g>
+            <rect x={100} y={footerY} width={403} height={totalH} rx={15} fill={tokens.blueNote} />
+            {seg.footerCard.label && (
+              <text
+                x={130} y={footerY + 48}
+                fill="rgba(255,255,255,0.65)"
+                fontFamily="Satoshi, system-ui, sans-serif"
+                fontSize={20} fontWeight={500}
+              >
+                {seg.footerCard.label}
+              </text>
+            )}
+            {bodyLines.map((line, idx) => (
+              <text
+                key={idx}
+                x={130} y={footerY + labelHeight + 33 + idx * 40}
+                fill="white"
+                fontFamily="Satoshi, system-ui, sans-serif"
+                fontSize={26} fontWeight={700}
+              >
+                {line}
+              </text>
+            ))}
+          </g>
+        );
+      })()}
 
       {/* Optional RRIVE Framework logo at bottom-left (only when footerCard.showRriveLogo) */}
       {seg.footerCard?.showRriveLogo && (
@@ -127,15 +150,24 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
         <path key={i} d={`M${TICK_X} ${s.y1} V${s.y2}`} stroke={tokens.cyan} strokeWidth={4} />
       ))}
 
-      {/* Rows */}
-      {visibleRows.map((row, i) => (
-        <JourneyRowComp
-          key={row.id}
-          row={row}
-          y={ROW_YS[i]}
-          glow={i < highlightUpTo}
-        />
-      ))}
+      {/* Rows — staggered fade-in starting at 0.3s */}
+      {visibleRows.map((row, i) => {
+        const rowStartFrame = (0.3 + i * 0.15) * fps;
+        const rowEndFrame = rowStartFrame + 0.4 * fps;
+        const rowOpacity = interpolate(frame, [rowStartFrame, rowEndFrame], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+        const rowTranslateY = interpolate(frame, [rowStartFrame, rowEndFrame], [12, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+        const isGlowRow = i < highlightUpTo;
+        return (
+          <g key={row.id} opacity={rowOpacity} transform={`translate(0, ${rowTranslateY})`}>
+            <JourneyRowComp
+              row={row}
+              y={ROW_YS[i]}
+              glow={isGlowRow}
+              glowProgress={isGlowRow ? glowProgress : 0}
+            />
+          </g>
+        );
+      })}
     </svg>
   );
 };
@@ -144,7 +176,8 @@ const JourneyRowComp: React.FC<{
   row: JourneyRow;
   y: number;
   glow: boolean;
-}> = ({ row, y, glow }) => {
+  glowProgress?: number;
+}> = ({ row, y, glow, glowProgress = 0 }) => {
   // Resolve persona data
   const ids = row.dual ? (row.personaIds || [null, null]).slice(0, 2) : [(row.personaIds || [null])[0]];
   let nameText = row.name || '';
@@ -202,9 +235,9 @@ const JourneyRowComp: React.FC<{
         <RowSingleAvatar id={ids[0]} y={y} />
       )}
 
-      {/* Tick mark — glow or inactive */}
+      {/* Tick mark — glow or inactive (glow animates via halo radius/opacity) */}
       {glow
-        ? <GlowTick cx={TICK_X} cy={y} />
+        ? <GlowTick cx={TICK_X} cy={y} haloRadius={65 * Math.max(0.001, glowProgress)} />
         : <InactiveTick cx={TICK_X} cy={y} />
       }
 
