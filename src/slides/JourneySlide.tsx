@@ -29,7 +29,7 @@ const AVATAR_X = 1146.16;
 const TICK_X = 1259.88;
 const AVATAR_R = 41;
 
-export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
+export const JourneySlideNew: React.FC<{ seg: JourneySegment; headerOpacity?: number }> = ({ seg, headerOpacity = 1 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -46,8 +46,12 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
   });
 
-  // Header (title + footer card + RRIVE logo) is hidden when hideHeader is true.
-  const showHeader = !seg.hideHeader;
+  // Header (title + footer card + RRIVE logo) opacity is controlled by Root via headerOpacity prop.
+  // Root computes it based on overlap with active Zoom effects:
+  //   - 1.0 when no zoom is active (fully visible)
+  //   - 0.0 while zoom is fully zoomed-in (fully hidden)
+  //   - smooth fade transition on each side
+  const showHeader = headerOpacity > 0.01; // skip rendering entirely when fully invisible
 
   const rows = seg.rows || [];
   const visibleRows = rows.slice(0, 5);
@@ -100,63 +104,69 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
       <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
 
-      {/* Title (left) — only when showHeader */}
-      {showHeader && titleLines.map((line, idx) => (
-        <text
-          key={idx}
-          x={100}
-          y={titleStartY + idx * titleLineHeight}
-          fill="white"
-          fontFamily="Satoshi, system-ui, sans-serif"
-          fontSize={64}
-          fontWeight={700}
-        >
-          {line}
-        </text>
-      ))}
+      {/* Header group (title + footer card + RRIVE logo) — opacity controlled by Root.
+          Fades out when an active Zoom effect is over this slide; fades back in after. */}
+      {showHeader && (
+        <g opacity={headerOpacity}>
+          {/* Title (left) */}
+          {titleLines.map((line, idx) => (
+            <text
+              key={idx}
+              x={100}
+              y={titleStartY + idx * titleLineHeight}
+              fill="white"
+              fontFamily="Satoshi, system-ui, sans-serif"
+              fontSize={64}
+              fontWeight={700}
+            >
+              {line}
+            </text>
+          ))}
 
-      {/* Optional footer card (Model X label + body) — only when showHeader */}
-      {showHeader && seg.footerCard && seg.footerCard.enabled && (() => {
-        const bodyLines = (seg.footerCard.body || '').split('\n');
-        const numLines = Math.max(1, bodyLines.length);
-        const labelHeight = seg.footerCard.label ? 60 : 20;
-        const bodyHeight = numLines * 40 + 10;
-        const totalH = labelHeight + bodyHeight + 30;
-        return (
-          <g>
-            <rect x={100} y={footerY} width={403} height={totalH} rx={15} fill={tokens.blueNote} />
-            {seg.footerCard.label && (
-              <text
-                x={130} y={footerY + 48}
-                fill="rgba(255,255,255,0.65)"
-                fontFamily="Satoshi, system-ui, sans-serif"
-                fontSize={20} fontWeight={500}
-              >
-                {seg.footerCard.label}
-              </text>
-            )}
-            {bodyLines.map((line, idx) => (
-              <text
-                key={idx}
-                x={130} y={footerY + labelHeight + 33 + idx * 40}
-                fill="white"
-                fontFamily="Satoshi, system-ui, sans-serif"
-                fontSize={26} fontWeight={700}
-              >
-                {line}
-              </text>
-            ))}
-          </g>
-        );
-      })()}
+          {/* Optional footer card (Model X label + body) */}
+          {seg.footerCard && seg.footerCard.enabled && (() => {
+            const bodyLines = (seg.footerCard.body || '').split('\n');
+            const numLines = Math.max(1, bodyLines.length);
+            const labelHeight = seg.footerCard.label ? 60 : 20;
+            const bodyHeight = numLines * 40 + 10;
+            const totalH = labelHeight + bodyHeight + 30;
+            return (
+              <g>
+                <rect x={100} y={footerY} width={403} height={totalH} rx={15} fill={tokens.blueNote} />
+                {seg.footerCard.label && (
+                  <text
+                    x={130} y={footerY + 48}
+                    fill="rgba(255,255,255,0.65)"
+                    fontFamily="Satoshi, system-ui, sans-serif"
+                    fontSize={20} fontWeight={500}
+                  >
+                    {seg.footerCard.label}
+                  </text>
+                )}
+                {bodyLines.map((line, idx) => (
+                  <text
+                    key={idx}
+                    x={130} y={footerY + labelHeight + 33 + idx * 40}
+                    fill="white"
+                    fontFamily="Satoshi, system-ui, sans-serif"
+                    fontSize={26} fontWeight={700}
+                  >
+                    {line}
+                  </text>
+                ))}
+              </g>
+            );
+          })()}
 
-      {/* Optional RRIVE Framework logo at bottom-left (only when showHeader && footerCard.showRriveLogo) */}
-      {showHeader && seg.footerCard?.showRriveLogo && (
-        <image
-          x={100} y={820}
-          width={240} height={130}
-          href="/rrive-framework.png"
-        />
+          {/* Optional RRIVE Framework logo at bottom-left */}
+          {seg.footerCard?.showRriveLogo && (
+            <image
+              x={100} y={820}
+              width={240} height={130}
+              href="/rrive-framework.png"
+            />
+          )}
+        </g>
       )}
 
       {/* Connector line segments — drawn BEFORE the ticks so ticks sit on top */}

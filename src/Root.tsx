@@ -65,7 +65,7 @@ const RecordingComp: React.FC<{
 };
 
 // ─── Slide segment component ───
-const SlideComp: React.FC<{ seg: SlideSegment }> = ({ seg }) => {
+const SlideComp: React.FC<{ seg: SlideSegment; headerOpacity?: number }> = ({ seg, headerOpacity }) => {
   return (
     <AbsoluteFill>
       <div style={{
@@ -77,7 +77,7 @@ const SlideComp: React.FC<{ seg: SlideSegment }> = ({ seg }) => {
         overflow: 'hidden',
         background: tokens.navy900,
       }}>
-        <SlideRenderer seg={seg} />
+        <SlideRenderer seg={seg} headerOpacity={headerOpacity} />
       </div>
     </AbsoluteFill>
   );
@@ -126,6 +126,38 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           const durFrames = msToFrames(seg.durationMs);
           const isRecording = seg.kind === 'recording';
 
+          // Compute headerOpacity for slide segments based on zoom effect overlap.
+          // If any zoom effect overlaps this slide's time range, fade header out as
+          // the zoom enters and back in as it exits. 300ms fade on each side.
+          let headerOpacity = 1;
+          if (!isRecording && (seg.kind === 'slide-journey')) {
+            const segStartMs = seg.startMs;
+            const segEndMs = seg.startMs + seg.durationMs;
+            const curMs = (frame / fps) * 1000;
+            // Find the zoom effect that overlaps the slide AND covers the current frame
+            for (const z of zoomEffects) {
+              const zStart = z.startMs;
+              const zEnd = z.startMs + z.durationMs;
+              // Effect must overlap the slide at all
+              if (zEnd <= segStartMs || zStart >= segEndMs) continue;
+              // Clip the zoom's "active period" to within the slide
+              const activeStart = Math.max(zStart, segStartMs);
+              const activeEnd = Math.min(zEnd, segEndMs);
+              const fadeMs = 300; // fade duration
+              if (curMs >= activeStart && curMs <= activeEnd) {
+                // Inside the active period: 1 outside the fades, 0 in the middle.
+                const intoFade = curMs - activeStart;        // ms since zoom started
+                const beforeEnd = activeEnd - curMs;          // ms before zoom ends
+                const fadeIn = Math.min(1, intoFade / fadeMs);     // 0 → 1 over first 300ms
+                const fadeOut = Math.min(1, beforeEnd / fadeMs);   // 1 → 0 over last 300ms
+                // Header should be hidden in the middle: visible (1) at edges, hidden (0) in middle.
+                // hiddenness = min(fadeIn, fadeOut) → 0 at edges, 1 fully into the zoom
+                const hiddenness = Math.min(fadeIn, fadeOut);
+                headerOpacity = Math.min(headerOpacity, 1 - hiddenness);
+              }
+            }
+          }
+
           return (
             <Sequence
               key={seg.id}
@@ -135,7 +167,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
             >
               {isRecording
                 ? <RecordingComp seg={seg as RecordingSegment} videos={payload.videos} />
-                : <SlideComp seg={seg as SlideSegment} />
+                : <SlideComp seg={seg as SlideSegment} headerOpacity={headerOpacity} />
               }
             </Sequence>
           );

@@ -101,10 +101,10 @@ export const EmptySlide: React.FC<{ seg: EmptySegment }> = ({ seg }) => {
 };
 
 // ─── Dispatcher ───
-export const SlideRenderer: React.FC<{ seg: SlideSegment }> = ({ seg }) => {
+export const SlideRenderer: React.FC<{ seg: SlideSegment; headerOpacity?: number }> = ({ seg, headerOpacity }) => {
   switch (seg.kind) {
     case 'slide-intro': return <IntroSlide seg={seg} />;
-    case 'slide-journey': return <JourneySlideNew seg={seg} />;
+    case 'slide-journey': return <JourneySlideNew seg={seg} headerOpacity={headerOpacity} />;
     case 'slide-focus': return <FocusSlide seg={seg} />;
     case 'slide-keygoals': return <KeyGoalsSlide seg={seg} />;
     case 'slide-empty': return <EmptySlide seg={seg} />;
