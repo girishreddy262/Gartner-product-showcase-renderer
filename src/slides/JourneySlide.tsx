@@ -33,37 +33,35 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Animation modes:
-  //   'none'        — all static; no zoom; no glow-in
-  //   'glow-only'   — current row glow-in only; no zoom
-  //   'zoom-glow'   — 30% zoom-pan into the journey area + per-row glow logic (DEFAULT)
-  // Backward-compat: 'fade-glow' maps to 'zoom-glow'
-  let animKind = seg.animation?.kind ?? 'zoom-glow';
-  if (animKind === 'fade-glow') animKind = 'zoom-glow';
-  const animOn = animKind !== 'none';
-  const zoomOn = animKind === 'zoom-glow';
+  // Per-row glow state controls all animation. No slide-level animation kinds anymore.
+  // Each row.glowState is one of:
+  //   'inactive'     — gray InactiveTick (no glow)
+  //   'glow-static'  — full glow from frame 0 (no animation)
+  //   'glow-animate' — base shown from frame 0, glow halo animates in 1.0–1.5s
 
-  // Title fade-in 0-0.5s (only when animOn)
-  const titleOpacity = animOn
-    ? interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
-    : 1;
-
-  // Current-row glow-in 1.0s to 1.5s
+  // Glow-in animation progress 1.0s → 1.5s (used by rows with 'glow-animate' state)
   const glowStartFrame = 1.0 * fps;
   const glowEndFrame = 1.5 * fps;
-  const glowProgress = animOn
-    ? interpolate(frame, [glowStartFrame, glowEndFrame], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
-    : 1;
+  const glowAnimProgress = interpolate(frame, [glowStartFrame, glowEndFrame], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
+  });
 
-  // Zoom-pan: scale 1.0 → 1.3 over 0–2.0s, easy ease (inOut cubic)
-  // Transform origin: TICK_X column (1259.88), vertical center of journey rows
-  const zoomScale = zoomOn
-    ? interpolate(frame, [0, 2.0 * fps], [1, 1.3], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.inOut(Easing.cubic) })
-    : 1;
+  // Header (title + footer card + RRIVE logo) is hidden when hideHeader is true.
+  const showHeader = !seg.hideHeader;
 
   const rows = seg.rows || [];
   const visibleRows = rows.slice(0, 5);
-  const highlightUpTo = Math.max(0, Math.min(seg.highlightUpToRow || 0, visibleRows.length));
+
+  // Backward-compat: if row.glowState is undefined but seg.highlightUpToRow is set, derive states.
+  // Past rows (i < N-1) → glow-static; current row (i === N-1) → glow-animate; future → inactive.
+  const N = Math.max(0, Math.min(seg.highlightUpToRow || 0, visibleRows.length));
+  const resolvedGlowStates = visibleRows.map((row, i) => {
+    if (row.glowState) return row.glowState;
+    if (N === 0) return 'inactive';
+    if (i < N - 1) return 'glow-static';
+    if (i === N - 1) return 'glow-animate';
+    return 'inactive';
+  });
 
   // Build the title lines manually — split on \n. Default to single line.
   const titleLines = (seg.title || '').split('\n').filter(Boolean);
@@ -91,13 +89,6 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
     }
   }
 
-  // Zoom transform: scale around (zoomCx, zoomCy) so the journey area grows centered on the ticks
-  const zoomCx = TICK_X;
-  const zoomCy = (ROW_YS[0] + ROW_YS[Math.min(4, Math.max(0, visibleRows.length - 1))]) / 2;
-  const zoomTransform = zoomOn
-    ? `translate(${zoomCx} ${zoomCy}) scale(${zoomScale}) translate(${-zoomCx} ${-zoomCy})`
-    : undefined;
-
   return (
     <svg
       viewBox="0 0 1920 1080"
@@ -105,14 +96,12 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
       style={{ display: 'block' }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Outer bg + inner card — DO NOT zoom these */}
+      {/* Outer bg + inner card */}
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
       <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
 
-      {/* Zoom group — wraps the entire journey content so it scales together */}
-      <g transform={zoomTransform}>
-      {/* Title (left) — fades in over 0.5s */}
-      {titleLines.map((line, idx) => (
+      {/* Title (left) — only when showHeader */}
+      {showHeader && titleLines.map((line, idx) => (
         <text
           key={idx}
           x={100}
@@ -121,18 +110,15 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
           fontFamily="Satoshi, system-ui, sans-serif"
           fontSize={64}
           fontWeight={700}
-          opacity={titleOpacity}
         >
           {line}
         </text>
       ))}
 
-      {/* Optional footer card (Model X label + body) — auto-expands with body lines */}
-      {seg.footerCard && seg.footerCard.enabled && (() => {
+      {/* Optional footer card (Model X label + body) — only when showHeader */}
+      {showHeader && seg.footerCard && seg.footerCard.enabled && (() => {
         const bodyLines = (seg.footerCard.body || '').split('\n');
         const numLines = Math.max(1, bodyLines.length);
-        // Base: 165 height for 2-line body. Add 40px per extra line beyond 2.
-        // Min: 105 (for 1 line, with label). Pad: 30 top, 30 bottom for label.
         const labelHeight = seg.footerCard.label ? 60 : 20;
         const bodyHeight = numLines * 40 + 10;
         const totalH = labelHeight + bodyHeight + 30;
@@ -164,8 +150,8 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
         );
       })()}
 
-      {/* Optional RRIVE Framework logo at bottom-left (only when footerCard.showRriveLogo) */}
-      {seg.footerCard?.showRriveLogo && (
+      {/* Optional RRIVE Framework logo at bottom-left (only when showHeader && footerCard.showRriveLogo) */}
+      {showHeader && seg.footerCard?.showRriveLogo && (
         <image
           x={100} y={820}
           width={240} height={130}
@@ -183,13 +169,10 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
          - Current row (i === highlightUpTo - 1): glow halo animates 1.0-1.5s
          - Future rows (i >= highlightUpTo): InactiveTick (no glow) */}
       {visibleRows.map((row, i) => {
-        const isCurrentGlowRow = highlightUpTo > 0 && i === highlightUpTo - 1;
-        const isPastGlowRow = highlightUpTo > 0 && i < highlightUpTo - 1;
-        const isGlowRow = isCurrentGlowRow || isPastGlowRow;
-        // Past rows: glow halo always full (1.0).
-        // Current row: glow halo animates 0 → 1 with glowProgress.
-        // Future rows: no glow.
-        const rowGlowProgress = isPastGlowRow ? 1 : (isCurrentGlowRow ? glowProgress : 0);
+        const state = resolvedGlowStates[i];
+        const isGlowRow = state !== 'inactive';
+        // glow-static → always 1; glow-animate → animates 0→1; inactive → 0
+        const rowGlowProgress = state === 'glow-static' ? 1 : (state === 'glow-animate' ? glowAnimProgress : 0);
         return (
           <g key={row.id}>
             <JourneyRowComp
@@ -201,7 +184,6 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
           </g>
         );
       })}
-      </g>
     </svg>
   );
 };

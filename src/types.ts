@@ -82,6 +82,11 @@ export interface JourneyRow {
   name: string;
   designation: string;
   description: string;
+  // Per-row tick glow state:
+  //   'inactive'    — gray InactiveTick (no glow)
+  //   'glow-static' — full glow from frame 0 (no animation)
+  //   'glow-animate'— base shown from frame 0, glow halo animates in 1.0–1.5s
+  glowState?: 'inactive' | 'glow-static' | 'glow-animate';
 }
 
 export interface JourneyFooterCard {
@@ -95,9 +100,10 @@ export interface JourneySegment extends BaseSegment {
   kind: 'slide-journey';
   title: string;
   rows: JourneyRow[];
-  highlightUpToRow: number; // 0 = none, 1 = row 1 only, 2 = rows 1+2, etc
+  highlightUpToRow: number; // DEPRECATED. Use row.glowState. Kept for backward compat.
   endJourney: boolean; // when true, last connector segment doesn't extend below last tick
   footerCard?: JourneyFooterCard;
+  hideHeader?: boolean; // when true, title + footer card + RRIVE logo are hidden (use during zoom effects)
   textStyles: TextStyles;
 }
 
