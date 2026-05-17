@@ -96,6 +96,16 @@ export interface JourneyFooterCard {
   showRriveLogo: boolean;
 }
 
+// Native zoom owned by a Journey segment. Replaces the generic ZoomEffect for this slide.
+// Timing is deterministic: ramps in over first RAMP_MS, holds, ramps out over last RAMP_MS.
+// Header (title + footer card + RRIVE logo) opacity is tied to the same zoom progress.
+export interface JourneyNativeZoom {
+  enabled: boolean;
+  focalX: number;   // canvas x (default 1260 — over the ticks column)
+  focalY: number;   // canvas y (default 543 — middle row)
+  scale: number;    // 1.0 – 2.0 (default 1.4)
+}
+
 export interface JourneySegment extends BaseSegment {
   kind: 'slide-journey';
   title: string;
@@ -104,6 +114,7 @@ export interface JourneySegment extends BaseSegment {
   endJourney: boolean; // when true, last connector segment doesn't extend below last tick
   footerCard?: JourneyFooterCard;
   hideHeader?: boolean; // when true, title + footer card + RRIVE logo are hidden (use during zoom effects)
+  journeyZoom?: JourneyNativeZoom; // v3.21: native zoom replaces generic Zoom for this slide
   textStyles: TextStyles;
 }
 

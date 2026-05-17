@@ -1,11 +1,11 @@
 import React from 'react';
 import {
   AbsoluteFill, Sequence, Video, Audio, Img,
-  useCurrentFrame, useVideoConfig,
+  useCurrentFrame, useVideoConfig, interpolate, Easing,
 } from 'remotion';
 import type {
   ShowcasePayload, Segment, RecordingSegment, SlideSegment,
-  ZoomEffect, SpotlightEffect,
+  ZoomEffect, SpotlightEffect, JourneySegment,
 } from './types';
 import { tokens, satoshiFontFaceCSS } from './tokens';
 import { SlideRenderer } from './slides/SlideRenderer';
@@ -17,8 +17,49 @@ import { ASSETS } from './assets';
 
 const FPS = 30;
 
+// v3.21 — native Journey camera zoom timing. Deterministic ramp tied to the segment.
+const JOURNEY_ZOOM_RAMP_MS = 600; // 0.6s ease-in / ease-out (matches generic Zoom feel)
+
 function msToFrames(ms: number): number {
   return Math.round((ms / 1000) * FPS);
+}
+
+/**
+ * Compute the camera transform contributed by a Journey segment's native zoom (seg.journeyZoom).
+ * Returns scale=1 + zoomProgress=0 when zoom is disabled or the playhead is outside the segment.
+ * Ramp in over JOURNEY_ZOOM_RAMP_MS at the start, ramp out at the end. Hold at full zoom in between.
+ */
+function computeJourneyNativeZoom(
+  seg: JourneySegment,
+  currentMs: number,
+): { scale: number; originX: number; originY: number; zoomProgress: number } {
+  const z = seg.journeyZoom;
+  const defaults = { scale: 1, originX: tokens.canvasW / 2, originY: tokens.canvasH / 2, zoomProgress: 0 };
+  if (!z || !z.enabled) return defaults;
+  const segStart = seg.startMs;
+  const segEnd = seg.startMs + seg.durationMs;
+  if (currentMs < segStart || currentMs >= segEnd) return defaults;
+
+  const segDur = segEnd - segStart;
+  // Cap ramp at 40% of segment duration on each side so short segments still hold briefly.
+  const ramp = Math.min(JOURNEY_ZOOM_RAMP_MS, Math.floor(segDur * 0.4));
+  const into = currentMs - segStart;
+  const before = segEnd - currentMs;
+
+  // Smoothstep-ish ease (matches Easing.bezier(0.42, 0, 0.58, 1) in feel).
+  const ease = (t: number) => {
+    const c = Math.max(0, Math.min(1, t));
+    return c * c * (3 - 2 * c);
+  };
+
+  let progress = 1;
+  if (into < ramp) progress = ease(into / ramp);
+  else if (before < ramp) progress = ease(before / ramp);
+  // else: full hold (progress = 1)
+
+  const targetScale = z.scale || 1.4;
+  const scale = 1 + (targetScale - 1) * progress;
+  return { scale, originX: z.focalX, originY: z.focalY, zoomProgress: progress };
 }
 
 // ─── Recording segment component ───
@@ -87,15 +128,50 @@ const SlideComp: React.FC<{ seg: SlideSegment; headerOpacity?: number }> = ({ se
 export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payload }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
+  const currentMs = (frame / fps) * 1000;
 
-  // Compute zoom transform for current frame
-  const zoomEffects = (payload.effects || []).filter(
-    (e): e is ZoomEffect => e.kind === 'zoom'
+  // v3.21 — Find any Journey segment currently under the playhead with native zoom enabled.
+  // When present, its zoom REPLACES any generic ZoomEffect contribution for the same period,
+  // and drives the slide's header fade deterministically.
+  const activeJourneyWithZoom: JourneySegment | undefined = payload.segments.find(
+    (s): s is JourneySegment =>
+      s.kind === 'slide-journey' &&
+      !!s.journeyZoom?.enabled &&
+      currentMs >= s.startMs &&
+      currentMs < s.startMs + s.durationMs
   );
-  const { scale, originX, originY } = useZoomTransform(zoomEffects, frame, fps);
+
+  const journeyZoom = activeJourneyWithZoom
+    ? computeJourneyNativeZoom(activeJourneyWithZoom, currentMs)
+    : null;
+
+  // Generic zoom effects — exclude any that overlap a journey segment with native zoom enabled
+  // (otherwise they'd double-apply). Other slides keep using the generic Zoom unchanged.
+  const journeyZoomSegments = payload.segments.filter(
+    (s): s is JourneySegment => s.kind === 'slide-journey' && !!s.journeyZoom?.enabled
+  );
+  const zoomEffects = (payload.effects || []).filter(
+    (e): e is ZoomEffect => {
+      if (e.kind !== 'zoom') return false;
+      const eStart = e.startMs;
+      const eEnd = e.startMs + e.durationMs;
+      // Drop the effect if it falls entirely within any journey segment that has native zoom on.
+      for (const js of journeyZoomSegments) {
+        const jStart = js.startMs;
+        const jEnd = js.startMs + js.durationMs;
+        if (eStart >= jStart && eEnd <= jEnd) return false;
+      }
+      return true;
+    }
+  );
+  const generic = useZoomTransform(zoomEffects, frame, fps);
+
+  // Resolve final scale + origin. Native journey zoom wins when active.
+  const scale = journeyZoom ? journeyZoom.scale : generic.scale;
+  const originX = journeyZoom ? journeyZoom.originX : generic.originX;
+  const originY = journeyZoom ? journeyZoom.originY : generic.originY;
 
   // Active spotlights for current frame
-  const currentMs = (frame / fps) * 1000;
   const activeSpotlights = (payload.effects || []).filter(
     (e): e is SpotlightEffect =>
       e.kind === 'spotlight' &&
@@ -126,34 +202,36 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           const durFrames = msToFrames(seg.durationMs);
           const isRecording = seg.kind === 'recording';
 
-          // Compute headerOpacity for slide segments based on zoom effect overlap.
-          // If any zoom effect overlaps this slide's time range, fade header out as
-          // the zoom enters and back in as it exits. 300ms fade on each side.
+          // Compute headerOpacity for Journey slide segments.
+          // v3.21: If the segment has native zoom enabled, header fades deterministically
+          // with the zoom progress (1 - progress). Otherwise fall back to the old overlap
+          // logic with generic ZoomEffects (300ms fade on each side).
           let headerOpacity = 1;
-          if (!isRecording && (seg.kind === 'slide-journey')) {
-            const segStartMs = seg.startMs;
-            const segEndMs = seg.startMs + seg.durationMs;
-            const curMs = (frame / fps) * 1000;
-            // Find the zoom effect that overlaps the slide AND covers the current frame
-            for (const z of zoomEffects) {
-              const zStart = z.startMs;
-              const zEnd = z.startMs + z.durationMs;
-              // Effect must overlap the slide at all
-              if (zEnd <= segStartMs || zStart >= segEndMs) continue;
-              // Clip the zoom's "active period" to within the slide
-              const activeStart = Math.max(zStart, segStartMs);
-              const activeEnd = Math.min(zEnd, segEndMs);
-              const fadeMs = 300; // fade duration
-              if (curMs >= activeStart && curMs <= activeEnd) {
-                // Inside the active period: 1 outside the fades, 0 in the middle.
-                const intoFade = curMs - activeStart;        // ms since zoom started
-                const beforeEnd = activeEnd - curMs;          // ms before zoom ends
-                const fadeIn = Math.min(1, intoFade / fadeMs);     // 0 → 1 over first 300ms
-                const fadeOut = Math.min(1, beforeEnd / fadeMs);   // 1 → 0 over last 300ms
-                // Header should be hidden in the middle: visible (1) at edges, hidden (0) in middle.
-                // hiddenness = min(fadeIn, fadeOut) → 0 at edges, 1 fully into the zoom
-                const hiddenness = Math.min(fadeIn, fadeOut);
-                headerOpacity = Math.min(headerOpacity, 1 - hiddenness);
+          if (!isRecording && seg.kind === 'slide-journey') {
+            const js = seg as JourneySegment;
+            if (js.journeyZoom?.enabled) {
+              // Native zoom — header opacity tied directly to zoom progress
+              const z = computeJourneyNativeZoom(js, currentMs);
+              headerOpacity = 1 - z.zoomProgress;
+            } else {
+              const segStartMs = seg.startMs;
+              const segEndMs = seg.startMs + seg.durationMs;
+              const curMs = (frame / fps) * 1000;
+              for (const z of zoomEffects) {
+                const zStart = z.startMs;
+                const zEnd = z.startMs + z.durationMs;
+                if (zEnd <= segStartMs || zStart >= segEndMs) continue;
+                const activeStart = Math.max(zStart, segStartMs);
+                const activeEnd = Math.min(zEnd, segEndMs);
+                const fadeMs = 300;
+                if (curMs >= activeStart && curMs <= activeEnd) {
+                  const intoFade = curMs - activeStart;
+                  const beforeEnd = activeEnd - curMs;
+                  const fadeIn = Math.min(1, intoFade / fadeMs);
+                  const fadeOut = Math.min(1, beforeEnd / fadeMs);
+                  const hiddenness = Math.min(fadeIn, fadeOut);
+                  headerOpacity = Math.min(headerOpacity, 1 - hiddenness);
+                }
               }
             }
           }

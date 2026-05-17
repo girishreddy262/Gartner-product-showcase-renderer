@@ -62,10 +62,18 @@ export const IconKeyGoal: React.FC<{ size?: number }> = ({ size = 62 }) => (
 );
 
 // ─── Glow tick mark (for journey active state) ───
-// Render at the tick center (cx, cy) with the parent <svg> giving the canvas
-// 40×40 base + halo extends ~65px radius
-export const GlowTick: React.FC<{ cx: number; cy: number; haloRadius?: number }> = ({ cx, cy, haloRadius = 65 }) => {
+// Render at the tick center (cx, cy) with the parent <svg> giving the canvas.
+// progress: 0 → invisible, 1 → fully visible.
+//   Halo radius scales with progress (0 → 65px).
+//   Inner tick group (blue circle + white center + checkmark) fades+scales in with progress.
+//   Inner scale ramps 0.6 → 1.0 for a subtle pop; opacity ramps 0 → 1.
+// For glow-static rows, pass progress=1. For glow-animate, ease progress 0→1.
+export const GlowTick: React.FC<{ cx: number; cy: number; progress?: number }> = ({ cx, cy, progress = 1 }) => {
   const haloId = `halo-${cx}-${cy}`.replace('.', '_');
+  const p = Math.max(0, Math.min(1, progress));
+  const haloRadius = 65 * p;
+  const innerScale = 0.6 + 0.4 * p;
+  const innerOpacity = p;
   return (
     <g>
       <defs>
@@ -76,13 +84,18 @@ export const GlowTick: React.FC<{ cx: number; cy: number; haloRadius?: number }>
         </radialGradient>
       </defs>
       <circle cx={cx} cy={cy} r={haloRadius} fill={`url(#${haloId})`} />
-      <circle cx={cx} cy={cy} r={19.92} fill="#0183FF" stroke="#7ABEFF" strokeWidth={4} />
-      <circle cx={cx} cy={cy} r={14.39} fill="white" />
-      <path
-        d={`M${cx + 5.78},${cy - 3.32} L${cx - 0.86},${cy + 3.35} L${cx - 3.87},${cy + 0.33}`}
-        stroke="black" strokeWidth={3} fill="none"
-        strokeLinecap="round" strokeLinejoin="round"
-      />
+      <g
+        transform={`translate(${cx} ${cy}) scale(${innerScale}) translate(${-cx} ${-cy})`}
+        opacity={innerOpacity}
+      >
+        <circle cx={cx} cy={cy} r={19.92} fill="#0183FF" stroke="#7ABEFF" strokeWidth={4} />
+        <circle cx={cx} cy={cy} r={14.39} fill="white" />
+        <path
+          d={`M${cx + 5.78},${cy - 3.32} L${cx - 0.86},${cy + 3.35} L${cx - 3.87},${cy + 0.33}`}
+          stroke="black" strokeWidth={3} fill="none"
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+      </g>
     </g>
   );
 };

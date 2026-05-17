@@ -261,9 +261,9 @@ const JourneyRowComp: React.FC<{
         <RowSingleAvatar id={ids[0]} y={y} />
       )}
 
-      {/* Tick mark — glow or inactive (glow animates via halo radius/opacity) */}
+      {/* Tick mark — glow or inactive (halo + inner tick animate IN together via progress) */}
       {glow
-        ? <GlowTick cx={TICK_X} cy={y} haloRadius={65 * Math.max(0.001, glowProgress)} />
+        ? <GlowTick cx={TICK_X} cy={y} progress={glowProgress} />
         : <InactiveTick cx={TICK_X} cy={y} />
       }
 
