@@ -1,199 +1,250 @@
 import React from 'react';
-import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
-import { Img } from 'remotion';
+import { useCurrentFrame, useVideoConfig } from 'remotion';
 import type { JourneySegment, JourneyRow } from '../types';
 import { tokens } from '../tokens';
 import { getPersonaById } from '../assets';
 import { GlowTick, InactiveTick } from './Icons';
 
 /**
- * Journey slide — pixel-accurate match to the design SVG.
+ * Journey slide — v3.22.
  *
- * Canvas: 1920×1080.
- * Outer bg #002B54. Inner card x=10, y=113.5, w=1900, h=853, rx=20,
- *   filled with rgba(0,0,0,0.2) overlay.
+ * Camera zoom (when seg.journeyZoom.enabled === true) is a LOCKED STANDARD:
+ *   - Scale: 1.5x
+ *   - Focal X: 1260 (tick column)
+ *   - Focal Y: auto, follows the "centerpiece" row (latest activated, clamped to
+ *     [1, N-2] so we always show the active row centered with one above + one below).
+ *   - Zoom ramps in over 700ms (smoothstep). No zoom-out; slide fades to 0 over
+ *     the last 600ms.
+ *   - Camera pans between centerpieces over 700ms when active crosses a clamped
+ *     boundary (only matters for 4+ rows).
  *
- * Layout:
- *   - Title left, top-aligned. Font 64px white bold. Starts at x=100.
- *   - 5 row Y centers: 254.917, 398.592, 543.284, 687.888, 832.58
- *     (uniform 144.7px spacing). Avatar r=41 at x=1146.16. Tick r=19.92 at x=1259.88.
- *   - Name 30px white bold, designation 18px cyan bold, description 30px white bold.
- *   - Connector segments between active rows (no extension below last row when endJourney).
- *   - Highlight up to row N: rows 1..N show glow tick; rows N+1.. show inactive tick.
+ * Per-row glow timing:
+ *   - Camera enabled: glow-animate rows activate sequentially at
+ *     PRE_ROLL_MS + idx * ROW_HOLD_MS. Each row eases in over GLOW_IN_MS.
+ *   - Camera disabled: legacy — all glow-animate rows light up at 1.0-1.5s.
  *
- * Optional footerCard (used in "with callout" variant) — note card under title.
+ * Inactive ring is ALWAYS rendered. The GlowTick overlay (halo + filled blue +
+ * white center + check) layers on top with opacity tied to per-row progress.
+ *
+ * Content (title + connectors + rows) is clipped to the inner card rectangle.
+ * The outer navy bg + dark card-fill rect are static.
  */
 
 const ROW_YS = [254.917, 398.592, 543.284, 687.888, 832.58];
 const AVATAR_X = 1146.16;
 const TICK_X = 1259.88;
 const AVATAR_R = 41;
+const CW = 1920;
+const CH = 1080;
 
-export const JourneySlideNew: React.FC<{ seg: JourneySegment; headerOpacity?: number }> = ({ seg, headerOpacity = 1 }) => {
+const ZOOM_SCALE = 1.5;
+const FOCAL_X = 1260;
+const ZOOM_RAMP_MS = 700;
+const PAN_MS = 700;
+const FADE_OUT_MS = 600;
+const GLOW_IN_MS = 500;
+const ROW_HOLD_MS = 1400;
+const PRE_ROLL_MS = 600;
+
+const LEGACY_GLOW_START_MS = 1000;
+const LEGACY_GLOW_END_MS = 1500;
+
+function smoothstep(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c * c * (3 - 2 * c);
+}
+
+export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const t = (frame / fps) * 1000;
 
-  // Per-row glow state controls all animation. No slide-level animation kinds anymore.
-  // Each row.glowState is one of:
-  //   'inactive'     — gray InactiveTick (no glow)
-  //   'glow-static'  — full glow from frame 0 (no animation)
-  //   'glow-animate' — base shown from frame 0, glow halo animates in 1.0–1.5s
+  const rows = (seg.rows || []).slice(0, 5);
+  const N = rows.length;
+  const cameraEnabled = !!seg.journeyZoom?.enabled;
 
-  // Glow-in animation progress 1.0s → 1.5s (used by rows with 'glow-animate' state)
-  const glowStartFrame = 1.0 * fps;
-  const glowEndFrame = 1.5 * fps;
-  const glowAnimProgress = interpolate(frame, [glowStartFrame, glowEndFrame], [0, 1], {
-    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
-  });
-
-  // Header (title + footer card + RRIVE logo) opacity is controlled by Root via headerOpacity prop.
-  // Root computes it based on overlap with active Zoom effects:
-  //   - 1.0 when no zoom is active (fully visible)
-  //   - 0.0 while zoom is fully zoomed-in (fully hidden)
-  //   - smooth fade transition on each side
-  const showHeader = headerOpacity > 0.01; // skip rendering entirely when fully invisible
-
-  const rows = seg.rows || [];
-  const visibleRows = rows.slice(0, 5);
-
-  // Backward-compat: if row.glowState is undefined but seg.highlightUpToRow is set, derive states.
-  // Past rows (i < N-1) → glow-static; current row (i === N-1) → glow-animate; future → inactive.
-  const N = Math.max(0, Math.min(seg.highlightUpToRow || 0, visibleRows.length));
-  const resolvedGlowStates = visibleRows.map((row, i) => {
+  const HIGHLIGHT_N = Math.max(0, Math.min(seg.highlightUpToRow || 0, N));
+  const glowStates: Array<'inactive' | 'glow-static' | 'glow-animate'> = rows.map((row, i) => {
     if (row.glowState) return row.glowState;
-    if (N === 0) return 'inactive';
-    if (i < N - 1) return 'glow-static';
-    if (i === N - 1) return 'glow-animate';
+    if (HIGHLIGHT_N === 0) return 'inactive';
+    if (i < HIGHLIGHT_N - 1) return 'glow-static';
+    if (i === HIGHLIGHT_N - 1) return 'glow-animate';
     return 'inactive';
   });
 
-  // Build the title lines manually — split on \n. Default to single line.
+  const rowProgress: number[] = rows.map((_row, i) => {
+    const state = glowStates[i];
+    if (state === 'inactive') return 0;
+    if (state === 'glow-static') return 1;
+    if (cameraEnabled) {
+      const activeAt = PRE_ROLL_MS + i * ROW_HOLD_MS;
+      if (t < activeAt) return 0;
+      if (t > activeAt + GLOW_IN_MS) return 1;
+      return smoothstep((t - activeAt) / GLOW_IN_MS);
+    }
+    return smoothstep((t - LEGACY_GLOW_START_MS) / (LEGACY_GLOW_END_MS - LEGACY_GLOW_START_MS));
+  });
+
+  let scale = 1, txCam = 0, tyCam = 0;
+  let headerOpacity = 1, slideOpacity = 1;
+
+  if (cameraEnabled) {
+    const zoomProgress = t < ZOOM_RAMP_MS ? smoothstep(t / ZOOM_RAMP_MS) : 1;
+    headerOpacity = 1 - zoomProgress;
+
+    if (t > seg.durationMs - FADE_OUT_MS) {
+      slideOpacity = Math.max(0, (seg.durationMs - t) / FADE_OUT_MS);
+    }
+
+    const minCp = N >= 3 ? 1 : 0;
+    const maxCp = N >= 3 ? N - 2 : Math.max(0, N - 1);
+    const cpAt = (time: number): number => {
+      let last = 0;
+      for (let i = 0; i < N; i++) {
+        const state = glowStates[i];
+        if (state === 'inactive') continue;
+        if (state === 'glow-static') { last = Math.max(last, i); continue; }
+        const activeAt = PRE_ROLL_MS + i * ROW_HOLD_MS;
+        if (time >= activeAt) last = Math.max(last, i);
+      }
+      return Math.max(minCp, Math.min(maxCp, last));
+    };
+
+    let focalY = ROW_YS[cpAt(0)];
+    let prevCp = cpAt(0);
+    for (let i = 1; i < N; i++) {
+      const tCp = PRE_ROLL_MS + i * ROW_HOLD_MS;
+      const newCp = cpAt(tCp);
+      if (newCp !== prevCp) {
+        const targetY = ROW_YS[newCp];
+        if (t >= tCp + PAN_MS) {
+          focalY = targetY;
+        } else if (t >= tCp) {
+          focalY = focalY + (targetY - focalY) * smoothstep((t - tCp) / PAN_MS);
+          break;
+        } else {
+          break;
+        }
+        prevCp = newCp;
+      }
+    }
+
+    scale = 1 + (ZOOM_SCALE - 1) * zoomProgress;
+    const screenFx = (1 - zoomProgress) * FOCAL_X + zoomProgress * (CW / 2);
+    const screenFy = (1 - zoomProgress) * focalY + zoomProgress * (CH / 2);
+    txCam = screenFx - FOCAL_X * scale;
+    tyCam = screenFy - focalY * scale;
+  }
+
   const titleLines = (seg.title || '').split('\n').filter(Boolean);
   const titleStartY = 280;
   const titleLineHeight = 90;
   const lastTitleY = titleStartY + Math.max(0, titleLines.length - 1) * titleLineHeight;
-  const footerY = lastTitleY + 60; // 60px below last title line
+  const footerY = lastTitleY + 60;
 
-  // Connector line segments — only between *active* rows.
-  // For N rows, draw N-1 segments between consecutive ticks.
-  // Optionally extend above row 0 to card edge (y=113.888) — keep this when endJourney=false
-  // Optionally extend below last row to card edge (y=966.888) — DROP this when endJourney=true
   const connectorSegments: Array<{ y1: number; y2: number }> = [];
-  if (visibleRows.length > 0) {
-    // Above first row to card top edge
+  if (N > 0) {
     connectorSegments.push({ y1: 113.888, y2: ROW_YS[0] - 22 });
-    // Between consecutive rows
-    for (let i = 0; i < visibleRows.length - 1; i++) {
+    for (let i = 0; i < N - 1; i++) {
       connectorSegments.push({ y1: ROW_YS[i] + 22, y2: ROW_YS[i + 1] - 22 });
     }
-    // Below last row — only if NOT end journey
     if (!seg.endJourney) {
-      const lastIdx = visibleRows.length - 1;
-      connectorSegments.push({ y1: ROW_YS[lastIdx] + 22, y2: 966.888 });
+      connectorSegments.push({ y1: ROW_YS[N - 1] + 22, y2: 966.888 });
     }
   }
+
+  const clipId = `card-clip-${seg.id}`;
 
   return (
     <svg
       viewBox="0 0 1920 1080"
       width="100%" height="100%"
-      style={{ display: 'block' }}
+      style={{ display: 'block', opacity: slideOpacity }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Outer bg + inner card */}
+      <defs>
+        <clipPath id={clipId}>
+          <rect x={10} y={113.5} width={1900} height={853} rx={20} />
+        </clipPath>
+      </defs>
+
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
       <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
 
-      {/* Header group (title + footer card + RRIVE logo) — opacity controlled by Root.
-          Fades out when an active Zoom effect is over this slide; fades back in after. */}
-      {showHeader && (
-        <g opacity={headerOpacity}>
-          {/* Title (left) */}
-          {titleLines.map((line, idx) => (
-            <text
-              key={idx}
-              x={100}
-              y={titleStartY + idx * titleLineHeight}
-              fill="white"
-              fontFamily="Satoshi, system-ui, sans-serif"
-              fontSize={64}
-              fontWeight={700}
-            >
-              {line}
-            </text>
+      <g clipPath={`url(#${clipId})`}>
+        <g transform={`translate(${txCam} ${tyCam}) scale(${scale})`}>
+          <g opacity={headerOpacity}>
+            {titleLines.map((line, idx) => (
+              <text
+                key={idx}
+                x={100}
+                y={titleStartY + idx * titleLineHeight}
+                fill="white"
+                fontFamily="Satoshi, system-ui, sans-serif"
+                fontSize={64}
+                fontWeight={700}
+              >
+                {line}
+              </text>
+            ))}
+
+            {seg.footerCard && seg.footerCard.enabled && (() => {
+              const bodyLines = (seg.footerCard.body || '').split('\n');
+              const numLines = Math.max(1, bodyLines.length);
+              const labelHeight = seg.footerCard.label ? 60 : 20;
+              const bodyHeight = numLines * 40 + 10;
+              const totalH = labelHeight + bodyHeight + 30;
+              return (
+                <g>
+                  <rect x={100} y={footerY} width={403} height={totalH} rx={15} fill={tokens.blueNote} />
+                  {seg.footerCard.label && (
+                    <text
+                      x={130} y={footerY + 48}
+                      fill="rgba(255,255,255,0.65)"
+                      fontFamily="Satoshi, system-ui, sans-serif"
+                      fontSize={20} fontWeight={500}
+                    >
+                      {seg.footerCard.label}
+                    </text>
+                  )}
+                  {bodyLines.map((line, idx) => (
+                    <text
+                      key={idx}
+                      x={130} y={footerY + labelHeight + 33 + idx * 40}
+                      fill="white"
+                      fontFamily="Satoshi, system-ui, sans-serif"
+                      fontSize={26} fontWeight={700}
+                    >
+                      {line}
+                    </text>
+                  ))}
+                </g>
+              );
+            })()}
+
+            {seg.footerCard?.showRriveLogo && (
+              <image
+                x={100} y={820}
+                width={240} height={130}
+                href="/rrive-framework.svg"
+              />
+            )}
+          </g>
+
+          {connectorSegments.map((s, i) => (
+            <path key={i} d={`M${TICK_X} ${s.y1} V${s.y2}`} stroke={tokens.cyan} strokeWidth={4} />
           ))}
 
-          {/* Optional footer card (Model X label + body) */}
-          {seg.footerCard && seg.footerCard.enabled && (() => {
-            const bodyLines = (seg.footerCard.body || '').split('\n');
-            const numLines = Math.max(1, bodyLines.length);
-            const labelHeight = seg.footerCard.label ? 60 : 20;
-            const bodyHeight = numLines * 40 + 10;
-            const totalH = labelHeight + bodyHeight + 30;
-            return (
-              <g>
-                <rect x={100} y={footerY} width={403} height={totalH} rx={15} fill={tokens.blueNote} />
-                {seg.footerCard.label && (
-                  <text
-                    x={130} y={footerY + 48}
-                    fill="rgba(255,255,255,0.65)"
-                    fontFamily="Satoshi, system-ui, sans-serif"
-                    fontSize={20} fontWeight={500}
-                  >
-                    {seg.footerCard.label}
-                  </text>
-                )}
-                {bodyLines.map((line, idx) => (
-                  <text
-                    key={idx}
-                    x={130} y={footerY + labelHeight + 33 + idx * 40}
-                    fill="white"
-                    fontFamily="Satoshi, system-ui, sans-serif"
-                    fontSize={26} fontWeight={700}
-                  >
-                    {line}
-                  </text>
-                ))}
-              </g>
-            );
-          })()}
-
-          {/* Optional RRIVE Framework logo at bottom-left */}
-          {seg.footerCard?.showRriveLogo && (
-            <image
-              x={100} y={820}
-              width={240} height={130}
-              href="/rrive-framework.png"
-            />
-          )}
-        </g>
-      )}
-
-      {/* Connector line segments — drawn BEFORE the ticks so ticks sit on top */}
-      {connectorSegments.map((s, i) => (
-        <path key={i} d={`M${TICK_X} ${s.y1} V${s.y2}`} stroke={tokens.cyan} strokeWidth={4} />
-      ))}
-
-      {/* Rows — visible from frame 0. Per-row glow state based on highlightUpTo:
-         - Past rows (i < highlightUpTo - 1): static full glow
-         - Current row (i === highlightUpTo - 1): glow halo animates 1.0-1.5s
-         - Future rows (i >= highlightUpTo): InactiveTick (no glow) */}
-      {visibleRows.map((row, i) => {
-        const state = resolvedGlowStates[i];
-        const isGlowRow = state !== 'inactive';
-        // glow-static → always 1; glow-animate → animates 0→1; inactive → 0
-        const rowGlowProgress = state === 'glow-static' ? 1 : (state === 'glow-animate' ? glowAnimProgress : 0);
-        return (
-          <g key={row.id}>
+          {rows.map((row, i) => (
             <JourneyRowComp
+              key={row.id}
               row={row}
               y={ROW_YS[i]}
-              glow={isGlowRow}
-              glowProgress={rowGlowProgress}
+              glowProgress={rowProgress[i]}
             />
-          </g>
-        );
-      })}
+          ))}
+        </g>
+      </g>
     </svg>
   );
 };
@@ -201,10 +252,8 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment; headerOpacity?: nu
 const JourneyRowComp: React.FC<{
   row: JourneyRow;
   y: number;
-  glow: boolean;
-  glowProgress?: number;
-}> = ({ row, y, glow, glowProgress = 0 }) => {
-  // Resolve persona data
+  glowProgress: number;
+}> = ({ row, y, glowProgress }) => {
   const ids = row.dual ? (row.personaIds || [null, null]).slice(0, 2) : [(row.personaIds || [null])[0]];
   let nameText = row.name || '';
   let designation = row.designation || '';
@@ -223,12 +272,10 @@ const JourneyRowComp: React.FC<{
     if (p) designation = p.designation;
   }
 
-  // Text x position — shifts left when dual avatar to make room
   const nameTextEndX = row.dual ? AVATAR_X - 92 : AVATAR_X - 56;
 
   return (
     <g>
-      {/* Name + designation (text-anchor end so they align to the right of the text block) */}
       {nameText && (
         <text
           x={nameTextEndX} y={y - 8}
@@ -252,7 +299,6 @@ const JourneyRowComp: React.FC<{
         </text>
       )}
 
-      {/* Avatar(s) — render via foreignObject to support image circles, OR plain placeholder */}
       {row.useCustomIcon && row.customIconUrl ? (
         <RowCustomIcon iconUrl={row.customIconUrl} y={y} />
       ) : row.dual ? (
@@ -261,13 +307,11 @@ const JourneyRowComp: React.FC<{
         <RowSingleAvatar id={ids[0]} y={y} />
       )}
 
-      {/* Tick mark — glow or inactive (halo + inner tick animate IN together via progress) */}
-      {glow
-        ? <GlowTick cx={TICK_X} cy={y} progress={glowProgress} />
-        : <InactiveTick cx={TICK_X} cy={y} />
-      }
+      <InactiveTick cx={TICK_X} cy={y} />
+      {glowProgress > 0.001 && (
+        <GlowTick cx={TICK_X} cy={y} progress={glowProgress} />
+      )}
 
-      {/* Description text */}
       {row.description && (
         <text
           x={1320} y={y + 11}
@@ -282,13 +326,10 @@ const JourneyRowComp: React.FC<{
   );
 };
 
-// Avatar helpers — these draw circles + foreign image inside
-
 const RowSingleAvatar: React.FC<{ id: string | null; y: number }> = ({ id, y }) => {
   const persona = getPersonaById(id);
   return (
     <g>
-      {/* Clip path for circular avatar */}
       <defs>
         <clipPath id={`av-clip-${y}`}>
           <circle cx={AVATAR_X} cy={y} r={AVATAR_R} />
@@ -309,7 +350,6 @@ const RowSingleAvatar: React.FC<{ id: string | null; y: number }> = ({ id, y }) 
 };
 
 const RowDualAvatar: React.FC<{ ids: (string | null)[]; y: number }> = ({ ids, y }) => {
-  // Primary at AVATAR_X, secondary at AVATAR_X - 50 (overlap ~50%)
   const secondaryX = AVATAR_X - 50;
   const persona1 = getPersonaById(ids[0]);
   const persona2 = getPersonaById(ids[1]);
@@ -323,7 +363,6 @@ const RowDualAvatar: React.FC<{ ids: (string | null)[]; y: number }> = ({ ids, y
           <circle cx={AVATAR_X} cy={y} r={AVATAR_R} />
         </clipPath>
       </defs>
-      {/* Secondary avatar (behind, to the left) */}
       <circle cx={secondaryX} cy={y} r={AVATAR_R} fill={tokens.avatarPlaceholder} stroke="#002B54" strokeWidth={3} />
       {persona2 && (
         <image
@@ -334,7 +373,6 @@ const RowDualAvatar: React.FC<{ ids: (string | null)[]; y: number }> = ({ ids, y
           preserveAspectRatio="xMidYMid slice"
         />
       )}
-      {/* Primary avatar (front, on the right) */}
       <circle cx={AVATAR_X} cy={y} r={AVATAR_R} fill={tokens.avatarPlaceholder} stroke="#002B54" strokeWidth={3} />
       {persona1 && (
         <image

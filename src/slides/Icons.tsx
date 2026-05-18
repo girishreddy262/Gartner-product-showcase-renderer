@@ -61,19 +61,23 @@ export const IconKeyGoal: React.FC<{ size?: number }> = ({ size = 62 }) => (
   </svg>
 );
 
-// ─── Glow tick mark (for journey active state) ───
-// Render at the tick center (cx, cy) with the parent <svg> giving the canvas.
-// progress: 0 → invisible, 1 → fully visible.
-//   Halo radius scales with progress (0 → 65px).
-//   Inner tick group (blue circle + white center + checkmark) fades+scales in with progress.
-//   Inner scale ramps 0.6 → 1.0 for a subtle pop; opacity ramps 0 → 1.
-// For glow-static rows, pass progress=1. For glow-animate, ease progress 0→1.
+// ─── Inactive tick ring — always rendered as the BASE layer in every Journey row.
+// Hollow ring (cyan stroke, dark fill). Stays visible at all times — the glow overlay
+// just LAYERS ON TOP when the row activates.
+export const InactiveTick: React.FC<{ cx: number; cy: number }> = ({ cx, cy }) => (
+  <circle cx={cx} cy={cy} r={19.92} fill="#032444" stroke="#7ABEFF" strokeWidth={4} />
+);
+
+// ─── Glow overlay (halo + filled blue circle + white center + black checkmark) ───
+// Render ON TOP of an InactiveTick. progress 0 → invisible, 1 → fully visible.
+// Halo radius scales with progress (0 → 65px). Inner tick group fades+scales in.
+// For glow-static rows pass progress=1. For glow-animate ease progress 0→1.
 export const GlowTick: React.FC<{ cx: number; cy: number; progress?: number }> = ({ cx, cy, progress = 1 }) => {
   const haloId = `halo-${cx}-${cy}`.replace('.', '_');
   const p = Math.max(0, Math.min(1, progress));
+  if (p < 0.001) return null;
   const haloRadius = 65 * p;
   const innerScale = 0.6 + 0.4 * p;
-  const innerOpacity = p;
   return (
     <g>
       <defs>
@@ -86,7 +90,7 @@ export const GlowTick: React.FC<{ cx: number; cy: number; progress?: number }> =
       <circle cx={cx} cy={cy} r={haloRadius} fill={`url(#${haloId})`} />
       <g
         transform={`translate(${cx} ${cy}) scale(${innerScale}) translate(${-cx} ${-cy})`}
-        opacity={innerOpacity}
+        opacity={p}
       >
         <circle cx={cx} cy={cy} r={19.92} fill="#0183FF" stroke="#7ABEFF" strokeWidth={4} />
         <circle cx={cx} cy={cy} r={14.39} fill="white" />
@@ -99,11 +103,6 @@ export const GlowTick: React.FC<{ cx: number; cy: number; progress?: number }> =
     </g>
   );
 };
-
-// ─── Inactive tick (empty circle) ───
-export const InactiveTick: React.FC<{ cx: number; cy: number }> = ({ cx, cy }) => (
-  <circle cx={cx} cy={cy} r={19.92} fill="#032444" stroke="#7ABEFF" strokeWidth={4} />
-);
 
 // ─── Stat bar segment icons (V3 focus slide) — 4 white icons ───
 
