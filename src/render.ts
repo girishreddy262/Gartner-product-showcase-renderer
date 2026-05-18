@@ -21,7 +21,10 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 
 const REGION = (process.env.REMOTION_REGION || 'ap-south-1') as any;
-const FUNCTION_NAME = process.env.REMOTION_FUNCTION_NAME || 'remotion-render-4-0-461-mem2048mb-disk2048mb-240sec';
+// v3.27: upgraded Lambda — 3GB memory, 5GB disk, 600s per-chunk timeout.
+// Old 2GB function (remotion-render-4-0-461-mem2048mb-disk2048mb-240sec) still deployed
+// as fallback. Override with REMOTION_FUNCTION_NAME env var if needed.
+const FUNCTION_NAME = process.env.REMOTION_FUNCTION_NAME || 'remotion-render-4-0-461-mem3008mb-disk5120mb-600sec';
 const SERVE_URL = process.env.REMOTION_SERVE_URL || 'https://remotionlambda-apsouth1-9dlkcsayxl.s3.ap-south-1.amazonaws.com/sites/product-showcase/index.html';
 // v3.24: optional webhook to receive progress updates. If set, we POST
 // { jobId, renderId, percent, framesRendered, totalFrames, status } every poll.
@@ -70,7 +73,7 @@ const fps = 30;
 const frames = Math.ceil((totalMs / 1000) * fps);
 const jobId = payload.jobId || 'unknown';
 
-console.log(`🎬 Product Showcase Renderer (Lambda) v3.24`);
+console.log(`🎬 Product Showcase Renderer (Lambda) v3.27`);
 console.log(`   Job ID: ${jobId}`);
 console.log(`   Module: ${payload.module?.name || 'Untitled'}`);
 console.log(`   Segments: ${payload.segments.length}`);
