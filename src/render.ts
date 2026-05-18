@@ -82,7 +82,6 @@ console.log(`   Audio placements: ${(payload.audioPlacements || []).length}`);
 console.log(`   Duration: ${(totalMs / 1000).toFixed(1)}s (${frames} frames @ ${fps}fps)`);
 console.log(`   Region: ${REGION}`);
 console.log(`   Function: ${FUNCTION_NAME}`);
-console.log(`   framesPerLambda: 60, maxRetries: 3`);
 if (PROGRESS_WEBHOOK) {
   console.log(`   Progress webhook: ${PROGRESS_WEBHOOK}`);
 }
@@ -110,6 +109,19 @@ async function postProgress(renderId: string, pct: number, framesRendered: numbe
 
 async function main() {
   try {
+    // v3.24.3: Dynamic chunk sizing.
+    // Remotion caps total Lambda invocations at 200. With 60 frames/chunk, that
+    // means we top out at ~6:40 of video. For longer videos, scale up so we stay
+    // under 200 chunks, while keeping a 60-frame floor for short videos to preserve
+    // the "smaller chunks = better failure isolation" property.
+    const MAX_LAMBDAS = 200;
+    const MIN_FRAMES_PER_LAMBDA = 60;
+    const minRequired = Math.ceil(frames / MAX_LAMBDAS);
+    // Add a 10% safety margin so we don't run smack into the limit
+    const framesPerLambda = Math.max(MIN_FRAMES_PER_LAMBDA, Math.ceil(minRequired * 1.1));
+    const expectedChunks = Math.ceil(frames / framesPerLambda);
+    console.log(`   framesPerLambda: ${framesPerLambda} (expected ${expectedChunks} chunks, max ${MAX_LAMBDAS})`);
+
     const result = await renderMediaOnLambda({
       region: REGION,
       functionName: FUNCTION_NAME,
@@ -117,7 +129,7 @@ async function main() {
       composition: 'ProductShowcase',
       codec: 'h264',
       inputProps: { payload },
-      framesPerLambda: 60,       // v3.24: smaller chunks for better failure isolation
+      framesPerLambda,
       maxRetries: 3,             // v3.24: retry transient chunk failures
       privacy: 'public',
       outName: `showcase-${jobId}.mp4`,
