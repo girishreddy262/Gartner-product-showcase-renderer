@@ -1,0 +1,58 @@
+name: Deploy Lambda Function (3GB / 600s)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: List existing Lambda functions (before)
+        run: npx remotion lambda functions ls --region=ap-south-1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          REMOTION_REGION: ap-south-1
+
+      - name: Deploy new Lambda function (3GB memory / 5GB disk / 600s timeout)
+        id: deploy
+        run: |
+          echo "Deploying Lambda function with mem=3008mb disk=5120mb timeout=600s..."
+          npx remotion lambda functions deploy \
+            --memory=3008 \
+            --disk=5120 \
+            --timeout=600 \
+            --region=ap-south-1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          REMOTION_REGION: ap-south-1
+
+      - name: List existing Lambda functions (after)
+        run: |
+          echo "=== All Lambda functions in your account ==="
+          npx remotion lambda functions ls --region=ap-south-1
+          echo ""
+          echo "==============================================="
+          echo "NEXT STEP: Copy the function name with mem3008mb from above."
+          echo "It will look like: remotion-render-X-X-X-mem3008mb-disk5120mb-600sec"
+          echo "Update src/render.ts to use it as REMOTION_FUNCTION_NAME default."
+          echo "==============================================="
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          REMOTION_REGION: ap-south-1
