@@ -2,6 +2,7 @@ import React from 'react';
 import { useCurrentFrame, interpolate, Easing } from 'remotion';
 import type { CustomerCardOverlay } from '../types';
 import { IconEmployeesBlue, IconIndustryBlue, IconLocationBlue } from '../slides/Icons';
+import { resolveCustomerLogo } from '../embedded-logos';
 
 /**
  * Customer Card overlay — draggable on canvas (like callout / text overlay).
@@ -48,7 +49,7 @@ export const CustomerCardComp: React.FC<{
       }}
     >
       <CustomerCardSvg
-        logoUrl={card.logoUrl || undefined}
+        logoUrl={resolveCustomerLogo(card.logoUrl) || undefined}
         employees={card.employees}
         industry={card.industry}
         location={card.location}

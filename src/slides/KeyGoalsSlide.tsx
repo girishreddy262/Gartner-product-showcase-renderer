@@ -3,6 +3,7 @@ import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
 import type { KeyGoalsSegment } from '../types';
 import { tokens } from '../tokens';
 import { IconHeadcountWhite, IconIndustryWhite, IconCountriesWhite, IconKeyGoal } from './Icons';
+import { resolveCustomerLogo } from '../embedded-logos';
 
 /**
  * Key Goals slide.
@@ -61,7 +62,7 @@ export const KeyGoalsSlide: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
         {seg.customerLogoUrl && (
           <image
             x={314} y={210} width={300} height={150}
-            href={seg.customerLogoUrl}
+            href={resolveCustomerLogo(seg.customerLogoUrl) || ''}
             preserveAspectRatio="xMidYMid meet"
           />
         )}

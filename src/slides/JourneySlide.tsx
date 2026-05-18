@@ -4,6 +4,7 @@ import type { JourneySegment, JourneyRow } from '../types';
 import { tokens } from '../tokens';
 import { getPersonaById } from '../assets';
 import { GlowTick, InactiveTick } from './Icons';
+import { RRIVE_LOGO_DATA_URL } from '../embedded-logos';
 
 /**
  * Journey slide — v3.22.
@@ -44,7 +45,7 @@ const PAN_MS = 700;
 const FADE_OUT_MS = 600;
 const GLOW_IN_MS = 500;
 const ROW_HOLD_MS = 1400;
-const PRE_ROLL_MS = 600;
+const PRE_ROLL_MS = 1000; // v3.23: slide sits at scale 1 for 1.0s, then zoom + first glow fire together
 
 const LEGACY_GLOW_START_MS = 1000;
 const LEGACY_GLOW_END_MS = 1500;
@@ -89,7 +90,11 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
   let headerOpacity = 1, slideOpacity = 1;
 
   if (cameraEnabled) {
-    const zoomProgress = t < ZOOM_RAMP_MS ? smoothstep(t / ZOOM_RAMP_MS) : 1;
+    // v3.23: zoom-in starts at PRE_ROLL_MS (so the slide sits at scale 1 for 1.0s first)
+    let zoomProgress: number;
+    if (t < PRE_ROLL_MS) zoomProgress = 0;
+    else if (t < PRE_ROLL_MS + ZOOM_RAMP_MS) zoomProgress = smoothstep((t - PRE_ROLL_MS) / ZOOM_RAMP_MS);
+    else zoomProgress = 1;
     headerOpacity = 1 - zoomProgress;
 
     if (t > seg.durationMs - FADE_OUT_MS) {
@@ -226,7 +231,7 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
               <image
                 x={100} y={820}
                 width={240} height={130}
-                href="/rrive-framework.svg"
+                href={RRIVE_LOGO_DATA_URL}
               />
             )}
           </g>
