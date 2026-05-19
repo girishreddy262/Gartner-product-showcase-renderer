@@ -37,6 +37,15 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
     ? interpolate(frame, [0, 0.4 * fps], [-10, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
     : 0;
 
+  // v3.28a polish: card (the dark inner background rect) slides up 30px on entry
+  // alongside the title fade. Same timing window — 400ms.
+  const cardSlideY = animOn
+    ? interpolate(frame, [0, 0.4 * fps], [30, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 0;
+  const cardOpacity = animOn
+    ? interpolate(frame, [0, 0.4 * fps], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
+
   return (
     <svg
       viewBox="0 0 1920 1080"
@@ -60,7 +69,7 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
       </defs>
 
       <rect width={1920} height={1080} fill={bgColor} />
-      <rect x={10} y={cardY} width={1900} height={cardH} rx={cardRadius} fill="black" fillOpacity={0.2} />
+      <rect x={10} y={cardY + cardSlideY} width={1900} height={cardH} rx={cardRadius} fill="black" fillOpacity={0.2 * cardOpacity} />
 
       {/* Title (centered) — fades in */}
       <text
@@ -100,7 +109,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
   return (
     <g>
       {columns.slice(0, 4).map((col, i) => {
-        const colStart = (0.4 + i * 0.12) * fps;
+        const colStart = (0.4 + i * 0.15) * fps;
         const colEnd = colStart + 0.4 * fps;
         const opacity = animOn
           ? interpolate(frame, [colStart, colEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
@@ -158,7 +167,7 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
   return (
     <g>
       {cols.map((col, i) => {
-        const colStart = (0.4 + i * 0.12) * fps;
+        const colStart = (0.4 + i * 0.15) * fps;
         const colEnd = colStart + 0.4 * fps;
         const opacity = animOn
           ? interpolate(frame, [colStart, colEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })

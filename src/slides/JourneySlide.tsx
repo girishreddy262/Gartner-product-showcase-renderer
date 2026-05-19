@@ -62,7 +62,10 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
 
   const rows = (seg.rows || []).slice(0, 5);
   const N = rows.length;
-  const cameraEnabled = !!seg.journeyZoom?.enabled;
+  // v3.28a: zoom is always on for Journey slides. The journeyZoom.enabled field is
+  // ignored — old projects that had it set to false will now zoom (intentional, since
+  // every Journey slide now has the standard zoom-in motion).
+  const cameraEnabled = true;
 
   const HIGHLIGHT_N = Math.max(0, Math.min(seg.highlightUpToRow || 0, N));
   const glowStates: Array<'inactive' | 'glow-static' | 'glow-animate'> = rows.map((row, i) => {
@@ -73,12 +76,25 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
     return 'inactive';
   });
 
+  // v3.28: figure out the activeAt timing per row.
+  // Old behavior (v3.22-3.27): activeAt = PRE_ROLL_MS + i * ROW_HOLD_MS. This caused a
+  // visible delay when later rows (row 3, row 4) were the animating ones — the camera
+  // would settle on the focal area, then sit idle until the animating row's "slot"
+  // arrived. For a slide where rows 1-2 are glow-static and row 3 is glow-animate,
+  // the user saw camera arrive at ~1.7s and glow only fire at ~3.8s.
+  //
+  // New behavior: a glow-animate row fires at PRE_ROLL_MS regardless of row index.
+  // Static rows are already visible from frame 0 (return 1) — no sequencing needed.
+  // If multiple rows are glow-animate (rare in practice — usually a single row at a
+  // time per slide), they stagger by ROW_HOLD_MS starting from PRE_ROLL_MS.
+  let animateOrdinal = 0;
   const rowProgress: number[] = rows.map((_row, i) => {
     const state = glowStates[i];
     if (state === 'inactive') return 0;
     if (state === 'glow-static') return 1;
     if (cameraEnabled) {
-      const activeAt = PRE_ROLL_MS + i * ROW_HOLD_MS;
+      const activeAt = PRE_ROLL_MS + animateOrdinal * ROW_HOLD_MS;
+      animateOrdinal++;
       if (t < activeAt) return 0;
       if (t > activeAt + GLOW_IN_MS) return 1;
       return smoothstep((t - activeAt) / GLOW_IN_MS);
@@ -103,13 +119,18 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
 
     const minCp = N >= 3 ? 1 : 0;
     const maxCp = N >= 3 ? N - 2 : Math.max(0, N - 1);
+    // v3.28: camera focal point uses the same animateOrdinal logic as glow timing
+    // so the pan to the animating row happens right at PRE_ROLL_MS, not after
+    // walking through static rows.
     const cpAt = (time: number): number => {
       let last = 0;
+      let ordinal = 0;
       for (let i = 0; i < N; i++) {
         const state = glowStates[i];
         if (state === 'inactive') continue;
         if (state === 'glow-static') { last = Math.max(last, i); continue; }
-        const activeAt = PRE_ROLL_MS + i * ROW_HOLD_MS;
+        const activeAt = PRE_ROLL_MS + ordinal * ROW_HOLD_MS;
+        ordinal++;
         if (time >= activeAt) last = Math.max(last, i);
       }
       return Math.max(minCp, Math.min(maxCp, last));
@@ -117,8 +138,13 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
 
     let focalY = ROW_YS[cpAt(0)];
     let prevCp = cpAt(0);
-    for (let i = 1; i < N; i++) {
-      const tCp = PRE_ROLL_MS + i * ROW_HOLD_MS;
+    // v3.28: walk transitions by animateOrdinal, not row index
+    let ord = 0;
+    for (let i = 0; i < N; i++) {
+      const state = glowStates[i];
+      if (state !== 'glow-animate') continue;
+      const tCp = PRE_ROLL_MS + ord * ROW_HOLD_MS;
+      ord++;
       const newCp = cpAt(tCp);
       if (newCp !== prevCp) {
         const targetY = ROW_YS[newCp];

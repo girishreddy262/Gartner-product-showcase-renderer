@@ -20,21 +20,58 @@ export const CustomerCardComp: React.FC<{
   const frame = useCurrentFrame();
   const localFrame = frame - startFrame;
 
-  // Animation: simple fade in/out for now (expandable in Phase 2)
+  // v3.28a: animations simplified to slide-right (in from right edge) and slide-right
+  // (out back to right edge — same-side bounce). The editor only exposes these now.
+  // Old projects with fade / fade-up / slide-left etc still work — we keep those branches
+  // for back-compat so old saved decks render the way they used to.
   const animInDur = Math.max(1, Math.round((card.animInAt || 0.3) * 30));
   const animOutDur = Math.max(1, Math.round((card.animOutAt || 0.3) * 30));
   const outStart = Math.max(0, durationFrames - animOutDur);
 
   let opacity = 1;
   let translateY = 0;
-  if (card.animIn === 'fade' && localFrame < animInDur) {
-    opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
-  } else if (card.animIn === 'fade-up' && localFrame < animInDur) {
-    opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
-    translateY = interpolate(localFrame, [0, animInDur], [30, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });
+  let translateX = 0;
+
+  // ─── IN animations ───
+  if (localFrame < animInDur) {
+    if (card.animIn === 'slide-right') {
+      // v3.28a default: card slides in from off-screen right (positive X) to its resting position
+      opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
+      translateX = interpolate(localFrame, [0, animInDur], [200, 0], {
+        extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
+      });
+    } else if (card.animIn === 'slide-left') {
+      // back-compat: slide in from left
+      opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
+      translateX = interpolate(localFrame, [0, animInDur], [-200, 0], {
+        extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
+      });
+    } else if (card.animIn === 'fade') {
+      opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
+    } else if (card.animIn === 'fade-up') {
+      opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
+      translateY = interpolate(localFrame, [0, animInDur], [30, 0], {
+        extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
+      });
+    }
   }
-  if (card.animOut === 'fade' && localFrame >= outStart) {
-    opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
+
+  // ─── OUT animations ───
+  if (localFrame >= outStart) {
+    if (card.animOut === 'slide-right' || card.animOut === 'slide-out-right') {
+      // v3.28a default: card slides back OUT to the right edge — same side it came from
+      opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
+      translateX = interpolate(localFrame, [outStart, durationFrames], [0, 200], {
+        extrapolateLeft: 'clamp', easing: Easing.in(Easing.cubic),
+      });
+    } else if (card.animOut === 'slide-left' || card.animOut === 'slide-out-left') {
+      opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
+      translateX = interpolate(localFrame, [outStart, durationFrames], [0, -200], {
+        extrapolateLeft: 'clamp', easing: Easing.in(Easing.cubic),
+      });
+    } else if (card.animOut === 'fade') {
+      opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
+    }
   }
 
   return (
@@ -43,7 +80,7 @@ export const CustomerCardComp: React.FC<{
         position: 'absolute',
         left: card.x,
         top: card.y,
-        transform: `translateY(${translateY}px)`,
+        transform: `translate(${translateX}px, ${translateY}px)`,
         opacity,
         pointerEvents: 'none',
       }}

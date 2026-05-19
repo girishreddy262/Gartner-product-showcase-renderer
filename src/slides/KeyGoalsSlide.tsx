@@ -70,11 +70,20 @@ export const KeyGoalsSlide: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
         {/* Divider line */}
         <line x1={180} y1={370} x2={748} y2={370} stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
 
-        {/* Customer stats (3 icons + text) */}
+        {/* Customer stats (3 icons + text) — v3.28a: stagger 200ms apart */}
         {stats.map((stat, i) => {
           const x = 244 + i * 218; // centers at 244, 462, 680
+          // v3.28a: stats stagger starting at 0.5s (when card is settled), 200ms apart, 350ms each
+          const statStart = (0.5 + i * 0.2) * fps;
+          const statEnd = statStart + 0.35 * fps;
+          const statOpacity = animOn
+            ? interpolate(frame, [statStart, statEnd], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+            : 1;
+          const statTy = animOn
+            ? interpolate(frame, [statStart, statEnd], [12, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+            : 0;
           return (
-            <g key={stat.id} transform={`translate(${x - 24}, 395)`}>
+            <g key={stat.id} transform={`translate(${x - 24}, ${395 + statTy})`} opacity={statOpacity}>
               <foreignObject x={0} y={0} width={48} height={36}>
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <StatIcon kind={stat.iconKind} customUrl={stat.customIconUrl} />
