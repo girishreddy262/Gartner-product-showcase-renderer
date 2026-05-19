@@ -173,13 +173,25 @@ export interface EmptySegment extends BaseSegment {
   textStyles: TextStyles;
 }
 
+// v3.28b.2: Divider slide — icon + subtitle (Bold 60 #0183FF) + title (Bold 116 #003B73)
+// on #EDF6FF background. Hiding subtitle or title auto-fits the layout.
+// All icons share the same baseline (bottom edge).
+export interface DividerSegment extends BaseSegment {
+  kind: 'slide-divider';
+  title: string;          // multi-line OK (use \n)
+  subtitle: string;       // optional — empty hides
+  iconId: string;         // ID from DIVIDER_ICONS library
+  textStyles: TextStyles;
+}
+
 export type Segment =
   | RecordingSegment
   | IntroSegment
   | JourneySegment
   | FocusSegment
   | KeyGoalsSegment
-  | EmptySegment;
+  | EmptySegment
+  | DividerSegment;
 
 export type SlideSegment = Exclude<Segment, RecordingSegment>;
 

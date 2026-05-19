@@ -9,6 +9,7 @@ import { getIntroModule, DEFAULT_INTRO_MODULE_ID } from '../intro-modules';
 import { JourneySlideNew } from './JourneySlide';
 import { FocusSlide } from './FocusSlide';
 import { KeyGoalsSlide } from './KeyGoalsSlide';
+import { DividerSlide } from './DividerSlide';
 
 // ─── Text style helper ───
 function textStyle(styles: TextStyles | undefined, key: string): React.CSSProperties {
@@ -142,6 +143,7 @@ export const SlideRenderer: React.FC<{ seg: SlideSegment; headerOpacity?: number
     case 'slide-journey': return <JourneySlideNew seg={seg} />;
     case 'slide-focus': return <FocusSlide seg={seg} />;
     case 'slide-keygoals': return <KeyGoalsSlide seg={seg} />;
+    case 'slide-divider': return <DividerSlide seg={seg} />;
     case 'slide-empty': return <EmptySlide seg={seg} />;
     default: return <EmptySlide seg={seg as EmptySegment} />;
   }

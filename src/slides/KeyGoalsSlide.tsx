@@ -3,22 +3,26 @@ import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
 import type { KeyGoalsSegment } from '../types';
 import { tokens } from '../tokens';
 import { IconHeadcountWhite, IconIndustryWhite, IconCountriesWhite, IconKeyGoal } from './Icons';
-import { resolveCustomerLogo } from '../embedded-logos';
+import { ACME_LOGO_DATA_URL } from '../embedded-logos';
+import { KEY_GOALS_MAP_URL } from '../key-goals-assets';
 
 /**
- * Key Goals slide.
+ * Key Goals slide (v3.28b.2).
  * Canvas 1920×1080. Bg #002B54 + inner card overlay.
  *
- * Left side: customer logo card (x=100, y=180, w=728, h=311, rx=14) with 30% opacity navy bg
- *   - Logo area (upper) for uploaded customer logo
+ * v3.28b.2 changes:
+ *   - Customer logo LOCKED to bundled ACME (no edit/swap from user)
+ *   - World map LOCKED to bundled Map.svg (Darwinbox office pins)
+ *   - "Key Goals" title moved up from y=320 to y=280
+ *
+ * Left side: customer logo card (x=100, y=180, w=728, h=311, rx=14)
+ *   - Logo area: bundled ACME (locked)
  *   - Divider line at y=370
  *   - 3 stats row (icon + text) below — text at y=465
- *   - World map below the card (y=624, h=186)
+ *   - World map below the card (locked to bundled SVG)
  *
- * Right side: "Key Goals" title (72px) at x=1080, y=320
- *   - 2-6 goals stacked vertically with target icons (62×62 at x=1085)
- *   - Dashed connector between targets
- *   - Goal text 28px to the right
+ * Right side: "Key Goals" title (72px) at x=1080, y=280
+ *   - 2-6 goals stacked vertically with target icons
  */
 export const KeyGoalsSlide: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
@@ -58,22 +62,19 @@ export const KeyGoalsSlide: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
       <g opacity={cardOpacity} transform={`translate(${cardTx}, 0)`}>
         <rect x={100} y={180} width={728} height={311} rx={14} fill="#1B4369" fillOpacity={0.3} />
 
-        {/* Customer logo (centered in upper area) */}
-        {seg.customerLogoUrl && (
-          <image
-            x={314} y={210} width={300} height={150}
-            href={resolveCustomerLogo(seg.customerLogoUrl) || ''}
-            preserveAspectRatio="xMidYMid meet"
-          />
-        )}
+        {/* Customer logo — LOCKED to bundled ACME (v3.28b.2) */}
+        <image
+          x={314} y={210} width={300} height={150}
+          href={ACME_LOGO_DATA_URL}
+          preserveAspectRatio="xMidYMid meet"
+        />
 
         {/* Divider line */}
         <line x1={180} y1={370} x2={748} y2={370} stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
 
-        {/* Customer stats (3 icons + text) — v3.28a: stagger 200ms apart */}
+        {/* Customer stats (3 icons + text) — stagger 200ms apart */}
         {stats.map((stat, i) => {
           const x = 244 + i * 218; // centers at 244, 462, 680
-          // v3.28a: stats stagger starting at 0.5s (when card is settled), 200ms apart, 350ms each
           const statStart = (0.5 + i * 0.2) * fps;
           const statEnd = statStart + 0.35 * fps;
           const statOpacity = animOn
@@ -102,13 +103,18 @@ export const KeyGoalsSlide: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
           );
         })}
 
-        {/* World map placeholder */}
-        <rect x={148} y={624} width={668} height={186} fill="#0A2E54" />
+        {/* World map — LOCKED to bundled Darwinbox office-pins SVG (v3.28b.2) */}
+        <image
+          x={148} y={544} width={668} height={320}
+          href={KEY_GOALS_MAP_URL}
+          preserveAspectRatio="xMidYMid meet"
+          opacity={0.95}
+        />
       </g>
 
-      {/* "Key Goals" title (right side) — fades in */}
+      {/* "Key Goals" title — v3.28b.2: moved up from y=320 to y=280 */}
       <text
-        x={1080} y={320}
+        x={1080} y={280}
         fill="white"
         fontFamily="Satoshi, system-ui, sans-serif"
         fontSize={72} fontWeight={700}
