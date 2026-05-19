@@ -28,21 +28,23 @@ const slideBase: React.CSSProperties = {
   color: '#fff', fontFamily: "'Satoshi', sans-serif",
 };
 
-// ─── Intro slide (v3.28b) ───
-// v3.28b: 10 module slide backgrounds (textless SVGs) with overlaid editable title.
+// ─── Intro slide (v3.28b.1) ───
+// 10 module slide backgrounds (textless SVGs) with overlaid editable title.
 // User picks a module (id stored as `moduleSlideId`); each module has its own
 // title position (Y) and theme (light vs dark → text color auto-switches).
+//
+// v3.28b.1 changes:
+//   - Subtitle removed entirely from intro slide.
+//   - Title defaults to the picked module's display name if user hasn't typed one.
 //
 // Old projects with only `moduleIconId` keep working via a fallback to a default
 // module slide design. The legacy icon-and-circle layout is no longer rendered.
 export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
 
-  // Resolve module: prefer moduleSlideId; fall back to a default if missing/unknown
   const moduleId = seg.moduleSlideId || DEFAULT_INTRO_MODULE_ID;
   const mod = getIntroModule(moduleId) || getIntroModule(DEFAULT_INTRO_MODULE_ID);
 
-  // Container-level animation kept for legacy 'none' / 'zoom' decks
   const anim = seg.animation || { kind: 'fade-up', durationMs: 600 };
   const animFrames = Math.max(1, Math.round((anim.durationMs ?? 600) / (1000 / 30)));
 
@@ -56,7 +58,7 @@ export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
     containerOpacity = 1; containerScale = 1;
   }
 
-  // Title fade-up (v3.28a style — 600ms)
+  // Title fade-up (600ms)
   const TITLE_DUR = 18;
   let titleOpacity = 1, titleTranslateY = 0;
   if (anim.kind !== 'none' && frame < TITLE_DUR) {
@@ -66,28 +68,10 @@ export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
     });
   }
 
-  // Subtitle fade-up, staggered 300ms after title
-  const SUBTITLE_START = 9;
-  const SUBTITLE_DUR = 18;
-  let subtitleOpacity = 1, subtitleTranslateY = 0;
-  if (anim.kind !== 'none' && frame < SUBTITLE_START + SUBTITLE_DUR) {
-    if (frame < SUBTITLE_START) {
-      subtitleOpacity = 0;
-      subtitleTranslateY = 30;
-    } else {
-      const local = frame - SUBTITLE_START;
-      subtitleOpacity = interpolate(local, [0, SUBTITLE_DUR], [0, 1], { extrapolateRight: 'clamp' });
-      subtitleTranslateY = interpolate(local, [0, SUBTITLE_DUR], [30, 0], {
-        extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
-      });
-    }
-  }
-
   // Resolved values from the module config + segment overrides
   const title = seg.title || mod?.displayDefault || 'Intro Title';
   const titleY = mod?.titleY ?? 620;
   const titleColor = mod?.isLight ? '#002B54' : '#FFFFFF';
-  const subtitleColor = mod?.isLight ? '#003B73' : tokens.textDim;
 
   return (
     <div style={{
@@ -133,28 +117,6 @@ export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
       }}>
         {title}
       </div>
-
-      {/* Subtitle (optional) — sits below the title block.
-          We position it relative to the bottom edge so it doesn't collide with
-          tall 2-line titles. */}
-      {seg.subtitle && (
-        <div style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 100,  // 100px above the slide bottom
-          textAlign: 'center',
-          fontSize: 48,
-          color: subtitleColor,
-          lineHeight: 1.2,
-          opacity: subtitleOpacity,
-          transform: `translateY(${subtitleTranslateY}px)`,
-          padding: '0 80px',
-          ...textStyle(seg.textStyles, 'subtitle'),
-        }}>
-          {seg.subtitle}
-        </div>
-      )}
     </div>
   );
 };
