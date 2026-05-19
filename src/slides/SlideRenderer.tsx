@@ -5,7 +5,7 @@ import type {
 } from '../types';
 import { tokens } from '../tokens';
 import { Img } from 'remotion';
-import { getModuleIconUrl } from '../assets';
+import { getIntroModule, DEFAULT_INTRO_MODULE_ID } from '../intro-modules';
 import { JourneySlideNew } from './JourneySlide';
 import { FocusSlide } from './FocusSlide';
 import { KeyGoalsSlide } from './KeyGoalsSlide';
@@ -28,19 +28,23 @@ const slideBase: React.CSSProperties = {
   color: '#fff', fontFamily: "'Satoshi', sans-serif",
 };
 
-// ─── Intro slide ───
-// v3.28a: polished entry. Title fades up regardless of stored animation choice;
-// subtitle staggers 300ms after the title's start. Icon container animates with the
-// title. The legacy `seg.animation` field is respected for the OUTER container's
-// initial entrance only (for back-compat with old decks that set zoom/none).
+// ─── Intro slide (v3.28b) ───
+// v3.28b: 10 module slide backgrounds (textless SVGs) with overlaid editable title.
+// User picks a module (id stored as `moduleSlideId`); each module has its own
+// title position (Y) and theme (light vs dark → text color auto-switches).
+//
+// Old projects with only `moduleIconId` keep working via a fallback to a default
+// module slide design. The legacy icon-and-circle layout is no longer rendered.
 export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
-  const iconUrl = getModuleIconUrl(seg.moduleIconId);
   const frame = useCurrentFrame();
-  const FPS = 30;
 
-  // Container-level animation kept for legacy 'none' / 'zoom' decks.
+  // Resolve module: prefer moduleSlideId; fall back to a default if missing/unknown
+  const moduleId = seg.moduleSlideId || DEFAULT_INTRO_MODULE_ID;
+  const mod = getIntroModule(moduleId) || getIntroModule(DEFAULT_INTRO_MODULE_ID);
+
+  // Container-level animation kept for legacy 'none' / 'zoom' decks
   const anim = seg.animation || { kind: 'fade-up', durationMs: 600 };
-  const animFrames = Math.max(1, Math.round((anim.durationMs ?? 600) / (1000 / FPS)));
+  const animFrames = Math.max(1, Math.round((anim.durationMs ?? 600) / (1000 / 30)));
 
   let containerOpacity = 1, containerScale = 1;
   if (anim.kind === 'zoom' && frame < animFrames) {
@@ -52,8 +56,8 @@ export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
     containerOpacity = 1; containerScale = 1;
   }
 
-  // v3.28a: title fade-up from below. 600ms.
-  const TITLE_DUR = 18; // 600ms @ 30fps
+  // Title fade-up (v3.28a style — 600ms)
+  const TITLE_DUR = 18;
   let titleOpacity = 1, titleTranslateY = 0;
   if (anim.kind !== 'none' && frame < TITLE_DUR) {
     titleOpacity = interpolate(frame, [0, TITLE_DUR], [0, 1], { extrapolateRight: 'clamp' });
@@ -62,8 +66,8 @@ export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
     });
   }
 
-  // v3.28a: subtitle fade-up, staggered 300ms after title start.
-  const SUBTITLE_START = 9; // 300ms @ 30fps
+  // Subtitle fade-up, staggered 300ms after title
+  const SUBTITLE_START = 9;
   const SUBTITLE_DUR = 18;
   let subtitleOpacity = 1, subtitleTranslateY = 0;
   if (anim.kind !== 'none' && frame < SUBTITLE_START + SUBTITLE_DUR) {
@@ -79,42 +83,73 @@ export const IntroSlide: React.FC<{ seg: IntroSegment }> = ({ seg }) => {
     }
   }
 
+  // Resolved values from the module config + segment overrides
+  const title = seg.title || mod?.displayDefault || 'Intro Title';
+  const titleY = mod?.titleY ?? 620;
+  const titleColor = mod?.isLight ? '#002B54' : '#FFFFFF';
+  const subtitleColor = mod?.isLight ? '#003B73' : tokens.textDim;
+
   return (
     <div style={{
       ...slideBase,
-      background: `linear-gradient(135deg, ${tokens.navy900}, ${tokens.navy500})`,
-      alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-      padding: 80,
+      position: 'relative',
       transform: `scale(${containerScale})`,
       opacity: containerOpacity,
+      overflow: 'hidden',
     }}>
+      {/* Module background — full-bleed 1920x1080 SVG */}
+      {mod && (
+        <Img
+          src={mod.url}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+      )}
+
+      {/* Title overlay — positioned at module's titleY, centered horizontally,
+          116px Satoshi Bold, color auto-switched for light/dark theme */}
       <div style={{
-        width: 240, height: 240, borderRadius: '50%',
-        background: 'rgba(31,138,255,0.15)',
-        border: `4px solid ${tokens.accent}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 48, overflow: 'hidden',
+        position: 'absolute',
+        left: 0,
+        top: titleY,
+        width: '100%',
+        textAlign: 'center',
+        fontFamily: "'Satoshi', sans-serif",
+        fontSize: 116,
+        fontWeight: 700,
+        lineHeight: 1.05,
+        color: titleColor,
+        whiteSpace: 'pre-line',
         opacity: titleOpacity,
         transform: `translateY(${titleTranslateY}px)`,
-      }}>
-        {iconUrl
-          ? <Img src={iconUrl} style={{ width: '55%', height: '55%', objectFit: 'contain' }} />
-          : <span style={{ fontSize: 140, color: '#fff' }}>★</span>
-        }
-      </div>
-      <div style={{
-        fontSize: 96, fontWeight: 700, lineHeight: 1.1,
-        opacity: titleOpacity,
-        transform: `translateY(${titleTranslateY}px)`,
+        padding: '0 60px',
+        boxSizing: 'border-box',
         ...textStyle(seg.textStyles, 'title'),
       }}>
-        {seg.title || 'Intro Title'}
+        {title}
       </div>
+
+      {/* Subtitle (optional) — sits below the title block.
+          We position it relative to the bottom edge so it doesn't collide with
+          tall 2-line titles. */}
       {seg.subtitle && (
         <div style={{
-          fontSize: 48, color: tokens.textDim, marginTop: 24, lineHeight: 1.2,
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 100,  // 100px above the slide bottom
+          textAlign: 'center',
+          fontSize: 48,
+          color: subtitleColor,
+          lineHeight: 1.2,
           opacity: subtitleOpacity,
           transform: `translateY(${subtitleTranslateY}px)`,
+          padding: '0 80px',
           ...textStyle(seg.textStyles, 'subtitle'),
         }}>
           {seg.subtitle}

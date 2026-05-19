@@ -69,7 +69,8 @@ export interface IntroSegment extends BaseSegment {
   kind: 'slide-intro';
   title: string;
   subtitle: string;
-  moduleIconId: string | null;
+  moduleIconId: string | null;          // legacy (v3.27 and earlier) — kept for back-compat
+  moduleSlideId?: string | null;        // v3.28b: id of intro module slide design (from intro-modules.ts)
   textStyles: TextStyles;
 }
 
@@ -231,7 +232,8 @@ export interface CustomerCardOverlay {
   y: number;
   startMs: number;
   durationMs: number;
-  logoUrl?: string | null;
+  logoUrl?: string | null;       // legacy (v3.27 and earlier) — explicit URL string
+  customerLogoId?: string | null; // v3.28b: id from customer-logos.ts library (preferred)
   employees: string;     // e.g. "1.5K+"
   industry: string;      // e.g. "Data Solutions & Analytics"
   location: string;      // e.g. "USA"
