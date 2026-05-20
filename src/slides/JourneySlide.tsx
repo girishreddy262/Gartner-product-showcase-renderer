@@ -318,17 +318,18 @@ const JourneyRowComp: React.FC<{
           {nameText}
         </text>
       )}
-      {designation && (
+      {designation && designation.split('\n').map((line, li) => (
         <text
-          x={nameTextEndX} y={y + 21}
+          key={li}
+          x={nameTextEndX} y={y + 21 + li * 22}
           textAnchor="end"
           fill={tokens.cyan}
           fontFamily="Satoshi, system-ui, sans-serif"
           fontSize={18} fontWeight={700}
         >
-          {designation}
+          {line}
         </text>
-      )}
+      ))}
 
       {row.useCustomIcon && row.customIconUrl ? (
         <RowCustomIcon iconUrl={row.customIconUrl} y={y} />
