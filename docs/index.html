@@ -1522,7 +1522,7 @@ const DEFAULT_EFFECT_DURATION_MS = 4000;
 const DEFAULT_TEXT_OVERLAY_DURATION_MS = 4000;
 const DEFAULT_CUSTOMER_CARD_DURATION_MS = 5000;
 const TEXT_OVERLAY_DEFAULT_W = 500;
-const RENDERER_VERSION = '3.28b.6';
+const RENDERER_VERSION = '3.28b.7';
 
 // Brand logos — embedded as data URLs so they work without any external fetch
 // or static-file path resolution. (v3.23)
@@ -2688,6 +2688,7 @@ async function loadOneVideoDuration(videoId) {
   if (!v) return DEFAULT_VIDEO_DURATION_MS;
   try {
     const vid = document.createElement('video');
+    vid.crossOrigin = 'anonymous';  // v3.28b.7: required for CORS-fetched Dropbox URLs
     vid.preload = 'metadata';
     vid.muted = true;
     vid.src = v.url;
@@ -5952,7 +5953,11 @@ async function createDropboxShareLink(dropboxPath, accessToken) {
   }
   if (!url) throw new Error('Failed to create share link: ' + JSON.stringify(data).slice(0, 200));
 
-  // Convert to direct download URL
+  // v3.28b.7: Convert to direct-download URL.
+  // dl.dropboxusercontent.com DOES return Access-Control-Allow-Origin: *
+  // (verified), so it works cross-origin. But video elements need
+  // crossOrigin="anonymous" set at element creation to actually use those headers
+  // — see loadVideoDuration and loadOneVideoDuration where we now set that.
   let directUrl = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com');
   if (directUrl.indexOf('dl=0') >= 0) directUrl = directUrl.replace('dl=0', 'dl=1');
   else if (directUrl.indexOf('dl=1') < 0) directUrl += (directUrl.indexOf('?') >= 0 ? '&' : '?') + 'dl=1';
@@ -5995,6 +6000,7 @@ function removeUploadToast(toast) {
 // Load video duration helper for newly uploaded asset
 function loadVideoDuration(v) {
   const vid = document.createElement('video');
+  vid.crossOrigin = 'anonymous';  // v3.28b.7: required for CORS-fetched Dropbox URLs
   vid.preload = 'metadata';
   vid.src = v.url;
   vid.onloadedmetadata = () => {
@@ -6004,6 +6010,7 @@ function loadVideoDuration(v) {
 }
 function loadAudioDuration(a) {
   const aud = document.createElement('audio');
+  aud.crossOrigin = 'anonymous';  // v3.28b.7: required for CORS-fetched Dropbox URLs
   aud.preload = 'metadata';
   aud.src = a.url;
   aud.onloadedmetadata = () => {
