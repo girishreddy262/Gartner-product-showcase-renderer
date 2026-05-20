@@ -6019,17 +6019,24 @@ async function approve() {
   $('status-text').textContent = 'Submitting...';
   pause(); // Stop any playback
 
+  // v3.28b.6: send a FLAT payload (segments at top level, not nested under .payload).
+  // The CF Worker wraps this whole object under client_payload.data,
+  // and render.yml unwraps client_payload.data to top level for render.ts.
+  // render.ts expects: payload.segments — so segments MUST be at top level here.
   const body = {
     decision: 'approved',
     jobId: JOB_ID,
-    payload: {
-      module: state.module, videos: state.videos, audios: state.audios,
-      audioPlacements: state.audioPlacements, segments: state.segments,
-      callouts: state.callouts, effects: state.effects, textOverlays: state.textOverlays,
-      customerCards: state.customerCards,
-      frameUrl: PAYLOAD.frameUrl, jobId: JOB_ID,
-      rendererVersion: RENDERER_VERSION
-    }
+    module: state.module,
+    videos: state.videos,
+    audios: state.audios,
+    audioPlacements: state.audioPlacements,
+    segments: state.segments,
+    callouts: state.callouts,
+    effects: state.effects,
+    textOverlays: state.textOverlays,
+    customerCards: state.customerCards,
+    frameUrl: PAYLOAD.frameUrl,
+    rendererVersion: RENDERER_VERSION
   };
   try {
     const res = await fetch(APPROVE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
