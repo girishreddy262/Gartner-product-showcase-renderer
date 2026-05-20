@@ -1397,7 +1397,10 @@
 <script>
 'use strict';
 
-const PAYLOAD = __PAYLOAD_PLACEHOLDER__;
+// v3.28b.6: PAYLOAD was an n8n-injected server-side placeholder. With GitHub Pages
+// serving the editor statically, there's nothing to inject. Empty object is fine —
+// the renderer uses bundled assets from src/assets.ts, not from this payload.
+const PAYLOAD = {};
 // v3.28b.6: GitHub Pages + Cloudflare Worker architecture (n8n removed)
 // Worker handles two endpoints:
 //   GET  /dropbox-token?job_id=...  -> { accessToken, expiresIn, jobFolder }
