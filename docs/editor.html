@@ -6019,13 +6019,22 @@ async function approve() {
   $('status-text').textContent = 'Submitting...';
   pause(); // Stop any playback
 
+  // v3.28b.6: generate a FRESH jobId for every approve click so stale "failed"
+  // statuses from prior attempts don't confuse the polling loop.
+  // Note: window.JOB_ID is `const`; we use a separate var here that the rest of
+  // the approve+poll flow uses going forward.
+  const freshJobId = 'ps_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+  try { sessionStorage.setItem('ps_job_id', freshJobId); } catch (e) {}
+  window._currentJobId = freshJobId;
+  console.log('Render jobId:', freshJobId);
+
   // v3.28b.6: send a FLAT payload (segments at top level, not nested under .payload).
   // The CF Worker wraps this whole object under client_payload.data,
   // and render.yml unwraps client_payload.data to top level for render.ts.
   // render.ts expects: payload.segments — so segments MUST be at top level here.
   const body = {
     decision: 'approved',
-    jobId: JOB_ID,
+    jobId: freshJobId,
     module: state.module,
     videos: state.videos,
     audios: state.audios,
@@ -6130,9 +6139,10 @@ async function pollRenderStatus() {
   if (_renderPollDone) return;
   try {
     // v3.28b.6: poll the S3 status JSON directly (no n8n).
-    // While the JSON is absent (404), render is in progress.
-    // When present (200), it has { status, mp4Url, error } and we finalise.
-    var url = STATUS_BASE_URL + '/' + encodeURIComponent(JOB_ID) + '.json?_=' + Date.now();
+    // Use the freshly-generated jobId from the most recent approve click,
+    // falling back to the initial JOB_ID if approve was never called.
+    var activeJobId = window._currentJobId || JOB_ID;
+    var url = STATUS_BASE_URL + '/' + encodeURIComponent(activeJobId) + '.json?_=' + Date.now();
     var res = await fetch(url, { cache: 'no-store' });
     if (res.status === 404) return; // still rendering
     if (!res.ok) {
