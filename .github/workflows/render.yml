@@ -37,7 +37,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$EVENT_NAME" = "repository_dispatch" ]; then
-            printf '%s' "$CLIENT_PAYLOAD" > render-payload.json
+            printf '%s' "$CLIENT_PAYLOAD" > render-payload-raw.json
+            # GitHub repository_dispatch limits client_payload to 10 keys, so n8n
+            # nests render fields under "data". Unwrap them to top level here.
+            jq '. as $root | (.data // {}) + {jobId: $root.jobId, callbackUrl: $root.callbackUrl}' render-payload-raw.json > render-payload.json
           else
             printf '%s' "$PAYLOAD_JSON_B64" | base64 -d > render-payload.json
           fi
