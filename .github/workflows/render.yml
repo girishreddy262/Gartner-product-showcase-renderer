@@ -2,7 +2,9 @@ name: Render Product Showcase
 
 on:
   repository_dispatch:
-    types: [render-showcase]
+    # v3.28b.6: accept BOTH event types so old n8n workflow can still trigger
+    # in emergencies AND new Cloudflare Worker (which sends 'render') works
+    types: [render-showcase, render]
 
   workflow_dispatch:
     inputs:
@@ -38,9 +40,10 @@ jobs:
         run: |
           if [ "$EVENT_NAME" = "repository_dispatch" ]; then
             printf '%s' "$CLIENT_PAYLOAD" > render-payload-raw.json
-            # GitHub repository_dispatch limits client_payload to 10 keys, so n8n
-            # nests render fields under "data". Unwrap them to top level here.
-            jq '. as $root | (.data // {}) + {jobId: $root.jobId, callbackUrl: $root.callbackUrl}' render-payload-raw.json > render-payload.json
+            # GitHub repository_dispatch limits client_payload to 10 keys, so both
+            # n8n (legacy) and the Cloudflare Worker (v3.28b.6) nest render fields
+            # under "data". Unwrap them to top level here.
+            jq '. as $root | (.data // {}) + {jobId: ($root.data.jobId // $root.jobId), callbackUrl: $root.callbackUrl}' render-payload-raw.json > render-payload.json
           else
             printf '%s' "$PAYLOAD_JSON_B64" | base64 -d > render-payload.json
           fi
@@ -75,7 +78,55 @@ jobs:
             echo "No render result file found"
           fi
 
-      - name: Notify n8n (callback)
+      # v3.28b.6: write status JSON to S3 so the browser can poll directly.
+      # Replaces the old n8n callback. Runs even if render failed (if: always()).
+      - name: Write job status to S3
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ap-south-1
+          JOB_ID: ${{ steps.payload.outputs.job_id }}
+          JOB_STATUS: ${{ job.status }}
+          MP4_URL: ${{ steps.result.outputs.mp4_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -e
+          BUCKET=remotionlambda-apsouth1-9dlkcsayxl
+          KEY="job-status/${JOB_ID}.json"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          if [ "$JOB_STATUS" = "success" ] && [ -n "$MP4_URL" ]; then
+            FINAL_STATUS="success"
+            BODY=$(jq -n \
+              --arg jobId "$JOB_ID" \
+              --arg mp4Url "$MP4_URL" \
+              --arg completedAt "$NOW" \
+              --arg runUrl "$RUN_URL" \
+              '{status: "success", jobId: $jobId, mp4Url: $mp4Url, completedAt: $completedAt, runUrl: $runUrl}')
+          else
+            FINAL_STATUS="failed"
+            BODY=$(jq -n \
+              --arg jobId "$JOB_ID" \
+              --arg completedAt "$NOW" \
+              --arg runUrl "$RUN_URL" \
+              '{status: "failed", jobId: $jobId, completedAt: $completedAt, error: "Render failed — see GitHub Actions logs", logsUrl: $runUrl, runUrl: $runUrl}')
+          fi
+
+          echo "Writing status JSON: $FINAL_STATUS"
+          echo "$BODY" | tee /tmp/status.json
+
+          aws s3 cp /tmp/status.json "s3://${BUCKET}/${KEY}" \
+            --content-type "application/json" \
+            --cache-control "no-cache, no-store" \
+            --acl public-read
+
+          echo "Status published to: https://${BUCKET}.s3.ap-south-1.amazonaws.com/${KEY}"
+
+      # v3.28b.6: keep the n8n callback step ONLY if a callbackUrl is provided
+      # in the payload. The Cloudflare Worker does NOT send a callbackUrl, so
+      # this step becomes a no-op for new jobs. Keeps legacy n8n triggers working.
+      - name: Notify legacy callback (optional)
         if: always()
         env:
           JOB_ID: ${{ steps.payload.outputs.job_id }}
@@ -85,6 +136,7 @@ jobs:
           ARTIFACT_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -n "$CALLBACK_URL" ]; then
+            echo "Legacy callback URL present — notifying $CALLBACK_URL"
             BODY=$(jq -n \
               --arg jobId "$JOB_ID" \
               --arg status "$STATUS" \
@@ -94,5 +146,7 @@ jobs:
             curl -s -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
               -d "$BODY" || echo "Callback failed (non-fatal)"
+          else
+            echo "No legacy callback URL — skipping (v3.28b.6+ uses S3 status JSON)"
           fi
           echo "Render $STATUS for job $JOB_ID"
