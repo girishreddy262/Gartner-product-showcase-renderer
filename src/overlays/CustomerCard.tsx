@@ -26,8 +26,7 @@ export const CustomerCardComp: React.FC<{
   startFrame: number;
   durationFrames: number;
 }> = ({ card, startFrame, durationFrames }) => {
-  const frame = useCurrentFrame();
-  const localFrame = frame - startFrame;
+  const localFrame = useCurrentFrame();
 
   const animInDur = Math.max(1, Math.round((card.animInAt || 0.3) * 30));
   const animOutDur = Math.max(1, Math.round((card.animOutAt || 0.3) * 30));

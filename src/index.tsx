@@ -38,6 +38,10 @@ function getTotalDuration(payload: ShowcasePayload): number {
     const end = e.startMs + e.durationMs;
     if (end > maxMs) maxMs = end;
   }
+  for (const c of payload.customerCards || []) {
+    const end = c.startMs + c.durationMs;
+    if (end > maxMs) maxMs = end;
+  }
   return Math.max(maxMs, 1000);
 }
 

@@ -21,8 +21,7 @@ export const CalloutComp: React.FC<{
   startFrame?: number;
   durationFrames?: number;
 }> = ({ callout, startFrame = 0, durationFrames = 999999 }) => {
-  const frame = useCurrentFrame();
-  const localFrame = frame - startFrame;
+  const localFrame = useCurrentFrame();
 
   // Fade in/out timing (seconds → frames). Defaults: 0.3s each.
   const animInDur = Math.max(1, Math.round((callout.animInAt ?? 0.3) * 30));
