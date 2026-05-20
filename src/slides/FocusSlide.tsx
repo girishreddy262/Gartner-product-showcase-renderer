@@ -2,7 +2,7 @@ import React from 'react';
 import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
 import type { FocusSegment, FocusColumn, FocusStatPill } from '../types';
 import { tokens } from '../tokens';
-import { getFocusIconUrl } from '../assets';
+import { ASSETS, getFocusIconUrl } from '../assets';
 import { IconLocations, IconClients, IconConfigurable, IconBill } from './Icons';
 
 /**
@@ -101,14 +101,22 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
   );
 };
 
-// Variation 1 layout — 4 columns with bullets (left-aligned text starts evenly distributed)
+// Variation 1 layout — 1-4 columns with bullets (left-aligned text per column,
+// whole group auto-centered on the slide).
 const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const COL_XS = [200, 600, 1000, 1400];
+  const cols = columns.slice(0, 4);
+  const n = cols.length;
+  // v3.28b.8: auto-center the column group. Each column reserves 400px (300 content + 100 gap).
+  // Whole group is then centered on the 1920 canvas.
+  const COL_PITCH = 400;
+  const groupWidth = n > 0 ? (n - 1) * COL_PITCH : 0;
+  const firstX = Math.round((tokens.canvasW - groupWidth) / 2) - 40; // -40 = icon offset so text left edge starts at center-ish
   return (
     <g>
-      {columns.slice(0, 4).map((col, i) => {
+      {cols.map((col, i) => {
+        const xLeft = firstX + i * COL_PITCH;
         const colStart = (0.4 + i * 0.15) * fps;
         const colEnd = colStart + 0.4 * fps;
         const opacity = animOn
@@ -121,10 +129,10 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
         const bulletLines = (col.body || '').split('\n').filter(Boolean);
         return (
           <g key={col.id} opacity={opacity} transform={`translate(0, ${ty})`}>
-            <rect x={COL_XS[i]} y={370} width={80} height={80} rx={10} fill={tokens.avatarPlaceholder} />
+            {/* v3.28b.8: icon background rect removed — icon sits directly on slide bg */}
             {getFocusIconUrl(col.iconId) && (
               <image
-                x={COL_XS[i] + 16} y={386} width={48} height={48}
+                x={xLeft} y={386} width={80} height={80}
                 href={getFocusIconUrl(col.iconId)!}
                 preserveAspectRatio="xMidYMid meet"
               />
@@ -132,7 +140,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
             {headingLines.map((line, idx) => (
               <text
                 key={idx}
-                x={COL_XS[i]} y={540 + idx * 40}
+                x={xLeft} y={540 + idx * 40}
                 fill="white"
                 fontFamily="Satoshi, system-ui, sans-serif"
                 fontSize={32} fontWeight={700}
@@ -143,7 +151,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
             {bulletLines.map((line, idx) => (
               <text
                 key={idx}
-                x={COL_XS[i]} y={635 + idx * 35}
+                x={xLeft} y={635 + idx * 35}
                 fill={tokens.cyan}
                 fontFamily="Satoshi, system-ui, sans-serif"
                 fontSize={22} fontWeight={500}
@@ -158,15 +166,22 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
   );
 };
 
-// Variation 2/3 layout — 4 columns centered (evenly distributed across 1920 width)
+// Variation 2/3 layout — 1-4 columns center-aligned per column,
+// whole group auto-centered on the slide.
 const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const COL_CENTERS = [384, 768, 1152, 1536];
   const cols = columns.slice(0, 4);
+  const n = cols.length;
+  // v3.28b.8: auto-center the column group. Preserves the existing 384px spacing between
+  // column centers (which equals 1920/5 → original layout for 4 columns).
+  const COL_PITCH = 384;
+  const groupWidth = n > 0 ? (n - 1) * COL_PITCH : 0;
+  const firstCenter = Math.round((tokens.canvasW - groupWidth) / 2);
   return (
     <g>
       {cols.map((col, i) => {
+        const cx = firstCenter + i * COL_PITCH;
         const colStart = (0.4 + i * 0.15) * fps;
         const colEnd = colStart + 0.4 * fps;
         const opacity = animOn
@@ -176,13 +191,13 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
           ? interpolate(frame, [colStart, colEnd], [16, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
           : 0;
         const headingLines = (col.heading || '').split('\n');
-        const iconX = COL_CENTERS[i] - 50;
+        const iconX = cx - 50; // 100px-wide icon, centered on column
         return (
           <g key={col.id} opacity={opacity} transform={`translate(0, ${ty})`}>
-            <rect x={iconX} y={395} width={100} height={100} rx={10} fill={tokens.avatarPlaceholder} />
+            {/* v3.28b.8: icon background rect removed — icon sits directly on slide bg */}
             {getFocusIconUrl(col.iconId) && (
               <image
-                x={iconX + 20} y={415} width={60} height={60}
+                x={iconX} y={395} width={100} height={100}
                 href={getFocusIconUrl(col.iconId)!}
                 preserveAspectRatio="xMidYMid meet"
               />
@@ -190,7 +205,7 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
             {headingLines.map((line, idx) => (
               <text
                 key={idx}
-                x={COL_CENTERS[i]}
+                x={cx}
                 y={555 + idx * 35}
                 textAnchor="middle"
                 fill="white"
@@ -211,20 +226,36 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
 const FocusPill: React.FC<{
   x: number; y: number; w: number; h: number;
   text: string; gradientId: string;
-}> = ({ x, y, w, h, text, gradientId }) => (
-  <g>
-    <rect x={x} y={y} width={w} height={h} rx={44} fill={`url(#${gradientId})`} fillOpacity={0.8} />
-    <rect x={x + 54} y={y + 24} width={40} height={40} rx={6} fill="rgba(255,255,255,0.2)" />
-    <text
-      x={x + 120} y={y + 52}
-      fill="white"
-      fontFamily="Satoshi, system-ui, sans-serif"
-      fontSize={32} fontWeight={700}
-    >
-      {text}
-    </text>
-  </g>
-);
+}> = ({ x, y, w, h, text, gradientId }) => {
+  // v3.28b.8: fixed icons baked into V2 pills (same pattern as V3 stat bar).
+  // Convention: pill 1 (left, gradientId="focusPill1") = Globe.
+  //             pill 2 (right, gradientId="focusPill2") = Employees.
+  const iconHref =
+    gradientId === 'focusPill1' ? ASSETS.pillIcons.globe :
+    gradientId === 'focusPill2' ? ASSETS.pillIcons.employees :
+    null;
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={44} fill={`url(#${gradientId})`} fillOpacity={0.8} />
+      {iconHref && (
+        <image
+          x={x + 38} y={y + 22}
+          width={44} height={44}
+          href={iconHref}
+          preserveAspectRatio="xMidYMid meet"
+        />
+      )}
+      <text
+        x={x + 100} y={y + 52}
+        fill="white"
+        fontFamily="Satoshi, system-ui, sans-serif"
+        fontSize={32} fontWeight={700}
+      >
+        {text}
+      </text>
+    </g>
+  );
+};
 
 // Variation 3 long stat bar (4 segments)
 const FocusStatBar: React.FC<{ pills: FocusStatPill[] }> = ({ pills }) => {
