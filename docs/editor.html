@@ -7495,108 +7495,101 @@ function cutAtPlayhead() {
   cutVideoSegment(seg, t);
 }
 
-// v3.28b.16: Snap the selected recording segment to its neighbor on left/right.
-// - Left arrow: snap the segment's LEFT edge to the right-edge of the closest
-//   segment that ends before the current segment's start. If none, snap to 0.
-// - Right arrow: snap the segment's RIGHT edge to the left-edge of the closest
-//   segment that starts after the current segment's end. If none, no-op.
-// Only operates on recording segments (slides/callouts/etc. ignored).
-function snapSelectedSegmentToNeighbor(direction) {
+// v3.28b.16: Swap the selected timeline item with its adjacent neighbor on
+// left/right. Works for any timeline kind (recording, slide). After swap:
+//   - The two clips occupy the same total span they did before, in reversed order
+//   - Any gap that existed between them collapses (the swap zone is tight)
+//   - Everything AFTER the swap zone ripple-shifts left by the reclaimed gap
+function swapSelectedWithNeighbor(direction) {
   if (view.selectedKind !== 'segment') return;
   const sel = state.segments.find(s => s.id === view.selectedId);
-  if (!sel || sel.kind !== 'recording') return;
-  const dur = sel.durationMs;
-  const curStart = sel.startMs;
-  const curEnd = curStart + dur;
-
-  // Find all OTHER segments (any kind — block by any timeline item in the
-  // same track. We treat slides as neighbors too since they share the timeline.)
-  const others = state.segments.filter(s => s.id !== sel.id);
-  if (others.length === 0) {
-    // No neighbors → left snaps to 0, right is no-op
-    if (direction === 'left' && curStart > 0) {
-      pushHistory();
-      sel.startMs = 0;
-      rebuildTimeline();
-    } else {
-      showToast('No neighbor to snap to', 'warning');
-    }
+  if (!sel) return;
+  const all = state.segments;
+  if (all.length < 2) {
+    showToast('No neighbor to swap with', 'warning');
     return;
   }
 
+  // Find the closest neighbor in the requested direction. We treat all
+  // state.segments items (recording + slide) as part of the same timeline.
+  let neighbor = null;
   if (direction === 'left') {
-    // Closest segment whose END is <= curStart. (touching neighbor's right edge)
-    // If currently touching one, look ONE FURTHER LEFT.
-    const leftCandidates = others
-      .map(s => ({ s, end: s.startMs + s.durationMs }))
-      .filter(c => c.end <= curStart);
-    if (leftCandidates.length === 0) {
-      // Nothing on the left → snap to 0
-      if (curStart > 0) {
-        pushHistory();
-        sel.startMs = 0;
-        rebuildTimeline();
-      } else {
-        showToast('Already at start', 'warning');
+    // Neighbor that starts BEFORE the selected (smallest gap)
+    let best = null;
+    for (const s of all) {
+      if (s.id === sel.id) continue;
+      if (s.startMs < sel.startMs) {
+        if (!best || s.startMs > best.startMs) best = s;
       }
-      return;
     }
-    // Pick the candidate with the LARGEST end (i.e., closest to curStart)
-    leftCandidates.sort((a, b) => b.end - a.end);
-    const closest = leftCandidates[0];
-    // If already touching that neighbor, look one further back
-    if (closest.end === curStart && leftCandidates.length > 1) {
-      // Already snapped to nearest — jump to nearest before that
-      const second = leftCandidates[1];
-      pushHistory();
-      sel.startMs = second.end;
-    } else if (closest.end === curStart) {
-      // Only one neighbor and we're already touching it → snap to 0
-      if (curStart > 0) {
-        pushHistory();
-        sel.startMs = 0;
-      } else {
-        showToast('Already snapped to the leftmost neighbor', 'warning');
-        return;
-      }
-    } else {
-      pushHistory();
-      sel.startMs = closest.end;
-    }
-    rebuildTimeline();
+    neighbor = best;
   } else if (direction === 'right') {
-    // Closest segment whose START is >= curEnd
-    const rightCandidates = others
-      .map(s => ({ s, start: s.startMs }))
-      .filter(c => c.start >= curEnd);
-    if (rightCandidates.length === 0) {
-      showToast('No neighbor on the right', 'warning');
-      return;
+    // Neighbor that starts AFTER the selected (smallest gap)
+    let best = null;
+    for (const s of all) {
+      if (s.id === sel.id) continue;
+      if (s.startMs > sel.startMs) {
+        if (!best || s.startMs < best.startMs) best = s;
+      }
     }
-    rightCandidates.sort((a, b) => a.start - b.start);
-    const closest = rightCandidates[0];
-    // If already touching that neighbor (curEnd === closest.start), jump past it
-    if (closest.start === curEnd && rightCandidates.length > 1) {
-      const second = rightCandidates[1];
-      pushHistory();
-      // Snap so OUR right edge touches second neighbor's LEFT edge
-      sel.startMs = second.start - dur;
-    } else if (closest.start === curEnd) {
-      showToast('Already snapped to the rightmost neighbor', 'warning');
-      return;
-    } else {
-      pushHistory();
-      sel.startMs = closest.start - dur;
-    }
-    rebuildTimeline();
+    neighbor = best;
   }
+
+  if (!neighbor) {
+    showToast(direction === 'left' ? 'No neighbor on the left' : 'No neighbor on the right', 'warning');
+    return;
+  }
+
+  pushHistory();
+
+  // Identify "earlier" (E) and "later" (L) clip by current startMs.
+  const E = sel.startMs < neighbor.startMs ? sel : neighbor;
+  const L = sel.startMs < neighbor.startMs ? neighbor : sel;
+  const spanStart = E.startMs;
+  const oldSpanEnd = L.startMs + L.durationMs;
+  const oldGap = L.startMs - (E.startMs + E.durationMs); // may be 0 or positive
+
+  // Reverse the order: L goes first, then E (tight).
+  L.startMs = spanStart;
+  E.startMs = spanStart + L.durationMs;
+
+  const newSpanEnd = E.startMs + E.durationMs;
+  const reclaimed = oldSpanEnd - newSpanEnd; // positive if gap collapsed
+
+  // Ripple-shift everything that started AT OR AFTER the old span end, by the
+  // reclaimed gap amount. Also shift dependent items (callouts, effects,
+  // textOverlays, customerCards, audioPlacements) that lived in that zone.
+  if (reclaimed > 0) {
+    for (const s of state.segments) {
+      if (s.id === E.id || s.id === L.id) continue;
+      if (s.startMs >= oldSpanEnd) s.startMs -= reclaimed;
+    }
+    for (const c of state.callouts || []) {
+      if (c.startMs >= oldSpanEnd) c.startMs -= reclaimed;
+    }
+    for (const fx of state.effects || []) {
+      if (fx.startMs >= oldSpanEnd) fx.startMs -= reclaimed;
+    }
+    for (const t of state.textOverlays || []) {
+      if (t.startMs >= oldSpanEnd) t.startMs -= reclaimed;
+    }
+    for (const cc of state.customerCards || []) {
+      if (cc.startMs >= oldSpanEnd) cc.startMs -= reclaimed;
+    }
+    for (const ap of state.audioPlacements || []) {
+      if (ap.startMs >= oldSpanEnd) ap.startMs -= reclaimed;
+    }
+  }
+
+  rebuildTimeline();
+  rebuildCanvas();
 }
 
 // v3.28b.16: Fine-nudge selected segment by ±100ms (Shift+arrow). Recording only.
 function nudgeSelectedSegment(deltaMs) {
   if (view.selectedKind !== 'segment') return;
   const sel = state.segments.find(s => s.id === view.selectedId);
-  if (!sel || sel.kind !== 'recording') return;
+  if (!sel) return;
   pushHistory();
   sel.startMs = Math.max(0, sel.startMs + deltaMs);
   rebuildTimeline();
@@ -7612,16 +7605,17 @@ function setupKeyboard() {
       // v3.28b.16: X cuts the segment at the playhead (CapCut/Premiere style)
       if (e.code === 'KeyX') { e.preventDefault(); cutAtPlayhead(); return; }
     }
-    // v3.28b.16: Arrow keys move the selected video segment.
-    // - Plain ← / →  : snap to neighbor (left/right)
-    // - Shift+← / →  : fine nudge by 100ms
-    // Only fires when a recording segment is selected AND user is not typing.
+    // v3.28b.16: Arrow keys SWAP the selected timeline item with its neighbor.
+    // - Plain ← : swap with the clip immediately to the left (and collapse gap)
+    // - Plain → : swap with the clip immediately to the right (and collapse gap)
+    // - Shift+← / →  : fine nudge by 100ms (no swap, just move)
+    // Works for any timeline item in state.segments (recording + slides).
     if (!isMod && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
       if (e.code === 'ArrowLeft') {
         if (view.selectedKind === 'segment') {
           e.preventDefault();
           if (e.shiftKey) nudgeSelectedSegment(-100);
-          else snapSelectedSegmentToNeighbor('left');
+          else swapSelectedWithNeighbor('left');
           return;
         }
       }
@@ -7629,7 +7623,7 @@ function setupKeyboard() {
         if (view.selectedKind === 'segment') {
           e.preventDefault();
           if (e.shiftKey) nudgeSelectedSegment(100);
-          else snapSelectedSegmentToNeighbor('right');
+          else swapSelectedWithNeighbor('right');
           return;
         }
       }
