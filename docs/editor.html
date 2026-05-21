@@ -6427,10 +6427,23 @@ async function approve() {
   $('status-text').textContent = 'Submitting...';
   pause(); // Stop any playback
 
+  // v3.28b.15: flush any pending cloud save BEFORE submitting render, so the
+  // file in KV reflects exactly what's about to be rendered. Otherwise the
+  // user could come back later, open this file, and see an older version
+  // than the rendered MP4.
+  if (typeof isCloudProject === 'function' && isCloudProject()) {
+    try {
+      if (_cloudSaveTimer) { clearTimeout(_cloudSaveTimer); _cloudSaveTimer = null; }
+      $('status-text').textContent = 'Saving project...';
+      await performCloudSave();
+    } catch (e) {
+      console.warn('Cloud save before render failed (continuing anyway):', e);
+    }
+  }
+  $('status-text').textContent = 'Submitting...';
+
   // v3.28b.6: generate a FRESH jobId for every approve click so stale "failed"
   // statuses from prior attempts don't confuse the polling loop.
-  // Note: window.JOB_ID is `const`; we use a separate var here that the rest of
-  // the approve+poll flow uses going forward.
   const freshJobId = 'ps_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
   try { sessionStorage.setItem('ps_job_id', freshJobId); } catch (e) {}
   window._currentJobId = freshJobId;
@@ -6565,7 +6578,8 @@ async function pollRenderStatus() {
     if (data.status === 'success') {
       onRenderComplete(true, data.mp4Url || data.artifactUrl || null);
     } else {
-      onRenderComplete(false, data.artifactUrl || data.logsUrl || data.error || null);
+      // v3.28b.15: pass the failure details so the UI can show something useful.
+      onRenderComplete(false, data.artifactUrl || data.logsUrl || data.runUrl || null, data.error || null);
     }
   } catch (e) {
     // Network errors are expected while the JSON doesn't exist yet — keep quiet.
@@ -6575,7 +6589,7 @@ async function pollRenderStatus() {
   }
 }
 
-function onRenderComplete(success, downloadUrl) {
+function onRenderComplete(success, downloadUrl, errorMessage) {
   _renderPollDone = true;
   if (success) {
     var stepper = $('roStepper'); if (stepper) stepper.style.display = 'none';
@@ -6594,12 +6608,28 @@ function onRenderComplete(success, downloadUrl) {
   } else {
     var icon2 = $('roIcon'); if (icon2) { icon2.textContent = '❌'; icon2.classList.add('done'); }
     var title2 = $('roTitle'); if (title2) title2.textContent = 'Render failed';
-    var subtitle2 = $('roSubtitle'); if (subtitle2) subtitle2.textContent = 'Something went wrong during rendering. Please try again.';
+    // v3.28b.15: show the actual error if we have one, with a "Try again" hint
+    var friendly = errorMessage && errorMessage.length
+      ? errorMessage
+      : 'Something went wrong during rendering.';
+    var subtitle2 = $('roSubtitle');
+    if (subtitle2) {
+      subtitle2.style.display = 'block';
+      subtitle2.innerHTML = escapeHtml(friendly) +
+        '<br><br>Close this and click "Approve and render" again. ' +
+        'If it keeps failing, check the project files and try once more.';
+    }
     var stepper2 = $('roStepper'); if (stepper2) stepper2.style.display = 'none';
     var bar2 = $('roBar'); if (bar2) { bar2.style.width = '100%'; bar2.style.background = '#ef4444'; }
     var pct2 = $('roPercent'); if (pct2) { pct2.textContent = '—'; pct2.style.color = '#ef4444'; }
     var status2 = $('roStatus'); if (status2) status2.textContent = 'Render failed';
     var tip2 = $('roTip'); if (tip2) tip2.style.display = 'none';
+    // v3.28b.15: surface GitHub Actions logs link if available
+    var wrap = $('roDownloadWrap');
+    if (wrap && downloadUrl) {
+      wrap.style.display = 'block';
+      wrap.innerHTML = '<a class="ro-download" href="' + escapeHtml(downloadUrl) + '" target="_blank" rel="noopener" style="background:#374151;">📋 View render logs</a>';
+    }
   }
 }
 
