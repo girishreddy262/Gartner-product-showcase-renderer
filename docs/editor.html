@@ -5256,6 +5256,9 @@ function play() {
   if (view.isPlaying) return;
   const total = getTotalDurationMs();
   if (total === 0) { showToast('Nothing to play', 'warning'); return; }
+  // v3.28b.16: prime audio elements in the user-gesture call stack so that
+  // play() calls from the RAF loop work on Windows Chrome (strict autoplay).
+  unlockAudioElements();
   view.isPlaying = true;
   _playbackStartMs = view.curTimeMs >= total ? 0 : view.curTimeMs;
   _playbackStartedAt = performance.now();
@@ -7693,6 +7696,11 @@ function setupHeader() {
 
 // Audio playback support — hidden <audio> elements pre-created for each uploaded audio
 const _audioElements = {}; // keyed by audio.id
+// v3.28b.16: track whether audio elements have been "primed" by a user gesture.
+// Windows Chrome enforces autoplay policy strictly: play() from a RAF loop is
+// rejected unless each <audio> was first played in the user-gesture call stack.
+// We prime them on the first Play click.
+let _audioUnlocked = false;
 
 function setupAudioElements() {
   for (const a of state.audios) {
@@ -7700,16 +7708,49 @@ function setupAudioElements() {
     const el = document.createElement('audio');
     el.src = a.url;
     el.preload = 'auto';
-    el.crossOrigin = 'anonymous';
+    // v3.28b.16: NO crossOrigin attribute. Setting it to 'anonymous' makes the
+    // browser require CORS headers from Dropbox AND can intermittently fail on
+    // Windows Chrome (stricter cache validation). We don't need cross-origin
+    // canvas/webaudio access, so we don't need this.
     el.style.display = 'none';
     el.addEventListener('loadedmetadata', () => {
       if (!audioDurations[a.id]) audioDurations[a.id] = Math.round(el.duration * 1000);
       rebuildLeftRailDurations();
     });
-    el.addEventListener('error', () => console.warn('Audio failed to load:', a.url));
+    el.addEventListener('error', (e) => {
+      console.warn('Audio failed to load:', a.url, e);
+    });
     document.body.appendChild(el);
     _audioElements[a.id] = el;
   }
+}
+
+// v3.28b.16: Prime every audio element in the user-gesture call stack so
+// subsequent play() calls from the RAF loop work on Windows Chrome.
+function unlockAudioElements() {
+  if (_audioUnlocked) return;
+  for (const id in _audioElements) {
+    const el = _audioElements[id];
+    try {
+      // Mute briefly, play, pause — this "unlocks" the element for the session
+      const wasMuted = el.muted;
+      el.muted = true;
+      const p = el.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          el.pause();
+          el.currentTime = 0;
+          el.muted = wasMuted;
+        }).catch((err) => {
+          console.warn('Audio unlock failed for ' + id + ':', err.message);
+          el.muted = wasMuted;
+        });
+      }
+    } catch (e) {
+      console.warn('Audio unlock threw for ' + id + ':', e);
+    }
+  }
+  _audioUnlocked = true;
 }
 
 function syncAudioPlayback() {
@@ -7727,7 +7768,20 @@ function syncAudioPlayback() {
         try { el.currentTime = Math.max(0, localT); } catch(e) {}
       }
       el.volume = Math.min(1, Math.max(0, ap.volume != null ? ap.volume : 1));
-      if (el.paused) el.play().catch(() => {});
+      if (el.paused) {
+        // v3.28b.16: surface play() errors so we can debug Windows issues.
+        // Don't spam — log only the first failure per audio per session.
+        const p = el.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch((err) => {
+            if (!el._loggedPlayError) {
+              console.warn('Audio play() rejected for ' + ap.audioId + ':', err.message);
+              console.warn('Tip: click somewhere on the page first to satisfy browser autoplay policy.');
+              el._loggedPlayError = true;
+            }
+          });
+        }
+      }
     } else {
       if (!el.paused) el.pause();
     }
