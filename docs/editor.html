@@ -1196,7 +1196,8 @@
       <button class="btn" id="btnPause">⏸ Pause</button>
       <button class="btn" id="btnReset">↺ Reset</button>
       <button class="btn" id="btnCloseGaps" title="Close all gaps between segments">⇆ Close gaps</button>
-      <button class="btn" id="btnSaveProject" title="Save project to .psproj.json file">💾 Save project</button>
+      <button class="btn" id="btnSaveProject" title="Save project to the cloud">💾 Save project</button>
+      <button class="btn" id="btnDownloadProject" title="Download project as .psproj.json file">⬇ Download</button>
       <button class="btn" id="btnOpenProject" title="Open .psproj.json file">📂 Open project</button>
       <span id="cloudSaveIndicator" style="display:none;font-size:11px;color:#6da6c4;align-self:center;font-family:Satoshi,system-ui,sans-serif;transition:opacity 0.3s;"></span>
       <span id="autoSaveIndicator" style="font-size:11px;color:#6da6c4;opacity:0.5;align-self:center;font-family:Satoshi,system-ui,sans-serif;transition:opacity 0.3s;">Auto-save on</span>
@@ -7067,6 +7068,62 @@ async function performCloudSave() {
   }
 }
 
+// v3.28b.12: explicit "save now" button — uses the same cloud save plumbing
+// but does it immediately (no debounce) and shows a toast.
+// If the user isn't in a cloud project yet, offers to create one from current state.
+async function saveProjectToCloud() {
+  if (isCloudProject()) {
+    // Already loaded from cloud — flush any pending save now
+    if (_cloudSaveTimer) { clearTimeout(_cloudSaveTimer); _cloudSaveTimer = null; }
+    await performCloudSave();
+    showToast('Project saved', 'success');
+    return;
+  }
+  // Not a cloud project yet — offer to create one
+  const projectName = prompt('Save this project to the cloud. Enter a project name:', state.module && state.module.name ? state.module.name : 'Untitled');
+  if (!projectName || !projectName.trim()) return;
+  const owner = (function () {
+    try { return localStorage.getItem('ps_user_name') || ''; } catch { return ''; }
+  })();
+  if (!owner) {
+    const name = prompt('What is your name? (used as project owner)');
+    if (!name || !name.trim()) return;
+    try { localStorage.setItem('ps_user_name', name.trim()); } catch {}
+  }
+  showToast('Creating project…');
+  try {
+    const r = await fetch(WORKER_BASE_URL + '/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: projectName.trim(),
+        owner: getCloudUser(),
+        state: buildProjectJson().payload
+      })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    // Switch the editor into cloud mode without reload — update URL + state
+    _cloudProjectId = data.project.id;
+    _cloudProjectName = data.project.name;
+    _cloudLastSavedAt = data.project.updatedAt;
+    const newUrl = window.location.pathname + '?project=' + encodeURIComponent(_cloudProjectId);
+    history.replaceState(null, '', newUrl);
+    const nameEl = document.getElementById('projectName');
+    const backEl = document.getElementById('backToProjects');
+    const titleEl = document.getElementById('editorTitle');
+    if (nameEl) { nameEl.textContent = _cloudProjectName; nameEl.style.display = 'inline'; }
+    if (backEl) { backEl.style.display = 'inline'; }
+    if (titleEl) { titleEl.style.display = 'none'; }
+    document.title = _cloudProjectName + ' — Product Showcase';
+    setCloudIndicator('✓ Saved', 0.7);
+    showToast('Project saved to cloud', 'success');
+  } catch (e) {
+    console.error('Cloud create failed:', e);
+    showToast('Could not save to cloud: ' + e.message, 'error');
+  }
+}
+
 async function loadCloudProjectIfRequested() {
   // Parse ?project=ID from URL
   const qp = new URLSearchParams(window.location.search);
@@ -7323,7 +7380,8 @@ function setupHeader() {
   $('btnCloseGaps').addEventListener('click', closeGaps);
   $('btnCancel').addEventListener('click', cancel);
   $('btnApprove').addEventListener('click', approve);
-  $('btnSaveProject').addEventListener('click', saveProjectToFile);
+  $('btnSaveProject').addEventListener('click', saveProjectToCloud);
+  $('btnDownloadProject').addEventListener('click', saveProjectToFile);
   $('btnOpenProject').addEventListener('click', openProjectFromFile);
   $('btnZoomIn').addEventListener('click', () => setCanvasZoom(view.canvasZoom * 1.25));
   $('btnZoomOut').addEventListener('click', () => setCanvasZoom(view.canvasZoom / 1.25));
