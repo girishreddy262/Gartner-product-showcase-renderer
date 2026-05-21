@@ -7177,9 +7177,12 @@ async function saveProjectToCloud() {
     const nameEl = document.getElementById('projectName');
     const backEl = document.getElementById('backToProjects');
     const titleEl = document.getElementById('editorTitle');
+    const metaEl = document.getElementById('meta-info');
     if (nameEl) { nameEl.textContent = _cloudProjectName; nameEl.style.display = 'inline'; }
     if (backEl) { backEl.style.display = 'inline'; }
     if (titleEl) { titleEl.style.display = 'none'; }
+    // v3.28b.15: hide "— Untitled" stutter once we have a proper file name
+    if (metaEl) { metaEl.style.display = 'none'; }
     document.title = _cloudProjectName + ' — Product Showcase';
     setCloudIndicator('✓ Saved', 0.7);
     showToast('Project saved to cloud', 'success');
@@ -7230,6 +7233,7 @@ async function loadCloudProjectIfRequested() {
     const nameEl = document.getElementById('projectName');
     const backEl = document.getElementById('backToProjects');
     const titleEl = document.getElementById('editorTitle');
+    const metaEl = document.getElementById('meta-info');
     if (nameEl) { nameEl.textContent = _cloudProjectName; nameEl.style.display = 'inline'; }
     if (backEl) {
       backEl.style.display = 'inline';
@@ -7240,6 +7244,9 @@ async function loadCloudProjectIfRequested() {
       backEl.title = _cloudFolderId ? 'Back to project files' : 'Back to projects';
     }
     if (titleEl) { titleEl.style.display = 'none'; }
+    // v3.28b.15: hide the legacy "— <module>" meta line when we already have a
+    // proper file name in the header. Avoids "First cut — Untitled" stutter.
+    if (metaEl) { metaEl.style.display = 'none'; }
     document.title = _cloudProjectName + ' — Product Showcase';
     setCloudIndicator('✓ Loaded', 0.7);
     return true;
