@@ -7775,28 +7775,52 @@ function setupKeyboard() {
       redo();
       return;
     }
-    // v3.28b.17: Cmd/Ctrl + and Cmd/Ctrl - zoom the canvas preview area
-    // (NOT the timeline, NOT the rendered output — purely view zoom for the
-    // 1920×1080 canvas, like After Effects / Premiere). Cmd/Ctrl 0 resets.
-    // Skip inside inputs/textareas so users can keep using browser shortcuts.
-    if (isMod && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-      // '+' is Shift+= on many keyboards, so we accept both Equal AND NumpadAdd
-      if (e.code === 'Equal' || e.code === 'NumpadAdd') {
-        e.preventDefault();
-        setCanvasZoom(view.canvasZoom * 1.25);
-        return;
+    // v3.28b.17: Canvas zoom shortcuts (zooms canvas view, NOT rendered output)
+    //  - Plain  + / -  : zoom in / out  (primary — browser doesn't claim these)
+    //  - Plain  0      : fit canvas to viewport
+    //  - Cmd/Ctrl + / -: also work, but browsers may intercept as page zoom
+    //  - Cmd/Ctrl + 0  : also fits
+    // Skip when typing in inputs.
+    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      // Plain (no mod) versions — primary path, never intercepted by browser
+      if (!isMod && !e.altKey) {
+        if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+          // Plain '+' (Shift+= on US keyboards) or numpad +
+          e.preventDefault();
+          setCanvasZoom(view.canvasZoom * 1.25);
+          return;
+        }
+        if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+          e.preventDefault();
+          setCanvasZoom(view.canvasZoom / 1.25);
+          return;
+        }
+        if (e.code === 'Digit0' || e.code === 'Numpad0') {
+          e.preventDefault();
+          if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport();
+          else setCanvasZoom(1.0);
+          return;
+        }
       }
-      if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
-        e.preventDefault();
-        setCanvasZoom(view.canvasZoom / 1.25);
-        return;
-      }
-      if (e.code === 'Digit0' || e.code === 'Numpad0') {
-        e.preventDefault();
-        // Cmd/Ctrl+0 = Fit canvas (shows full 1920×1080 area)
-        if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport();
-        else setCanvasZoom(1.0);
-        return;
+      // Cmd/Ctrl versions — try to override browser page zoom (may not always work
+      // depending on browser; the plain versions above are the reliable path)
+      if (isMod) {
+        if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+          e.preventDefault();
+          setCanvasZoom(view.canvasZoom * 1.25);
+          return;
+        }
+        if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+          e.preventDefault();
+          setCanvasZoom(view.canvasZoom / 1.25);
+          return;
+        }
+        if (e.code === 'Digit0' || e.code === 'Numpad0') {
+          e.preventDefault();
+          if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport();
+          else setCanvasZoom(1.0);
+          return;
+        }
       }
     }
     // v3.28b.16: Cmd/Ctrl+A selects everything in the timeline. Skip if user
