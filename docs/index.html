@@ -1179,7 +1179,9 @@
 <div class="app">
   <div class="header">
     <div class="h-title">
-      Product Showcase Editor
+      <a href="projects.html" id="backToProjects" style="text-decoration:none;color:#6da6c4;margin-right:8px;display:none;" title="Back to projects">←</a>
+      <span id="projectName" style="display:none;font-weight:700;"></span>
+      <span id="editorTitle">Product Showcase Editor</span>
       <small id="meta-info">— loading…</small>
     </div>
     <div class="h-controls">
@@ -1196,6 +1198,7 @@
       <button class="btn" id="btnCloseGaps" title="Close all gaps between segments">⇆ Close gaps</button>
       <button class="btn" id="btnSaveProject" title="Save project to .psproj.json file">💾 Save project</button>
       <button class="btn" id="btnOpenProject" title="Open .psproj.json file">📂 Open project</button>
+      <span id="cloudSaveIndicator" style="display:none;font-size:11px;color:#6da6c4;align-self:center;font-family:Satoshi,system-ui,sans-serif;transition:opacity 0.3s;"></span>
       <span id="autoSaveIndicator" style="font-size:11px;color:#6da6c4;opacity:0.5;align-self:center;font-family:Satoshi,system-ui,sans-serif;transition:opacity 0.3s;">Auto-save on</span>
       <button class="btn" id="btnCancel">Cancel</button>
       <button class="btn primary" id="btnApprove">Approve and render</button>
@@ -6986,7 +6989,131 @@ function autoSaveSnapshot() {
 function scheduleAutoSave() {
   if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
   _autoSaveTimer = setTimeout(autoSaveSnapshot, AUTOSAVE_DEBOUNCE_MS);
+  // v3.28b.12: piggyback cloud save if a project is loaded
+  scheduleCloudSave();
 }
+
+// ────────────────────────────────────────────────────────────────────
+// v3.28b.12 — Cloud save (Cloudflare KV via Worker)
+// Activated only when the editor was loaded with ?project=ID. Otherwise
+// stays dormant and the existing local-only autosave keeps working.
+// ────────────────────────────────────────────────────────────────────
+const CLOUD_SAVE_DEBOUNCE_MS = 2000;
+let _cloudProjectId = null;
+let _cloudProjectName = null;
+let _cloudSaveTimer = null;
+let _cloudSaveInFlight = false;
+let _cloudLastSavedAt = null;
+
+function isCloudProject() { return !!_cloudProjectId; }
+
+function getCloudUser() {
+  try { return localStorage.getItem('ps_user_name') || 'anonymous'; }
+  catch { return 'anonymous'; }
+}
+
+function setCloudIndicator(text, opacity) {
+  const ind = document.getElementById('cloudSaveIndicator');
+  if (!ind) return;
+  ind.style.display = 'inline';
+  ind.textContent = text;
+  ind.style.opacity = (opacity == null ? '1' : String(opacity));
+}
+
+function refreshCloudIndicatorTimeAgo() {
+  if (!_cloudLastSavedAt) return;
+  const secs = Math.floor((Date.now() - _cloudLastSavedAt) / 1000);
+  if (_cloudSaveInFlight) return;
+  let label;
+  if (secs < 5) label = '✓ Saved';
+  else if (secs < 60) label = '✓ Saved ' + secs + 's ago';
+  else label = '✓ Saved ' + Math.floor(secs / 60) + 'm ago';
+  setCloudIndicator(label, 0.7);
+}
+
+setInterval(refreshCloudIndicatorTimeAgo, 5000);
+
+function scheduleCloudSave() {
+  if (!isCloudProject()) return;
+  if (_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
+  _cloudSaveTimer = setTimeout(performCloudSave, CLOUD_SAVE_DEBOUNCE_MS);
+}
+
+async function performCloudSave() {
+  if (!isCloudProject() || _cloudSaveInFlight) return;
+  _cloudSaveInFlight = true;
+  setCloudIndicator('● Saving…', 1);
+  try {
+    const body = {
+      state: buildProjectJson().payload,
+      lastEditor: getCloudUser()
+    };
+    const r = await fetch(WORKER_BASE_URL + '/projects/' + encodeURIComponent(_cloudProjectId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    _cloudLastSavedAt = data.updatedAt || Date.now();
+    setCloudIndicator('✓ Saved', 0.7);
+  } catch (e) {
+    console.warn('Cloud save failed:', e);
+    setCloudIndicator('⚠ Save failed — will retry', 1);
+    // Retry once after a short delay
+    setTimeout(() => { if (isCloudProject()) scheduleCloudSave(); }, 8000);
+  } finally {
+    _cloudSaveInFlight = false;
+  }
+}
+
+async function loadCloudProjectIfRequested() {
+  // Parse ?project=ID from URL
+  const qp = new URLSearchParams(window.location.search);
+  const projectId = qp.get('project');
+  if (!projectId) return false;
+  setCloudIndicator('Loading project…', 1);
+  try {
+    const r = await fetch(WORKER_BASE_URL + '/projects/' + encodeURIComponent(projectId));
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    const proj = data.project;
+    _cloudProjectId = proj.id;
+    _cloudProjectName = proj.name || 'Untitled';
+    _cloudLastSavedAt = proj.updatedAt;
+    // If state is null (brand new), keep current defaults; else apply
+    if (proj.state) {
+      const p = proj.state;
+      if (p.module) state.module = p.module;
+      if (Array.isArray(p.videos)) state.videos = p.videos;
+      if (Array.isArray(p.audios)) state.audios = p.audios;
+      state.audioPlacements = p.audioPlacements || [];
+      state.segments = p.segments || [];
+      state.callouts = p.callouts || [];
+      state.effects = p.effects || [];
+      state.textOverlays = p.textOverlays || [];
+      state.customerCards = p.customerCards || [];
+      // Reset history so the loaded state is the baseline
+      _history.past = [];
+      _history.future = [];
+    }
+    // Show project name in header + back link
+    const nameEl = document.getElementById('projectName');
+    const backEl = document.getElementById('backToProjects');
+    const titleEl = document.getElementById('editorTitle');
+    if (nameEl) { nameEl.textContent = _cloudProjectName; nameEl.style.display = 'inline'; }
+    if (backEl) { backEl.style.display = 'inline'; }
+    if (titleEl) { titleEl.style.display = 'none'; }
+    document.title = _cloudProjectName + ' — Product Showcase';
+    setCloudIndicator('✓ Loaded', 0.7);
+    return true;
+  } catch (e) {
+    console.error('Cloud project load failed:', e);
+    setCloudIndicator('⚠ Could not load project — starting blank', 1);
+    return false;
+  }
+}
+
 
 function clearAutoSave() {
   try {
@@ -7302,6 +7429,8 @@ function syncAudioPlayback() {
 }
 
 async function init() {
+  // v3.28b.12: if URL has ?project=ID, fetch it from KV before rendering anything
+  await loadCloudProjectIfRequested();
   renderLeftRail();
   setupHeader();
   setupTrackDropTargets();
