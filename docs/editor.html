@@ -6987,12 +6987,21 @@ function setupCanvasPan() {
     panning = false;
     viewport.classList.remove('panning');
   });
-  viewport.addEventListener('wheel', (e) => {
+  // v3.28b.17: Cmd/Ctrl + wheel anywhere inside the canvas viewport zooms the canvas.
+  // Bound on `document` in CAPTURE phase with a rect hit-test, so the handler
+  // fires before any child element can swallow it AND we still preventDefault()
+  // before the browser interprets Cmd+wheel as page zoom.
+  document.addEventListener('wheel', (e) => {
     if (!e.metaKey && !e.ctrlKey) return;
+    // Hit-test: is the cursor inside the canvas viewport rect?
+    const rect = viewport.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right ||
+        e.clientY < rect.top  || e.clientY > rect.bottom) return;
     e.preventDefault();
+    e.stopPropagation();
     const delta = -e.deltaY * 0.002;
     setCanvasZoom(view.canvasZoom + delta, e.clientX, e.clientY);
-  }, { passive: false });
+  }, { passive: false, capture: true });
 }
 
 function setupTimelineWheelZoom() {
