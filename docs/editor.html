@@ -1198,7 +1198,7 @@
       <span id="status-text" style="color:var(--text-dim); font-size:12px;">Ready</span>
       <div class="tool-group">
         <button class="tool-btn active" id="btnToolSelect" title="Select tool (V)" data-tool="select">▣ Select</button>
-        <button class="tool-btn" id="btnToolCut" title="Cut tool — click a video segment to split (C)" data-tool="cut">✂ Cut</button>
+        <button class="tool-btn" id="btnToolCut" title="Cut at playhead (X), or click to enter cut mode (C)" data-tool="cut">✂ Cut</button>
       </div>
       <button class="btn" id="btnUndo" title="Undo (Cmd+Z)" disabled>↶ Undo</button>
       <button class="btn" id="btnRedo" title="Redo (Cmd+Shift+Z)" disabled>↷ Redo</button>
@@ -1692,6 +1692,10 @@ const DEFAULT_DIVIDER_ICON_ID = "ai_powered_dynamic_repository_update";
 
 const view = {
   selectedId: null, selectedKind: null,
+  // v3.28b.16: multi-selection (Cmd/Ctrl+A in timeline). Array of {id, kind}.
+  // Coexists with single selection: single is for edit panel; multi is for
+  // bulk operations (delete, eventually move).
+  multiSelect: [],
   pxPerMs: 0.05, tlZoom: 1.0,
   canvasZoom: 1.0, canvasPanX: 0, canvasPanY: 0, fitScale: 1.0,
   isPlaying: false, curTimeMs: 0, pendingEffect: null, pendingEffectSegId: null, tool: 'select'
@@ -3056,6 +3060,8 @@ function setSelected(id, kind) {
   if (textEditState.segId && (id !== textEditState.segId || kind !== 'segment')) {
     textEditState.segId = null; textEditState.textKey = null;
   }
+  // v3.28b.16: any single-item selection clears the multi-select
+  if (view.multiSelect && view.multiSelect.length > 0) view.multiSelect = [];
   view.selectedId = id; view.selectedKind = kind;
   // When effect is selected, move playhead to effect start so user sees the preview
   if (kind === 'effect') {
@@ -3072,16 +3078,89 @@ function setSelected(id, kind) {
 }
 
 function deleteSelected() {
+  // v3.28b.16: if there's a multi-selection, delete all of those instead
+  if (view.multiSelect && view.multiSelect.length > 0) {
+    if (!confirm('Delete ' + view.multiSelect.length + ' item(s) from the timeline?')) return;
+    pushHistory();
+    for (const sel of view.multiSelect) {
+      const id = sel.id;
+      if (sel.kind === 'segment') state.segments = state.segments.filter(s => s.id !== id);
+      else if (sel.kind === 'callout') state.callouts = state.callouts.filter(c => c.id !== id);
+      else if (sel.kind === 'audio') state.audioPlacements = state.audioPlacements.filter(a => a.id !== id);
+      else if (sel.kind === 'effect') state.effects = state.effects.filter(e => e.id !== id);
+      else if (sel.kind === 'textOverlay') state.textOverlays = state.textOverlays.filter(t => t.id !== id);
+      else if (sel.kind === 'customerCard') state.customerCards = state.customerCards.filter(c => c.id !== id);
+    }
+    view.multiSelect = [];
+    view.selectedId = null; view.selectedKind = null;
+    rebuildAll();
+    return;
+  }
   if (!view.selectedId) return;
   pushHistory();
   const id = view.selectedId;
-  if (view.selectedKind === 'segment') state.segments = state.segments.filter(s => s.id !== id);
+  if (view.selectedKind === 'segment') {
+    // v3.28b.16: Ripple delete — close the gap left by the deleted segment.
+    // All segments that started AFTER this one shift left by its duration so
+    // there's no empty time in the timeline.
+    const removed = state.segments.find(s => s.id === id);
+    if (removed) {
+      const removedEndMs = removed.startMs + removed.durationMs;
+      const removedDur = removed.durationMs;
+      state.segments = state.segments.filter(s => s.id !== id);
+      for (const s of state.segments) {
+        if (s.startMs >= removedEndMs) s.startMs -= removedDur;
+      }
+      for (const c of state.callouts || []) {
+        if (c.startMs >= removedEndMs) c.startMs -= removedDur;
+      }
+      for (const e of state.effects || []) {
+        if (e.startMs >= removedEndMs) e.startMs -= removedDur;
+      }
+      for (const t of state.textOverlays || []) {
+        if (t.startMs >= removedEndMs) t.startMs -= removedDur;
+      }
+      for (const cc of state.customerCards || []) {
+        if (cc.startMs >= removedEndMs) cc.startMs -= removedDur;
+      }
+      for (const ap of state.audioPlacements || []) {
+        if (ap.startMs >= removedEndMs) ap.startMs -= removedDur;
+      }
+    } else {
+      state.segments = state.segments.filter(s => s.id !== id);
+    }
+  }
   else if (view.selectedKind === 'callout') state.callouts = state.callouts.filter(c => c.id !== id);
   else if (view.selectedKind === 'audio') state.audioPlacements = state.audioPlacements.filter(a => a.id !== id);
   else if (view.selectedKind === 'effect') state.effects = state.effects.filter(e => e.id !== id);
   else if (view.selectedKind === 'textOverlay') state.textOverlays = state.textOverlays.filter(t => t.id !== id);
   else if (view.selectedKind === 'customerCard') state.customerCards = state.customerCards.filter(c => c.id !== id);
   view.selectedId = null; view.selectedKind = null; rebuildAll();
+}
+
+// v3.28b.16: Select all items in timeline (Cmd/Ctrl+A while focus is on
+// timeline area). Sets up view.multiSelect so the next delete clears them all.
+function selectAllInTimeline() {
+  view.multiSelect = [];
+  for (const s of state.segments || []) view.multiSelect.push({ id: s.id, kind: 'segment' });
+  for (const c of state.callouts || []) view.multiSelect.push({ id: c.id, kind: 'callout' });
+  for (const a of state.audioPlacements || []) view.multiSelect.push({ id: a.id, kind: 'audio' });
+  for (const e of state.effects || []) view.multiSelect.push({ id: e.id, kind: 'effect' });
+  for (const t of state.textOverlays || []) view.multiSelect.push({ id: t.id, kind: 'textOverlay' });
+  for (const cc of state.customerCards || []) view.multiSelect.push({ id: cc.id, kind: 'customerCard' });
+  // Clear single selection (no edit panel) — bulk mode
+  view.selectedId = null; view.selectedKind = null;
+  showToast(view.multiSelect.length + ' items selected — press Delete to remove all, or click anywhere to cancel');
+  rebuildTimeline();
+  renderEditPanel();
+}
+
+// Clear multi-selection (called on any single-item click in timeline)
+function clearMultiSelect() {
+  if (view.multiSelect && view.multiSelect.length > 0) {
+    view.multiSelect = [];
+    rebuildTimeline();
+  }
 }
 
 function renderEditPanel() {
@@ -4605,6 +4684,8 @@ function makeBlock(item, kind) {
     label = '🏢 ' + (item.industry || item.employees || 'Customer').substring(0, 26);
   }
   if (view.selectedId === item.id) cls += ' selected';
+  // v3.28b.16: multi-select highlight
+  if (view.multiSelect && view.multiSelect.some(s => s.id === item.id)) cls += ' selected';
   block.className = cls;
   block.style.left = (item.startMs * px) + 'px';
   block.style.width = Math.max(12, item.durationMs * px) + 'px';
@@ -4642,10 +4723,51 @@ function onBlockMouseDown(e, item, kind) {
   const startMs0 = item.startMs;
   const px = getEffectivePxPerMs();
   let dragged = false;
+  // v3.28b.16: For segments, snapshot the starting positions of ALL OTHER
+  // segments so we can compute an auto-shift on each frame from a clean baseline
+  // (instead of accumulating drifts).
+  const isSeg = (kind === 'segment');
+  const others = isSeg
+    ? state.segments.filter(s => s.id !== item.id).map(s => ({ id: s.id, startMs0: s.startMs, durationMs: s.durationMs }))
+    : null;
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
     if (Math.abs(dx) > 3 && !_historyPushed) { pushHistory(); _historyPushed = true; dragged = true; }
-    item.startMs = Math.max(0, Math.round(startMs0 + dx / px));
+    const proposed = Math.max(0, Math.round(startMs0 + dx / px));
+    item.startMs = proposed;
+    // Auto-shift: only for segments. If the dragged segment overlaps any other
+    // segment, ripple-push the collider rightward to clear the dragged segment's
+    // tail. Sort colliders by their original start time so the push is
+    // deterministic. Then iterate: each new placement may collide with the next
+    // segment in line, which is also pushed.
+    if (isSeg && others) {
+      // Reset every other segment to its original position
+      const map = new Map(others.map(o => [o.id, o]));
+      for (const s of state.segments) {
+        if (s.id === item.id) continue;
+        const snap = map.get(s.id);
+        if (snap) s.startMs = snap.startMs0;
+      }
+      // Now ripple from the dragged segment
+      const draggedEnd = item.startMs + item.durationMs;
+      // Sort affected segments by their *current* startMs ascending
+      const sorted = state.segments
+        .filter(s => s.id !== item.id)
+        .sort((a, b) => a.startMs - b.startMs);
+      let rippleCursor = draggedEnd;
+      for (const s of sorted) {
+        // Only push if s is overlapping with the dragged segment's tail OR
+        // with the prior pushed segment's tail.
+        if (s.startMs < rippleCursor && s.startMs + s.durationMs > item.startMs) {
+          s.startMs = rippleCursor;
+          rippleCursor = s.startMs + s.durationMs;
+        } else if (s.startMs < rippleCursor) {
+          // Previous segment was pushed and now overlaps this one — push.
+          s.startMs = rippleCursor;
+          rippleCursor = s.startMs + s.durationMs;
+        }
+      }
+    }
     rebuildTimeline();
   };
   const onUp = () => {
@@ -7394,6 +7516,23 @@ function cutVideoSegment(seg, atTimelineMs) {
   setSelected(second.id, 'segment');
 }
 
+// v3.28b.16: Cut at playhead — finds the active recording segment at the
+// current playhead time and splits it. Triggered by 'X' key or Cut button.
+function cutAtPlayhead() {
+  const t = view.curTimeMs;
+  // Find the recording segment that contains the playhead
+  const seg = state.segments.find(s =>
+    s.kind === 'recording' &&
+    t > s.startMs &&
+    t < s.startMs + s.durationMs
+  );
+  if (!seg) {
+    showToast('Move the playhead to a video segment first', 'warning');
+    return;
+  }
+  cutVideoSegment(seg, t);
+}
+
 function setupKeyboard() {
   document.addEventListener('keydown', (e) => {
     const isMod = e.metaKey || e.ctrlKey;
@@ -7401,6 +7540,8 @@ function setupKeyboard() {
     if (!isMod && !e.shiftKey && (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA')) {
       if (e.code === 'KeyV') { e.preventDefault(); setTool('select'); return; }
       if (e.code === 'KeyC') { e.preventDefault(); setTool('cut'); return; }
+      // v3.28b.16: X cuts the segment at the playhead (CapCut/Premiere style)
+      if (e.code === 'KeyX') { e.preventDefault(); cutAtPlayhead(); return; }
     }
     // Undo/Redo work even inside inputs
     if (isMod && e.code === 'KeyZ' && !e.shiftKey) {
@@ -7411,6 +7552,14 @@ function setupKeyboard() {
     if ((isMod && e.code === 'KeyZ' && e.shiftKey) || (isMod && e.code === 'KeyY')) {
       e.preventDefault();
       redo();
+      return;
+    }
+    // v3.28b.16: Cmd/Ctrl+A selects everything in the timeline. Skip if user
+    // is typing in an input/textarea (browser default text-select-all).
+    if (isMod && e.code === 'KeyA' && !e.shiftKey &&
+        e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      selectAllInTimeline();
       return;
     }
     // Cmd+C / Cmd+V — copy/paste the selected item (slide, callout, text overlay)
@@ -7483,7 +7632,20 @@ function setupHeader() {
   $('btnRedo').addEventListener('click', redo);
   // Tool selector
   $('btnToolSelect').addEventListener('click', () => setTool('select'));
-  $('btnToolCut').addEventListener('click', () => setTool('cut'));
+  // v3.28b.16: Cut button = cut at playhead if there's a recording segment
+  // under it. If nothing is under the playhead, enter the cut tool mode so
+  // user can click a position manually (legacy behavior preserved).
+  $('btnToolCut').addEventListener('click', () => {
+    const t = view.curTimeMs;
+    const seg = state.segments.find(s =>
+      s.kind === 'recording' && t > s.startMs && t < s.startMs + s.durationMs
+    );
+    if (seg) {
+      cutAtPlayhead();
+    } else {
+      setTool('cut');
+    }
+  });
   // Add Slide button + modal
   $('btnAddSlide').addEventListener('click', openSlidePicker);
   $('slidePickerClose').addEventListener('click', closeSlidePicker);
