@@ -5782,23 +5782,25 @@ let _uploadInProgress = false;
 // non-standard resolutions (anything other than 1920x1080 or 3840x2160) and
 // non-H.264/AAC codecs. We catch this BEFORE upload so users get a clear
 // error instead of a failed render.
+// v3.28b.10: Also checks the `moov` atom position — non-faststart mp4 files
+// (moov at end of file) cause Lambda's Chrome to throw MediaPlaybackError
+// because it can't stream-decode without the index up front.
 async function validateVideo(file) {
-  return new Promise((resolve) => {
+  // Step 1: dimension check via <video> metadata
+  const dimCheck = await new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement('video');
     v.preload = 'metadata';
     let resolved = false;
-    const cleanup = () => { URL.revokeObjectURL(url); };
     const done = (result) => {
       if (resolved) return;
       resolved = true;
-      cleanup();
+      URL.revokeObjectURL(url);
       resolve(result);
     };
     v.onloadedmetadata = () => {
       const w = v.videoWidth;
       const h = v.videoHeight;
-      // Accept exact 1920x1080 (Full HD) and 3840x2160 (4K UHD).
       const ok = (w === 1920 && h === 1080) || (w === 3840 && h === 2160);
       done({ ok, width: w, height: h, duration: v.duration });
     };
@@ -5806,22 +5808,58 @@ async function validateVideo(file) {
     setTimeout(() => done({ ok: false, error: 'Timeout reading video metadata' }), 15000);
     v.src = url;
   });
+  if (!dimCheck.ok) return dimCheck;
+
+  // Step 2: moov atom position check (faststart). Read first 1MB; if no `moov`
+  // marker is found, the index is at the end of the file → not faststart.
+  try {
+    const headSize = Math.min(file.size, 1024 * 1024);
+    const headBuf = await file.slice(0, headSize).arrayBuffer();
+    const bytes = new Uint8Array(headBuf);
+    // Look for ASCII bytes "moov" (0x6d 0x6f 0x6f 0x76) in the first MB
+    let hasMoovAtStart = false;
+    for (let i = 0; i < bytes.length - 4; i++) {
+      if (bytes[i] === 0x6d && bytes[i+1] === 0x6f && bytes[i+2] === 0x6f && bytes[i+3] === 0x76) {
+        hasMoovAtStart = true;
+        break;
+      }
+    }
+    if (!hasMoovAtStart) {
+      return {
+        ok: false,
+        width: dimCheck.width,
+        height: dimCheck.height,
+        notFaststart: true,
+        error: 'Video metadata is at the END of the file (not "faststart"). The Lambda renderer requires faststart mp4s.',
+      };
+    }
+  } catch (e) {
+    console.warn('Faststart check failed (passing anyway):', e);
+  }
+
+  return dimCheck;
 }
 
-// Show a modal with re-encode instructions when dimensions aren't supported.
+// Show a modal with re-encode instructions when dimensions/codec aren't supported.
 function showVideoFormatModal(check) {
   const dim = check.width && check.height ? `${check.width} × ${check.height}` : 'unknown';
+  // v3.28b.10: differentiate "faststart-only" failures from dimension failures
+  // so users get the right diagnosis.
+  const isFaststartOnly = check.notFaststart === true;
+  const heading = isFaststartOnly
+    ? 'Video needs to be re-encoded'
+    : 'Video format not supported';
+  const explainer = isFaststartOnly
+    ? `Your video is <strong style="color:#fff;">${dim}</strong> — dimensions are fine, but the file's metadata is stored at the END of the file instead of the beginning. The Lambda renderer needs "faststart" mp4 files (metadata at the front) so it can stream-decode without downloading the whole file first.`
+    : `Your video is <strong style="color:#fff;">${dim}</strong>${check.error ? ' — ' + check.error : ''}. The Lambda renderer only supports videos at <strong style="color:#fff;">1920 × 1080</strong> (Full HD) or <strong style="color:#fff;">3840 × 2160</strong> (4K UHD) with H.264 video and AAC audio.`;
   const html = `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;" id="vidFmtModal">
       <div style="background:#1a2740;border:1px solid #2a4368;border-radius:12px;padding:32px;max-width:640px;color:white;font-family:'Inter',sans-serif;">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
           <div style="background:#dc3545;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">⚠️</div>
-          <h2 style="margin:0;font-size:20px;font-weight:700;">Video format not supported</h2>
+          <h2 style="margin:0;font-size:20px;font-weight:700;">${heading}</h2>
         </div>
-        <p style="margin:0 0 16px 0;line-height:1.5;color:#cdd6e3;">
-          Your video is <strong style="color:#fff;">${dim}</strong>${check.error ? ' — ' + check.error : ''}.
-          The Lambda renderer only supports videos at <strong style="color:#fff;">1920 × 1080</strong> (Full HD) or <strong style="color:#fff;">3840 × 2160</strong> (4K UHD) with H.264 video and AAC audio.
-        </p>
+        <p style="margin:0 0 16px 0;line-height:1.5;color:#cdd6e3;">${explainer}</p>
         <p style="margin:0 0 12px 0;line-height:1.5;color:#cdd6e3;">Please re-encode your video using one of these tools and upload the new file:</p>
         <div style="background:#0f1a2e;border:1px solid #2a4368;border-radius:8px;padding:16px;margin-bottom:16px;">
           <div style="font-size:13px;font-weight:600;color:#7ABEFF;margin-bottom:8px;">Option 1 — Handbrake (free GUI, easiest)</div>
@@ -5973,7 +6011,16 @@ async function handleBulkFileUpload(fileList, kind) {
       const check = await validateVideo(file);
       if (!check.ok) {
         const dim = check.width && check.height ? `${check.width}×${check.height}` : 'unknown dimensions';
-        skipped.push({ name: file.name, reason: check.error || `${dim} — only 1920×1080 or 3840×2160 supported`, dim });
+        // v3.28b.10: explicit faststart reason vs dimension reason
+        let reason;
+        if (check.notFaststart) {
+          reason = `${dim} ✓ but needs "faststart" — re-encode with Handbrake (Web Optimized ON)`;
+        } else if (check.error) {
+          reason = check.error;
+        } else {
+          reason = `${dim} — only 1920×1080 or 3840×2160 supported`;
+        }
+        skipped.push({ name: file.name, reason, dim });
         continue;
       }
     }
