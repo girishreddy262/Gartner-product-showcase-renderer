@@ -36,7 +36,7 @@ export const CustomerCardComp: React.FC<{
   let translateY = 0;
   let translateX = 0;
 
-  // ─── IN animations (v3.28b.1: slide-right OR slide-left; defaults to slide-right) ───
+  // ─── IN animations (v3.28b.17: standardized to FADE by default) ───
   if (localFrame < animInDur) {
     if (card.animIn === 'slide-left') {
       // Slide in from left edge → resting position
@@ -44,38 +44,38 @@ export const CustomerCardComp: React.FC<{
       translateX = interpolate(localFrame, [0, animInDur], [-200, 0], {
         extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
       });
-    } else if (card.animIn === 'fade') {
+    } else if (card.animIn === 'slide-right') {
+      // Slide in from right edge
       opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
+      translateX = interpolate(localFrame, [0, animInDur], [200, 0], {
+        extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
+      });
     } else if (card.animIn === 'fade-up') {
       opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
       translateY = interpolate(localFrame, [0, animInDur], [30, 0], {
         extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
       });
     } else {
-      // Default: slide-right (matches v3.28b spec)
+      // Default: pure FADE (v3.28b.17 standard)
       opacity = interpolate(localFrame, [0, animInDur], [0, 1], { extrapolateRight: 'clamp' });
-      translateX = interpolate(localFrame, [0, animInDur], [200, 0], {
-        extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic),
-      });
     }
   }
 
-  // ─── OUT animations ───
+  // ─── OUT animations (v3.28b.17: standardized to FADE by default) ───
   if (localFrame >= outStart) {
     if (card.animOut === 'slide-left' || card.animOut === 'slide-out-left') {
-      // Slide back out to the left — same-side bounce as left-in
       opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
       translateX = interpolate(localFrame, [outStart, durationFrames], [0, -200], {
         extrapolateLeft: 'clamp', easing: Easing.in(Easing.cubic),
       });
-    } else if (card.animOut === 'fade') {
-      opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
-    } else {
-      // Default: slide-right out (matches v3.28b spec)
+    } else if (card.animOut === 'slide-right') {
       opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
       translateX = interpolate(localFrame, [outStart, durationFrames], [0, 200], {
         extrapolateLeft: 'clamp', easing: Easing.in(Easing.cubic),
       });
+    } else {
+      // Default: pure FADE (v3.28b.17 standard)
+      opacity = interpolate(localFrame, [outStart, durationFrames], [1, 0], { extrapolateLeft: 'clamp' });
     }
   }
 

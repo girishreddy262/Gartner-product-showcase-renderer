@@ -344,16 +344,42 @@ const JourneyRowComp: React.FC<{
         <GlowTick cx={TICK_X} cy={y} progress={glowProgress} />
       )}
 
-      {row.description && (
-        <text
-          x={1320} y={y + 11}
-          fill="white"
-          fontFamily="Satoshi, system-ui, sans-serif"
-          fontSize={30} fontWeight={700}
-        >
-          {row.description}
-        </text>
-      )}
+      {row.description && (() => {
+        // v3.28b.17: wrap long descriptions. Same logic as editor SVG path.
+        // Width at x=1320..1880 (≈560px) fits ~36 chars per line at 30px Satoshi 700.
+        const MAX_CHARS_PER_LINE = 36;
+        const LINE_HEIGHT = 36;
+        const words = String(row.description).split(/\s+/);
+        const lines: string[] = [];
+        let current = '';
+        for (const w of words) {
+          const candidate = current ? (current + ' ' + w) : w;
+          if (candidate.length > MAX_CHARS_PER_LINE && current) {
+            lines.push(current);
+            current = w;
+          } else {
+            current = candidate;
+          }
+        }
+        if (current) lines.push(current);
+        const totalH = (lines.length - 1) * LINE_HEIGHT;
+        const startY = (y + 11) - totalH / 2;
+        return (
+          <g>
+            {lines.map((line, li) => (
+              <text
+                key={li}
+                x={1320} y={startY + li * LINE_HEIGHT}
+                fill="white"
+                fontFamily="Satoshi, system-ui, sans-serif"
+                fontSize={30} fontWeight={700}
+              >
+                {line}
+              </text>
+            ))}
+          </g>
+        );
+      })()}
     </g>
   );
 };

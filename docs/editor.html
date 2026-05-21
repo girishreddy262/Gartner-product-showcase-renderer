@@ -2316,7 +2316,32 @@ function renderJourneySVG(seg) {
     }
 
     if (row.description) {
-      svg += '<text x="1320" y="' + (y + 11) + '" fill="white" font-family="Satoshi" font-size="30" font-weight="700">' + svgEsc(row.description) + '</text>';
+      // v3.28b.17: wrap long descriptions onto multiple lines. The description
+      // area starts at x=1320 and goes to ~1880 (560px wide). At font-size 30
+      // Satoshi 700, ~32-36 chars fit on a line. We word-wrap and emit one
+      // <text> per line. Y position centered vertically around (y + 11).
+      const MAX_CHARS_PER_LINE = 36;
+      const LINE_HEIGHT = 36;
+      const words = String(row.description).split(/\s+/);
+      const lines = [];
+      let current = '';
+      for (const w of words) {
+        const candidate = current ? (current + ' ' + w) : w;
+        if (candidate.length > MAX_CHARS_PER_LINE && current) {
+          lines.push(current);
+          current = w;
+        } else {
+          current = candidate;
+        }
+      }
+      if (current) lines.push(current);
+      // Vertically center the block around (y + 11)
+      const totalH = (lines.length - 1) * LINE_HEIGHT;
+      const startY = (y + 11) - totalH / 2;
+      lines.forEach((line, li) => {
+        const ly = startY + li * LINE_HEIGHT;
+        svg += '<text x="1320" y="' + ly + '" fill="white" font-family="Satoshi" font-size="30" font-weight="700">' + svgEsc(line) + '</text>';
+      });
     }
   });
 
@@ -3153,6 +3178,66 @@ function selectAllInTimeline() {
   showToast(view.multiSelect.length + ' items selected — press Delete to remove all, or click anywhere to cancel');
   rebuildTimeline();
   renderEditPanel();
+}
+
+// v3.28b.17: Shift+click toggle a single item in the multi-select set.
+// Brings the previously single-selected item into the set if multi-select was empty.
+function toggleMultiSelectItem(id, kind) {
+  if (!view.multiSelect) view.multiSelect = [];
+  // If we have a single selection that's not in the multi-set yet, fold it in
+  // so user doesn't lose context from where they started.
+  if (view.multiSelect.length === 0 && view.selectedId && view.selectedId !== id) {
+    view.multiSelect.push({ id: view.selectedId, kind: view.selectedKind });
+  }
+  const idx = view.multiSelect.findIndex(s => s.id === id);
+  if (idx >= 0) {
+    view.multiSelect.splice(idx, 1);
+  } else {
+    view.multiSelect.push({ id, kind });
+  }
+  // Keep edit panel showing the *last clicked* item for context
+  view.selectedId = id;
+  view.selectedKind = kind;
+  rebuildTimeline();
+  renderEditPanel();
+}
+
+// v3.28b.17: Cmd/Ctrl+click — range-select from the most recently single-selected
+// item to the clicked item in timeline order. Only includes items in the same
+// "kind class" (segments with segments, callouts with callouts, etc.) so a
+// range click on a video doesn't also sweep up unrelated effects/audio.
+function rangeSelectInTimeline(id, kind) {
+  if (!view.multiSelect) view.multiSelect = [];
+  const anchorId = view.selectedId;
+  const anchorKind = view.selectedKind;
+  // No anchor or different kind → behave like shift+click
+  if (!anchorId || anchorKind !== kind) {
+    toggleMultiSelectItem(id, kind);
+    return;
+  }
+  // Get the full array for this kind
+  let pool = [];
+  if (kind === 'segment') pool = state.segments;
+  else if (kind === 'callout') pool = state.callouts;
+  else if (kind === 'audio') pool = state.audioPlacements;
+  else if (kind === 'effect') pool = state.effects;
+  else if (kind === 'textOverlay') pool = state.textOverlays;
+  else if (kind === 'customerCard') pool = state.customerCards;
+  // Sort by startMs and find positions of anchor and target
+  const sorted = [...pool].sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
+  const a = sorted.findIndex(x => x.id === anchorId);
+  const b = sorted.findIndex(x => x.id === id);
+  if (a < 0 || b < 0) {
+    toggleMultiSelectItem(id, kind);
+    return;
+  }
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  view.multiSelect = sorted.slice(lo, hi + 1).map(x => ({ id: x.id, kind }));
+  view.selectedId = id;
+  view.selectedKind = kind;
+  rebuildTimeline();
+  renderEditPanel();
+  showToast(view.multiSelect.length + ' items selected');
 }
 
 // Clear multi-selection (called on any single-item click in timeline)
@@ -4717,6 +4802,21 @@ function onBlockMouseDown(e, item, kind) {
     setTool('select');
     return;
   }
+  // v3.28b.17: Multi-select via Shift / Cmd / Ctrl click
+  // - Shift+click: add this item to selection (or remove if already in it)
+  // - Cmd/Ctrl+click: range-select from last single-selected to this item
+  //   (only works for items of the same kind, e.g. clicking two segments
+  //   selects everything between them in timeline order)
+  if (e.shiftKey) {
+    e.preventDefault();
+    toggleMultiSelectItem(item.id, kind);
+    return;
+  }
+  if (e.metaKey || e.ctrlKey) {
+    e.preventDefault();
+    rangeSelectInTimeline(item.id, kind);
+    return;
+  }
   setSelected(item.id, kind);
   let _historyPushed = false;
   const startX = e.clientX;
@@ -4893,6 +4993,14 @@ function rebuildCanvas() {
   });
   // Customer Cards (v3.28b — full redesign: 388 wide, auto-height, blue offset shadow, real icons, 300px body)
   (state.customerCards || []).filter(c => view.curTimeMs >= c.startMs && view.curTimeMs < c.startMs + c.durationMs).forEach(c => {
+    // v3.28b.17: standardized fade in/out, 300ms each side. Computed from the
+    // current playhead's position inside the card's visible window.
+    const FADE_MS = 300;
+    const localMs = view.curTimeMs - c.startMs;
+    const remaining = (c.startMs + c.durationMs) - view.curTimeMs;
+    let opacity = 1;
+    if (localMs < FADE_MS) opacity = Math.max(0, localMs / FADE_MS);
+    else if (remaining < FADE_MS) opacity = Math.max(0, remaining / FADE_MS);
     const el = document.createElement('div');
     el.className = 'canvas-customer-card editor-mode v3-28b' + (view.selectedId === c.id ? ' selected' : '');
     el.style.position = 'absolute';
@@ -4900,6 +5008,7 @@ function rebuildCanvas() {
     el.style.top = (c.y||0) + 'px';
     el.style.width = '388px';
     el.style.cursor = 'move';
+    el.style.opacity = String(opacity);
     el.style.filter = 'drop-shadow(8px 8px 0 rgba(1, 131, 255, 0.3))';
     el.style.fontFamily = 'Satoshi, sans-serif';
     el.style.boxSizing = 'border-box';
@@ -7595,6 +7704,24 @@ function nudgeSelectedSegment(deltaMs) {
   rebuildTimeline();
 }
 
+// v3.28b.17: Nudge every item in the multi-select by ±deltaMs.
+function nudgeMultiSelect(deltaMs) {
+  if (!view.multiSelect || view.multiSelect.length === 0) return;
+  pushHistory();
+  for (const sel of view.multiSelect) {
+    let item = null;
+    if (sel.kind === 'segment') item = state.segments.find(s => s.id === sel.id);
+    else if (sel.kind === 'callout') item = state.callouts.find(c => c.id === sel.id);
+    else if (sel.kind === 'audio') item = state.audioPlacements.find(a => a.id === sel.id);
+    else if (sel.kind === 'effect') item = state.effects.find(e => e.id === sel.id);
+    else if (sel.kind === 'textOverlay') item = state.textOverlays.find(t => t.id === sel.id);
+    else if (sel.kind === 'customerCard') item = state.customerCards.find(c => c.id === sel.id);
+    if (item) item.startMs = Math.max(0, item.startMs + deltaMs);
+  }
+  rebuildTimeline();
+  rebuildCanvas();
+}
+
 function setupKeyboard() {
   document.addEventListener('keydown', (e) => {
     const isMod = e.metaKey || e.ctrlKey;
@@ -7608,22 +7735,31 @@ function setupKeyboard() {
     // v3.28b.16: Arrow keys SWAP the selected timeline item with its neighbor.
     // - Plain ← : swap with the clip immediately to the left (and collapse gap)
     // - Plain → : swap with the clip immediately to the right (and collapse gap)
-    // - Shift+← / →  : fine nudge by 100ms (no swap, just move)
+    // - Shift+← / →  : fine nudge by 100ms (no swap, just move) — works on
+    //                  multi-selection too (all selected items shift together)
     // Works for any timeline item in state.segments (recording + slides).
     if (!isMod && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-      if (e.code === 'ArrowLeft') {
-        if (view.selectedKind === 'segment') {
+      const isLeft = (e.code === 'ArrowLeft');
+      const isRight = (e.code === 'ArrowRight');
+      if (isLeft || isRight) {
+        const hasMulti = view.multiSelect && view.multiSelect.length > 0;
+        const hasSingleSeg = view.selectedKind === 'segment' && !hasMulti;
+        if (hasMulti && e.shiftKey) {
+          // Group nudge: move every selected timeline item by ±100ms
           e.preventDefault();
-          if (e.shiftKey) nudgeSelectedSegment(-100);
-          else swapSelectedWithNeighbor('left');
+          nudgeMultiSelect(isLeft ? -100 : 100);
           return;
         }
-      }
-      if (e.code === 'ArrowRight') {
-        if (view.selectedKind === 'segment') {
+        if (hasSingleSeg) {
           e.preventDefault();
-          if (e.shiftKey) nudgeSelectedSegment(100);
-          else swapSelectedWithNeighbor('right');
+          if (e.shiftKey) nudgeSelectedSegment(isLeft ? -100 : 100);
+          else swapSelectedWithNeighbor(isLeft ? 'left' : 'right');
+          return;
+        }
+        if (hasMulti && !e.shiftKey) {
+          // Plain arrow with multi-select: swap doesn't make sense for groups
+          showToast('Swap requires a single segment. Use Shift+arrow to nudge a group.', 'warning');
+          e.preventDefault();
           return;
         }
       }
@@ -7638,6 +7774,30 @@ function setupKeyboard() {
       e.preventDefault();
       redo();
       return;
+    }
+    // v3.28b.17: Cmd/Ctrl + and Cmd/Ctrl - zoom the canvas preview area
+    // (NOT the timeline, NOT the rendered output — purely view zoom for the
+    // 1920×1080 canvas, like After Effects / Premiere). Cmd/Ctrl 0 resets.
+    // Skip inside inputs/textareas so users can keep using browser shortcuts.
+    if (isMod && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      // '+' is Shift+= on many keyboards, so we accept both Equal AND NumpadAdd
+      if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+        e.preventDefault();
+        setCanvasZoom(view.canvasZoom * 1.25);
+        return;
+      }
+      if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+        e.preventDefault();
+        setCanvasZoom(view.canvasZoom / 1.25);
+        return;
+      }
+      if (e.code === 'Digit0' || e.code === 'Numpad0') {
+        e.preventDefault();
+        // Cmd/Ctrl+0 = Fit canvas (shows full 1920×1080 area)
+        if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport();
+        else setCanvasZoom(1.0);
+        return;
+      }
     }
     // v3.28b.16: Cmd/Ctrl+A selects everything in the timeline. Skip if user
     // is typing in an input/textarea (browser default text-select-all).
