@@ -59,21 +59,9 @@ const RecordingComp: React.FC<{
           }}
         />
       </div>
-      {/* v3.28b.9: Frame overlay moved OUT of the segment box. It now sits at the
-          full canvas (1920×1080) so changes to the video's scale or position
-          do not move the frame. */}
-      {showFrame && (
-        <Img
-          src={ASSETS.videoFrame}
-          style={{
-            position: 'absolute',
-            left: 0, top: 0,
-            width: tokens.canvasW, height: tokens.canvasH,
-            objectFit: 'fill',
-            pointerEvents: 'none',
-          }}
-        />
-      )}
+      {/* v3.28b.13: Frame overlay is now rendered at the OUTER level (in
+          ProductShowcase) so it sits OUTSIDE the zoom-transformed wrapper.
+          The playback zoom effect no longer scales the frame. */}
     </AbsoluteFill>
   );
 };
@@ -248,6 +236,30 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           <SpotlightComp key={sp.id} spotlight={sp} />
         ))}
       </div>
+
+      {/* v3.28b.13: Frame overlay sits OUTSIDE the zoom-transformed div so the
+          playback zoom effect doesn't scale the frame. We find the currently
+          active recording segment at this frame and apply its showFrame setting. */}
+      {(() => {
+        const activeRecording = payload.segments.find(s =>
+          s.kind === 'recording' &&
+          currentMs >= s.startMs &&
+          currentMs < s.startMs + s.durationMs
+        ) as RecordingSegment | undefined;
+        if (!activeRecording || activeRecording.showFrame === false) return null;
+        return (
+          <Img
+            src={ASSETS.videoFrame}
+            style={{
+              position: 'absolute',
+              left: 0, top: 0,
+              width: tokens.canvasW, height: tokens.canvasH,
+              objectFit: 'fill',
+              pointerEvents: 'none',
+            }}
+          />
+        );
+      })()}
 
       {payload.audioPlacements.map(ap => {
         const audioMeta = payload.audios.find(a => a.id === ap.audioId);

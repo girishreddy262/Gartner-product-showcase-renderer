@@ -168,6 +168,16 @@
     width:1920px; height:1080px;
     transform-origin:top left;
   }
+  /* v3.28b.13: sibling of .stage-inner. Sized identically but gets the base
+     transform (no playback zoom). Frame overlay lives here so it stays at
+     canvas dimensions even when video is zoomed in on. */
+  .stage-frame-layer {
+    position:absolute; inset:0;
+    width:1920px; height:1080px;
+    transform-origin:top left;
+    pointer-events:none;
+    z-index:5;
+  }
   .stage-empty {
     position:absolute; inset:0;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -1321,6 +1331,10 @@
               <div class="label">Drag a slide template or video onto the timeline below to get started</div>
             </div>
           </div>
+          <!-- v3.28b.13: separate frame layer — sibling of stage-inner so the playback
+               zoom effect doesn't scale the frame. Receives the base (non-zoomed)
+               transform only. -->
+          <div class="stage-frame-layer" id="stageFrameLayer"></div>
         </div>
       </div>
     </div>
@@ -2585,6 +2599,15 @@ function applyCanvasTransform() {
   // Critical: NO CSS transition during playback. tick() runs at 60fps via RAF,
   // and a CSS transition would fight the per-frame updates and cause flicker.
   inner.style.transition = '';
+  // v3.28b.13: Frame layer gets the BASE transform only (no playback zoom).
+  // This makes the frame stay at canvas dimensions even when video is zoomed in.
+  // It still follows the canvas view zoom and pan, so the frame visually aligns
+  // with the canvas at any view zoom level.
+  const frameLayer = $('stageFrameLayer');
+  if (frameLayer) {
+    frameLayer.style.transform = 'translate(' + baseTx + 'px, ' + baseTy + 'px) scale(' + baseScale + ')';
+    frameLayer.style.transition = '';
+  }
   viewport.classList.toggle('zoomed', view.canvasZoom > 1 || inZoomEffect);
   $('zoomDisplay').textContent = Math.round(view.canvasZoom * 100) + '%';
 }
@@ -4698,11 +4721,15 @@ function rebuildCanvas() {
     return;
   }
   const active = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
+  // v3.28b.13: clear the frame layer on every rebuild
+  const frameLayer = $('stageFrameLayer');
+  if (frameLayer) frameLayer.innerHTML = '';
   if (active) {
     inner.appendChild(renderSegmentToCanvas(active));
-    // v3.28b.9: Standalone frame overlay — always at canvas dimensions (1920×1080),
-    // sibling of the segment. Stays fixed when the video is scaled or moved.
-    if (isRecordingSegment(active) && active.showFrame !== false) {
+    // v3.28b.13: Frame overlay goes to the FRAME LAYER (sibling of stage-inner),
+    // not stage-inner. This way the playback zoom effect that transforms
+    // stage-inner doesn't scale the frame — frame stays at canvas dimensions.
+    if (isRecordingSegment(active) && active.showFrame !== false && frameLayer) {
       const frame = document.createElement('div');
       frame.className = 'video-frame-overlay';
       frame.style.left = '0px';
@@ -4713,7 +4740,7 @@ function rebuildCanvas() {
       img.src = ASSETS.videoFrame;
       img.draggable = false;
       frame.appendChild(img);
-      inner.appendChild(frame);
+      frameLayer.appendChild(frame);
     }
     $('canvas-info').textContent = (active.kind === 'recording' ? '▶ ' + (active.videoId||'') : '★ ' + (active.title||''))
       + ' (' + fmtTimeDecimal(active.startMs) + ' — ' + fmtTimeDecimal(active.startMs+active.durationMs) + ')';
