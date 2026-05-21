@@ -1,11 +1,11 @@
 import React from 'react';
 import {
   AbsoluteFill, Sequence, Video, Audio,
-  useCurrentFrame, useVideoConfig,
+  useCurrentFrame, useVideoConfig, interpolate, Easing,
 } from 'remotion';
 import type {
   ShowcasePayload, Segment, RecordingSegment, SlideSegment,
-  ZoomEffect, SpotlightEffect, JourneySegment,
+  ZoomEffect, SpotlightEffect, JourneySegment, ImageSegment,
 } from './types';
 import { tokens, satoshiFontFaceCSS } from './tokens';
 import { SlideRenderer } from './slides/SlideRenderer';
@@ -27,9 +27,14 @@ const RecordingComp: React.FC<{
   videos: ShowcasePayload['videos'];
 }> = ({ seg, videos }) => {
   const video = videos.find(v => v.id === seg.videoId);
-  if (!video) return <AbsoluteFill style={{ background: '#000' }} />;
+  // v3.28b.5: navy bg so scale<1.0 shows brand color, not black
+  if (!video) return <AbsoluteFill style={{ background: '#002B54' }} />;
 
   const sourceStartSec = (seg.sourceStartMs || 0) / 1000;
+  // v3.28b.5: per-video scale, default 1.0
+  const videoScale = (typeof seg.videoScale === 'number' && seg.videoScale > 0) ? seg.videoScale : 1.0;
+  // v3.28b.5: default showFrame to TRUE if undefined (was false in v3.28b.4 and earlier)
+  const showFrame = seg.showFrame !== false;
 
   return (
     <AbsoluteFill>
@@ -40,26 +45,35 @@ const RecordingComp: React.FC<{
         width: seg.width || tokens.canvasW,
         height: seg.height || tokens.canvasH,
         overflow: 'hidden',
-        background: '#000',
+        background: '#002B54',
       }}>
         <Video
           src={video.url}
           startFrom={Math.round(sourceStartSec * FPS)}
           playbackRate={seg.speed || 1.0}
           muted={seg.muteSourceAudio !== false}
-          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          style={{
+            width: '100%', height: '100%', objectFit: 'contain',
+            transform: videoScale !== 1.0 ? `scale(${videoScale})` : 'none',
+            transformOrigin: 'center center',
+          }}
         />
-        {seg.showFrame && (
-          <Img
-            src={ASSETS.videoFrame}
-            style={{
-              position: 'absolute', inset: 0,
-              width: '100%', height: '100%', objectFit: 'fill',
-              pointerEvents: 'none',
-            }}
-          />
-        )}
       </div>
+      {/* v3.28b.9: Frame overlay moved OUT of the segment box. It now sits at the
+          full canvas (1920×1080) so changes to the video's scale or position
+          do not move the frame. */}
+      {showFrame && (
+        <Img
+          src={ASSETS.videoFrame}
+          style={{
+            position: 'absolute',
+            left: 0, top: 0,
+            width: tokens.canvasW, height: tokens.canvasH,
+            objectFit: 'fill',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
     </AbsoluteFill>
   );
 };
@@ -78,6 +92,29 @@ const SlideComp: React.FC<{ seg: SlideSegment }> = ({ seg }) => {
       }}>
         <SlideRenderer seg={seg} />
       </div>
+    </AbsoluteFill>
+  );
+};
+
+// v3.28b.5: full-bleed image slide with simple fade-in
+const ImageSlideComp: React.FC<{ seg: ImageSegment }> = ({ seg }) => {
+  const frame = useCurrentFrame();
+  // Fade-in over 18 frames (600ms at 30fps)
+  const FADE_FRAMES = 18;
+  const opacity = interpolate(frame, [0, FADE_FRAMES], [0, 1], {
+    extrapolateRight: 'clamp',
+    easing: Easing.out(Easing.cubic),
+  });
+
+  return (
+    <AbsoluteFill style={{ background: '#002B54' }}>
+      <Img
+        src={seg.imageUrl}
+        style={{
+          width: '100%', height: '100%', objectFit: 'cover',
+          opacity,
+        }}
+      />
     </AbsoluteFill>
   );
 };
@@ -133,17 +170,24 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           const startFrame = msToFrames(seg.startMs);
           const durFrames = msToFrames(seg.durationMs);
           const isRecording = seg.kind === 'recording';
+          const isImage = seg.kind === 'slide-image';
 
           return (
             <Sequence
               key={seg.id}
               from={startFrame}
               durationInFrames={durFrames}
-              name={isRecording ? `Recording: ${(seg as RecordingSegment).videoId}` : `Slide: ${seg.kind}`}
+              name={
+                isRecording ? `Recording: ${(seg as RecordingSegment).videoId}` :
+                isImage ? `Image: ${(seg as ImageSegment).filename || 'custom'}` :
+                `Slide: ${seg.kind}`
+              }
             >
               {isRecording
                 ? <RecordingComp seg={seg as RecordingSegment} videos={payload.videos} />
-                : <SlideComp seg={seg as SlideSegment} />
+                : isImage
+                  ? <ImageSlideComp seg={seg as ImageSegment} />
+                  : <SlideComp seg={seg as SlideSegment} />
               }
             </Sequence>
           );
