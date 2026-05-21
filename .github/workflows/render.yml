@@ -40,10 +40,28 @@ jobs:
         run: |
           if [ "$EVENT_NAME" = "repository_dispatch" ]; then
             printf '%s' "$CLIENT_PAYLOAD" > render-payload-raw.json
-            # GitHub repository_dispatch limits client_payload to 10 keys, so both
-            # n8n (legacy) and the Cloudflare Worker (v3.28b.6) nest render fields
-            # under "data". Unwrap them to top level here.
-            jq '. as $root | (.data // {}) + {jobId: ($root.data.jobId // $root.jobId), callbackUrl: $root.callbackUrl}' render-payload-raw.json > render-payload.json
+
+            # v3.28b.15: Cloudflare Worker stores large payloads in KV and
+            # dispatches only { jobId, payloadUrl, large: true } (nested under
+            # .data) to stay under GitHub's 65 KB client_payload cap. Detect
+            # that and fetch the full payload from the URL.
+            IS_LARGE=$(jq -r '.data.large // false' render-payload-raw.json)
+            if [ "$IS_LARGE" = "true" ]; then
+              PAYLOAD_URL=$(jq -r '.data.payloadUrl' render-payload-raw.json)
+              JOB_ID=$(jq -r '.data.jobId' render-payload-raw.json)
+              echo "Large payload mode — fetching from $PAYLOAD_URL"
+              HTTP_CODE=$(curl -sS -o render-payload.json -w "%{http_code}" "$PAYLOAD_URL")
+              if [ "$HTTP_CODE" != "200" ]; then
+                echo "ERROR: payload fetch returned HTTP $HTTP_CODE"
+                head -c 2000 render-payload.json
+                exit 1
+              fi
+              PAYLOAD_SIZE=$(wc -c < render-payload.json)
+              echo "Fetched payload: $PAYLOAD_SIZE bytes"
+            else
+              # Inline payload (old path). Unwrap .data to top level.
+              jq '. as $root | (.data // {}) + {jobId: ($root.data.jobId // $root.jobId), callbackUrl: $root.callbackUrl}' render-payload-raw.json > render-payload.json
+            fi
           else
             printf '%s' "$PAYLOAD_JSON_B64" | base64 -d > render-payload.json
           fi
