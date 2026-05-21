@@ -4723,51 +4723,10 @@ function onBlockMouseDown(e, item, kind) {
   const startMs0 = item.startMs;
   const px = getEffectivePxPerMs();
   let dragged = false;
-  // v3.28b.16: For segments, snapshot the starting positions of ALL OTHER
-  // segments so we can compute an auto-shift on each frame from a clean baseline
-  // (instead of accumulating drifts).
-  const isSeg = (kind === 'segment');
-  const others = isSeg
-    ? state.segments.filter(s => s.id !== item.id).map(s => ({ id: s.id, startMs0: s.startMs, durationMs: s.durationMs }))
-    : null;
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
     if (Math.abs(dx) > 3 && !_historyPushed) { pushHistory(); _historyPushed = true; dragged = true; }
-    const proposed = Math.max(0, Math.round(startMs0 + dx / px));
-    item.startMs = proposed;
-    // Auto-shift: only for segments. If the dragged segment overlaps any other
-    // segment, ripple-push the collider rightward to clear the dragged segment's
-    // tail. Sort colliders by their original start time so the push is
-    // deterministic. Then iterate: each new placement may collide with the next
-    // segment in line, which is also pushed.
-    if (isSeg && others) {
-      // Reset every other segment to its original position
-      const map = new Map(others.map(o => [o.id, o]));
-      for (const s of state.segments) {
-        if (s.id === item.id) continue;
-        const snap = map.get(s.id);
-        if (snap) s.startMs = snap.startMs0;
-      }
-      // Now ripple from the dragged segment
-      const draggedEnd = item.startMs + item.durationMs;
-      // Sort affected segments by their *current* startMs ascending
-      const sorted = state.segments
-        .filter(s => s.id !== item.id)
-        .sort((a, b) => a.startMs - b.startMs);
-      let rippleCursor = draggedEnd;
-      for (const s of sorted) {
-        // Only push if s is overlapping with the dragged segment's tail OR
-        // with the prior pushed segment's tail.
-        if (s.startMs < rippleCursor && s.startMs + s.durationMs > item.startMs) {
-          s.startMs = rippleCursor;
-          rippleCursor = s.startMs + s.durationMs;
-        } else if (s.startMs < rippleCursor) {
-          // Previous segment was pushed and now overlaps this one — push.
-          s.startMs = rippleCursor;
-          rippleCursor = s.startMs + s.durationMs;
-        }
-      }
-    }
+    item.startMs = Math.max(0, Math.round(startMs0 + dx / px));
     rebuildTimeline();
   };
   const onUp = () => {
@@ -7536,6 +7495,113 @@ function cutAtPlayhead() {
   cutVideoSegment(seg, t);
 }
 
+// v3.28b.16: Snap the selected recording segment to its neighbor on left/right.
+// - Left arrow: snap the segment's LEFT edge to the right-edge of the closest
+//   segment that ends before the current segment's start. If none, snap to 0.
+// - Right arrow: snap the segment's RIGHT edge to the left-edge of the closest
+//   segment that starts after the current segment's end. If none, no-op.
+// Only operates on recording segments (slides/callouts/etc. ignored).
+function snapSelectedSegmentToNeighbor(direction) {
+  if (view.selectedKind !== 'segment') return;
+  const sel = state.segments.find(s => s.id === view.selectedId);
+  if (!sel || sel.kind !== 'recording') return;
+  const dur = sel.durationMs;
+  const curStart = sel.startMs;
+  const curEnd = curStart + dur;
+
+  // Find all OTHER segments (any kind — block by any timeline item in the
+  // same track. We treat slides as neighbors too since they share the timeline.)
+  const others = state.segments.filter(s => s.id !== sel.id);
+  if (others.length === 0) {
+    // No neighbors → left snaps to 0, right is no-op
+    if (direction === 'left' && curStart > 0) {
+      pushHistory();
+      sel.startMs = 0;
+      rebuildTimeline();
+    } else {
+      showToast('No neighbor to snap to', 'warning');
+    }
+    return;
+  }
+
+  if (direction === 'left') {
+    // Closest segment whose END is <= curStart. (touching neighbor's right edge)
+    // If currently touching one, look ONE FURTHER LEFT.
+    const leftCandidates = others
+      .map(s => ({ s, end: s.startMs + s.durationMs }))
+      .filter(c => c.end <= curStart);
+    if (leftCandidates.length === 0) {
+      // Nothing on the left → snap to 0
+      if (curStart > 0) {
+        pushHistory();
+        sel.startMs = 0;
+        rebuildTimeline();
+      } else {
+        showToast('Already at start', 'warning');
+      }
+      return;
+    }
+    // Pick the candidate with the LARGEST end (i.e., closest to curStart)
+    leftCandidates.sort((a, b) => b.end - a.end);
+    const closest = leftCandidates[0];
+    // If already touching that neighbor, look one further back
+    if (closest.end === curStart && leftCandidates.length > 1) {
+      // Already snapped to nearest — jump to nearest before that
+      const second = leftCandidates[1];
+      pushHistory();
+      sel.startMs = second.end;
+    } else if (closest.end === curStart) {
+      // Only one neighbor and we're already touching it → snap to 0
+      if (curStart > 0) {
+        pushHistory();
+        sel.startMs = 0;
+      } else {
+        showToast('Already snapped to the leftmost neighbor', 'warning');
+        return;
+      }
+    } else {
+      pushHistory();
+      sel.startMs = closest.end;
+    }
+    rebuildTimeline();
+  } else if (direction === 'right') {
+    // Closest segment whose START is >= curEnd
+    const rightCandidates = others
+      .map(s => ({ s, start: s.startMs }))
+      .filter(c => c.start >= curEnd);
+    if (rightCandidates.length === 0) {
+      showToast('No neighbor on the right', 'warning');
+      return;
+    }
+    rightCandidates.sort((a, b) => a.start - b.start);
+    const closest = rightCandidates[0];
+    // If already touching that neighbor (curEnd === closest.start), jump past it
+    if (closest.start === curEnd && rightCandidates.length > 1) {
+      const second = rightCandidates[1];
+      pushHistory();
+      // Snap so OUR right edge touches second neighbor's LEFT edge
+      sel.startMs = second.start - dur;
+    } else if (closest.start === curEnd) {
+      showToast('Already snapped to the rightmost neighbor', 'warning');
+      return;
+    } else {
+      pushHistory();
+      sel.startMs = closest.start - dur;
+    }
+    rebuildTimeline();
+  }
+}
+
+// v3.28b.16: Fine-nudge selected segment by ±100ms (Shift+arrow). Recording only.
+function nudgeSelectedSegment(deltaMs) {
+  if (view.selectedKind !== 'segment') return;
+  const sel = state.segments.find(s => s.id === view.selectedId);
+  if (!sel || sel.kind !== 'recording') return;
+  pushHistory();
+  sel.startMs = Math.max(0, sel.startMs + deltaMs);
+  rebuildTimeline();
+}
+
 function setupKeyboard() {
   document.addEventListener('keydown', (e) => {
     const isMod = e.metaKey || e.ctrlKey;
@@ -7545,6 +7611,28 @@ function setupKeyboard() {
       if (e.code === 'KeyC') { e.preventDefault(); setTool('cut'); return; }
       // v3.28b.16: X cuts the segment at the playhead (CapCut/Premiere style)
       if (e.code === 'KeyX') { e.preventDefault(); cutAtPlayhead(); return; }
+    }
+    // v3.28b.16: Arrow keys move the selected video segment.
+    // - Plain ← / →  : snap to neighbor (left/right)
+    // - Shift+← / →  : fine nudge by 100ms
+    // Only fires when a recording segment is selected AND user is not typing.
+    if (!isMod && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      if (e.code === 'ArrowLeft') {
+        if (view.selectedKind === 'segment') {
+          e.preventDefault();
+          if (e.shiftKey) nudgeSelectedSegment(-100);
+          else snapSelectedSegmentToNeighbor('left');
+          return;
+        }
+      }
+      if (e.code === 'ArrowRight') {
+        if (view.selectedKind === 'segment') {
+          e.preventDefault();
+          if (e.shiftKey) nudgeSelectedSegment(100);
+          else snapSelectedSegmentToNeighbor('right');
+          return;
+        }
+      }
     }
     // Undo/Redo work even inside inputs
     if (isMod && e.code === 'KeyZ' && !e.shiftKey) {
