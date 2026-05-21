@@ -7775,54 +7775,11 @@ function setupKeyboard() {
       redo();
       return;
     }
-    // v3.28b.17: Canvas zoom shortcuts (zooms canvas view, NOT rendered output)
-    //  - Plain  + / -  : zoom in / out  (primary — browser doesn't claim these)
-    //  - Plain  0      : fit canvas to viewport
-    //  - Cmd/Ctrl + / -: also work, but browsers may intercept as page zoom
-    //  - Cmd/Ctrl + 0  : also fits
-    // Skip when typing in inputs.
-    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-      // Plain (no mod) versions — primary path, never intercepted by browser
-      if (!isMod && !e.altKey) {
-        if (e.code === 'Equal' || e.code === 'NumpadAdd') {
-          // Plain '+' (Shift+= on US keyboards) or numpad +
-          e.preventDefault();
-          setCanvasZoom(view.canvasZoom * 1.25);
-          return;
-        }
-        if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
-          e.preventDefault();
-          setCanvasZoom(view.canvasZoom / 1.25);
-          return;
-        }
-        if (e.code === 'Digit0' || e.code === 'Numpad0') {
-          e.preventDefault();
-          if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport();
-          else setCanvasZoom(1.0);
-          return;
-        }
-      }
-      // Cmd/Ctrl versions — try to override browser page zoom (may not always work
-      // depending on browser; the plain versions above are the reliable path)
-      if (isMod) {
-        if (e.code === 'Equal' || e.code === 'NumpadAdd') {
-          e.preventDefault();
-          setCanvasZoom(view.canvasZoom * 1.25);
-          return;
-        }
-        if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
-          e.preventDefault();
-          setCanvasZoom(view.canvasZoom / 1.25);
-          return;
-        }
-        if (e.code === 'Digit0' || e.code === 'Numpad0') {
-          e.preventDefault();
-          if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport();
-          else setCanvasZoom(1.0);
-          return;
-        }
-      }
-    }
+    // v3.28b.17: Canvas zoom — driven by Cmd/Ctrl + mouse wheel over the
+    // video preview area (already wired in setupCanvasPan). Timeline zoom is
+    // Cmd/Ctrl + mouse wheel over the timeline area. No keyboard +/-/0
+    // bindings for canvas zoom — those caused conflicts with timeline zoom
+    // because keyboard events don't know which area the user means.
     // v3.28b.16: Cmd/Ctrl+A selects everything in the timeline. Skip if user
     // is typing in an input/textarea (browser default text-select-all).
     if (isMod && e.code === 'KeyA' && !e.shiftKey &&
