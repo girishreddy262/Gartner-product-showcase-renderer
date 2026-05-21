@@ -534,15 +534,15 @@ async function createNewProject() {
   if (!name) return;
   toast('Creating project…');
   try {
-    const r = await fetch(WORKER_URL + '/projects', {
+    // v3.28b.14: create FOLDER, not single project. Land on folder.html.
+    const r = await fetch(WORKER_URL + '/folders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, owner: user, state: null })
+      body: JSON.stringify({ name, owner: user })
     });
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.error || 'Create failed');
-    // Redirect to editor
-    window.location.href = 'editor.html?project=' + encodeURIComponent(data.project.id);
+    window.location.href = 'folder.html?id=' + encodeURIComponent(data.folder.id);
   } catch (e) {
     toast('Could not create project: ' + e.message, 'error');
   }
@@ -585,7 +585,8 @@ async function loadProjects() {
   const user = getUserName();
   const ownerParam = user ? '?owner=' + encodeURIComponent(user) : '';
   try {
-    const r = await fetch(WORKER_URL + '/projects' + ownerParam);
+    // v3.28b.14: use /folders endpoint
+    const r = await fetch(WORKER_URL + '/folders' + ownerParam);
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.error || 'Failed to load');
     renderProjects('mineGrid', data.mine || [], 'mineCount', user);
@@ -615,7 +616,8 @@ function renderProjects(gridId, list, countId, currentUser) {
     card.onclick = (e) => {
       if (e.target.closest('.menu-btn')) return;
       const id = card.dataset.id;
-      window.location.href = 'editor.html?project=' + encodeURIComponent(id);
+      // v3.28b.14: cards open folder view, not editor
+      window.location.href = 'folder.html?id=' + encodeURIComponent(id);
     };
     const menu = card.querySelector('.menu-btn');
     if (menu) menu.onclick = (e) => {
@@ -627,6 +629,8 @@ function renderProjects(gridId, list, countId, currentUser) {
 
 function projectCardHTML(p) {
   const letter = (p.name || '?').trim().charAt(0).toUpperCase() || '?';
+  const fileCount = p.fileCount != null ? p.fileCount : 0;
+  const fileLabel = fileCount === 1 ? '1 file' : `${fileCount} files`;
   return `
     <div class="project-card" data-id="${escapeHtml(p.id)}" data-owner="${escapeHtml(p.owner || '')}" data-name="${escapeHtml(p.name || '')}">
       <div class="project-thumb">
@@ -640,26 +644,28 @@ function projectCardHTML(p) {
         <div class="project-meta">
           <span>${escapeHtml(p.owner || 'unknown')}</span>
           <span class="dot">•</span>
+          <span>${fileLabel}</span>
+          <span class="dot">•</span>
           <span>${timeAgo(p.updatedAt)}</span>
         </div>
       </div>
     </div>`;
 }
 
-// Rename / delete menu
+// Rename / delete menu (folders)
 function openCardMenu(id, owner, name) {
   const choice = prompt(`Project: ${name}\nOwner: ${owner}\n\nType:\n  R = rename\n  D = delete\n  (anything else to cancel)`);
   if (!choice) return;
   if (choice.toUpperCase() === 'R') {
     const newName = prompt('New name:', name);
     if (!newName || !newName.trim()) return;
-    fetch(WORKER_URL + '/projects/' + encodeURIComponent(id), {
+    fetch(WORKER_URL + '/folders/' + encodeURIComponent(id), {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName.trim() })
     }).then(r => r.json()).then(() => loadProjects()).catch(e => toast('Rename failed: ' + e.message, 'error'));
   } else if (choice.toUpperCase() === 'D') {
-    if (!confirm(`Delete "${name}"?`)) return;
-    fetch(WORKER_URL + '/projects/' + encodeURIComponent(id), { method: 'DELETE' })
+    if (!confirm(`Delete "${name}" and all files inside it?`)) return;
+    fetch(WORKER_URL + '/folders/' + encodeURIComponent(id), { method: 'DELETE' })
       .then(r => r.json()).then(() => { toast('Deleted'); loadProjects(); })
       .catch(e => toast('Delete failed: ' + e.message, 'error'));
   }

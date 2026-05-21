@@ -7032,6 +7032,10 @@ let _cloudProjectName = null;
 let _cloudSaveTimer = null;
 let _cloudSaveInFlight = false;
 let _cloudLastSavedAt = null;
+// v3.28b.14: true when loaded via ?file= (new), false when via ?project= (legacy)
+let _cloudIsFileMode = false;
+// v3.28b.14: folder ID for the back link, set after a file is loaded
+let _cloudFolderId = null;
 
 function isCloudProject() { return !!_cloudProjectId; }
 
@@ -7076,7 +7080,12 @@ async function performCloudSave() {
       state: buildProjectJson().payload,
       lastEditor: getCloudUser()
     };
-    const r = await fetch(WORKER_BASE_URL + '/projects/' + encodeURIComponent(_cloudProjectId), {
+    // v3.28b.14: route by URL kind. If we loaded via ?file=, save to /files/.
+    // If we loaded via ?project= (legacy), keep saving to /projects/ for migration.
+    const endpoint = _cloudIsFileMode
+      ? (WORKER_BASE_URL + '/files/' + encodeURIComponent(_cloudProjectId))
+      : (WORKER_BASE_URL + '/projects/' + encodeURIComponent(_cloudProjectId));
+    const r = await fetch(endpoint, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -7088,7 +7097,6 @@ async function performCloudSave() {
   } catch (e) {
     console.warn('Cloud save failed:', e);
     setCloudIndicator('⚠ Save failed — will retry', 1);
-    // Retry once after a short delay
     setTimeout(() => { if (isCloudProject()) scheduleCloudSave(); }, 8000);
   } finally {
     _cloudSaveInFlight = false;
@@ -7152,20 +7160,28 @@ async function saveProjectToCloud() {
 }
 
 async function loadCloudProjectIfRequested() {
-  // Parse ?project=ID from URL
+  // v3.28b.14: accept either ?file=ID (new) or ?project=ID (legacy)
   const qp = new URLSearchParams(window.location.search);
+  const fileId = qp.get('file');
   const projectId = qp.get('project');
-  if (!projectId) return false;
+  const targetId = fileId || projectId;
+  if (!targetId) return false;
+  _cloudIsFileMode = !!fileId;
   setCloudIndicator('Loading project…', 1);
   try {
-    const r = await fetch(WORKER_BASE_URL + '/projects/' + encodeURIComponent(projectId));
+    const endpoint = _cloudIsFileMode
+      ? (WORKER_BASE_URL + '/files/' + encodeURIComponent(targetId))
+      : (WORKER_BASE_URL + '/projects/' + encodeURIComponent(targetId));
+    const r = await fetch(endpoint);
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.error || ('HTTP ' + r.status));
-    const proj = data.project;
+    // The /files/ endpoint returns { file }; /projects/ returns { project }
+    const proj = _cloudIsFileMode ? data.file : data.project;
     _cloudProjectId = proj.id;
     _cloudProjectName = proj.name || 'Untitled';
     _cloudLastSavedAt = proj.updatedAt;
-    // If state is null (brand new), keep current defaults; else apply
+    _cloudFolderId = proj.folderId || null;
+    // Restore state
     if (proj.state) {
       const p = proj.state;
       if (p.module) state.module = p.module;
@@ -7177,16 +7193,22 @@ async function loadCloudProjectIfRequested() {
       state.effects = p.effects || [];
       state.textOverlays = p.textOverlays || [];
       state.customerCards = p.customerCards || [];
-      // Reset history so the loaded state is the baseline
       _history.past = [];
       _history.future = [];
     }
-    // Show project name in header + back link
+    // Header UI: show file name + back link (pointing to folder page if we know the folder)
     const nameEl = document.getElementById('projectName');
     const backEl = document.getElementById('backToProjects');
     const titleEl = document.getElementById('editorTitle');
     if (nameEl) { nameEl.textContent = _cloudProjectName; nameEl.style.display = 'inline'; }
-    if (backEl) { backEl.style.display = 'inline'; }
+    if (backEl) {
+      backEl.style.display = 'inline';
+      // v3.28b.14: back link goes to folder page if known, else projects landing
+      backEl.href = _cloudFolderId
+        ? ('folder.html?id=' + encodeURIComponent(_cloudFolderId))
+        : 'index.html';
+      backEl.title = _cloudFolderId ? 'Back to project files' : 'Back to projects';
+    }
     if (titleEl) { titleEl.style.display = 'none'; }
     document.title = _cloudProjectName + ' — Product Showcase';
     setCloudIndicator('✓ Loaded', 0.7);
