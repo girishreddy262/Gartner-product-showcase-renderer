@@ -1437,6 +1437,8 @@ const PAYLOAD = {};
 const WORKER_BASE_URL = 'https://darwinbox-showcase-api.girishreddy262.workers.dev';
 const APPROVE_URL = WORKER_BASE_URL + '/trigger-render';
 const UPLOAD_TOKEN_URL = WORKER_BASE_URL + '/dropbox-token';
+// v3.28b.19: S3 presigned upload URL endpoint (new primary path)
+const S3_UPLOAD_URL_ENDPOINT = WORKER_BASE_URL + '/s3-upload-url';
 
 // S3 status JSON URL — GitHub Actions writes this at end of render.
 // Browser polls this directly (public-read).
@@ -6419,12 +6421,11 @@ async function handleFileUpload(file, kind) {
   const toast = showUploadToast(file.name);
 
   try {
-    // 1. Get short-lived Dropbox token from n8n
+    // 1. Get short-lived Dropbox token from Worker
     updateUploadToast(toast, 0, 'Preparing upload...');
     const tokenRes = await fetch(UPLOAD_TOKEN_URL + '?job_id=' + encodeURIComponent(JOB_ID));
     if (!tokenRes.ok) throw new Error('Failed to get upload token: ' + tokenRes.status);
     let tokenData = await tokenRes.json();
-    // n8n's "allIncomingItems" returns an array — unwrap it
     if (Array.isArray(tokenData)) tokenData = tokenData[0] || {};
     if (tokenData.error) throw new Error(tokenData.error + (tokenData.details ? ': ' + tokenData.details : ''));
     if (!tokenData.accessToken) throw new Error('No access token in response');
@@ -6501,6 +6502,58 @@ function uploadToDropbox(file, dropboxPath, accessToken, onProgress) {
       }
     };
     xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(file);
+  });
+}
+
+// v3.28b.19: Upload a file directly to AWS S3 using a Worker-generated
+// presigned PUT URL. Returns the publicly accessible URL of the uploaded file.
+//
+// Flow:
+//   1. Ask Worker for a presigned URL (5-min validity, scoped to one S3 key)
+//   2. PUT the file bytes directly to S3 (no proxy through the Worker)
+//   3. Return the public URL for storing in state.videos/audios
+//
+// Compared to the Dropbox flow, this is:
+//   - Faster (one fewer round-trip — no share link creation needed)
+//   - More secure (URL is scoped to one path with 5-min TTL vs Dropbox's
+//     4-hour broad-scope access token)
+//   - Reliable on Windows (no Dropbox firewall issues)
+async function uploadToS3(file, kind, onProgress) {
+  // 1. Ask Worker for a presigned URL
+  const assetId = kind + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const qs = new URLSearchParams({
+    job_id: JOB_ID || ('job_' + Date.now()),
+    filename: file.name,
+    content_type: file.type || (kind === 'video' ? 'video/mp4' : 'audio/mpeg'),
+    asset_id: assetId,
+  });
+  const tokenRes = await fetch(S3_UPLOAD_URL_ENDPOINT + '?' + qs.toString());
+  if (!tokenRes.ok) throw new Error('Failed to get S3 upload URL: HTTP ' + tokenRes.status);
+  const tokenData = await tokenRes.json();
+  if (tokenData.error) throw new Error('S3 URL gen failed: ' + tokenData.error);
+  if (!tokenData.uploadUrl || !tokenData.publicUrl) {
+    throw new Error('Invalid S3 URL response from Worker');
+  }
+  // 2. PUT the file bytes directly to S3 via XHR (so we get progress events).
+  return await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', tokenData.uploadUrl, true);
+    // Content-Type is part of the signed URL — must match exactly
+    xhr.setRequestHeader('Content-Type', tokenData.contentType || (file.type || 'application/octet-stream'));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(tokenData.publicUrl);
+      } else {
+        // S3 returns XML error bodies, surface the message if possible
+        const snippet = (xhr.responseText || '').slice(0, 300);
+        reject(new Error('S3 upload failed: HTTP ' + xhr.status + ' — ' + snippet));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network error during S3 upload'));
     xhr.send(file);
   });
 }
