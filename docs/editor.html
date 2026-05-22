@@ -6478,6 +6478,13 @@ async function handleFileUpload(file, kind) {
       state.videos.push(newAsset);
     } else {
       state.audios.push(newAsset);
+      // v3.28b.18: ensure the new audio gets an element AND gets unlocked
+      // if the user has already interacted with the page.
+      setupAudioElements();
+      if (_audioUnlocked) {
+        // safe to call; the unlock is per-element and only acts on locked ones
+        try { unlockAudioElements(); } catch (e) {}
+      }
     }
     renderLeftRail();
     if (kind === 'video') loadVideoDuration(newAsset);
@@ -7957,14 +7964,17 @@ function setupAudioElements() {
   }
 }
 
-// v3.28b.16: Prime every audio element in the user-gesture call stack so
-// subsequent play() calls from the RAF loop work on Windows Chrome.
+// v3.28b.18: track per-element unlock status (instead of a single page-wide
+// boolean) so audios added AFTER the first Play click still get unlocked when
+// the user clicks Play again.
 function unlockAudioElements() {
-  if (_audioUnlocked) return;
   for (const id in _audioElements) {
     const el = _audioElements[id];
+    if (el._unlocked) continue;
     try {
-      // Mute briefly, play, pause — this "unlocks" the element for the session
+      // Mute briefly, play, pause — this "unlocks" the element for the session.
+      // If the element isn't ready (no metadata yet), this will likely reject;
+      // we mark _unlocked only on success so a subsequent Play attempt retries.
       const wasMuted = el.muted;
       el.muted = true;
       const p = el.play();
@@ -7973,15 +7983,23 @@ function unlockAudioElements() {
           el.pause();
           el.currentTime = 0;
           el.muted = wasMuted;
+          el._unlocked = true;
         }).catch((err) => {
-          console.warn('Audio unlock failed for ' + id + ':', err.message);
+          // Not yet ready, or autoplay rejected. We'll retry on next user gesture.
+          console.warn('Audio unlock pending for ' + id + ':', err.message);
           el.muted = wasMuted;
         });
+      } else {
+        // Older browsers without promise return — assume success
+        el.pause();
+        el.currentTime = 0;
+        el._unlocked = true;
       }
     } catch (e) {
       console.warn('Audio unlock threw for ' + id + ':', e);
     }
   }
+  // Also keep the page-wide flag for backwards compat with any other check
   _audioUnlocked = true;
 }
 
@@ -8033,6 +8051,16 @@ async function init() {
   setupEffectPlacement();
   setupCutIndicator();
   setupAudioElements();
+  // v3.28b.18: Unlock audio elements on the FIRST user gesture anywhere on the
+  // page (not just the Play button). Many users click around (timeline, edit
+  // panel) before pressing Play. Without an early unlock, Windows Chrome
+  // rejects play() calls from the RAF loop even after the Play click. We use
+  // { once: true } so this listener auto-removes after firing.
+  const earlyUnlock = () => {
+    try { unlockAudioElements(); } catch (e) {}
+  };
+  document.addEventListener('click', earlyUnlock, { once: true });
+  document.addEventListener('keydown', earlyUnlock, { once: true });
   rebuildAll();
   // v3.24: check for unsaved auto-save snapshot and offer restore
   setTimeout(maybeShowRestorePrompt, 500);
