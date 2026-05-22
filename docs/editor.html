@@ -2763,7 +2763,8 @@ async function loadOneVideoDuration(videoId) {
   if (!v) return DEFAULT_VIDEO_DURATION_MS;
   try {
     const vid = document.createElement('video');
-    vid.crossOrigin = 'anonymous';  // v3.28b.7: required for CORS-fetched Dropbox URLs
+    // v3.28b.18: no crossOrigin attribute — Dropbox serves these fine without
+    // it, and on Windows Chrome the strict CORS check intermittently fails.
     vid.preload = 'metadata';
     vid.muted = true;
     vid.src = v.url;
@@ -3049,9 +3050,9 @@ function addCustomerCard(opts) {
     industry: 'Infrastructure',
     location: 'Philippines',
     body: 'Processes payroll for 20K+ employees, with GL files aligned to their finance system',
-    // v3.28b: locked to slide-right in/out per spec
-    animIn: 'slide-right', animInAt: 0.3,
-    animOut: 'slide-right', animOutAt: 0.3
+    // v3.28b.18: standardized fade in/out, no slides
+    animIn: 'fade', animInAt: 0.3,
+    animOut: 'fade', animOutAt: 0.3
   };
   state.customerCards.push(c); setSelected(c.id, 'customerCard'); rebuildAll();
 }
@@ -4514,7 +4515,7 @@ function renderZoomThumbContent(zoomEffect) {
         v.src = video.url;
         v.muted = true;
         v.preload = 'metadata';
-        v.crossOrigin = 'anonymous';
+        // v3.28b.18: no crossOrigin — fixes Windows preview failures
         v.style.position = 'absolute';
         v.style.left = ((seg.x||0)/CANVAS_W*100) + '%';
         v.style.top = ((seg.y||0)/CANVAS_H*100) + '%';
@@ -5085,7 +5086,7 @@ function renderSegmentToCanvas(seg) {
       v.muted = true;
       v.playsInline = true;
       v.preload = 'metadata';
-      v.crossOrigin = 'anonymous';
+      // v3.28b.18: no crossOrigin — fixes Windows preview failures
       // v3.28b.5: apply per-video scale (default 1.0)
       const _vScale = (seg.videoScale != null && seg.videoScale > 0) ? seg.videoScale : 1.0;
       if (_vScale !== 1.0) {
@@ -5614,27 +5615,16 @@ function renderCustomerCardPanel(panel) {
       '<div><label>Y</label><div class="field-with-unit"><input type="number" id="cc-y" value="' + Math.round(c.y||0) + '"><span class="unit">px</span></div></div>' +
     '</div></div>';
 
-  // v3.28b.1: animation direction toggle — right (in/out same side) or left (in/out same side)
-  // Normalize legacy values
-  const isLeft = (c.animIn === 'slide-left');
-  if (!isLeft) {
-    // Default + back-compat: snap to slide-right
-    c.animIn = 'slide-right';
-    c.animOut = (c.animOut === 'slide-out-right' || c.animOut === 'slide-right') ? c.animOut : 'slide-right';
-  } else {
-    c.animOut = (c.animOut === 'slide-out-left' || c.animOut === 'slide-left') ? c.animOut : 'slide-left';
-  }
+  // v3.28b.18: Customer cards use FADE in/out only. Slide-direction options removed.
+  // Existing cards with slide-left/slide-right values are normalized to 'fade'.
+  if (c.animIn !== 'fade') c.animIn = 'fade';
+  if (c.animOut !== 'fade') c.animOut = 'fade';
 
   html += '<div class="align-section"><div class="align-label">Animation</div>';
-  html += '<div class="hint" style="font-size:11px;color:var(--text-3);margin-bottom:8px;line-height:1.4;">Same-side bounce — slides in and back out from the same edge.</div>';
-  html += '<div class="form-row"><label>Direction</label>';
-  html += '<div style="display:flex;gap:6px;flex:1;">';
-  html += '<button type="button" class="repeater-add" id="cc-anim-right" style="flex:1;margin:0;' + (isLeft ? '' : 'background:rgba(31,138,255,0.15);border-color:#1F8AFF;') + '">→ From right</button>';
-  html += '<button type="button" class="repeater-add" id="cc-anim-left" style="flex:1;margin:0;' + (isLeft ? 'background:rgba(31,138,255,0.15);border-color:#1F8AFF;' : '') + '">← From left</button>';
-  html += '</div></div>';
+  html += '<div class="hint" style="font-size:11px;color:var(--text-3);margin-bottom:8px;line-height:1.4;">Fade in and fade out (standardized).</div>';
   html += '<div class="form-row dual">';
-  html += '<div><label>In duration</label><div class="field-with-unit"><input type="number" id="cc-anim-in-at" step="0.1" min="0" value="' + (c.animInAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
-  html += '<div><label>Out duration</label><div class="field-with-unit"><input type="number" id="cc-anim-out-at" step="0.1" min="0" value="' + (c.animOutAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
+  html += '<div><label>Fade in</label><div class="field-with-unit"><input type="number" id="cc-anim-in-at" step="0.1" min="0" value="' + (c.animInAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
+  html += '<div><label>Fade out</label><div class="field-with-unit"><input type="number" id="cc-anim-out-at" step="0.1" min="0" value="' + (c.animOutAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
   html += '</div></div>';
 
   html += '<div class="form-actions"><button class="btn danger" id="cc-delete">Delete</button></div></div>';
@@ -5693,30 +5683,7 @@ function wireCustomerCardPanel(c) {
     });
   }
 
-  // v3.28b.1: animation direction toggle (right/left, same-side bounce)
-  const rightBtn = $('cc-anim-right');
-  const leftBtn = $('cc-anim-left');
-  if (rightBtn) {
-    rightBtn.addEventListener('click', () => {
-      if (c.animIn === 'slide-right') return;
-      pushHistory();
-      c.animIn = 'slide-right';
-      c.animOut = 'slide-right';
-      renderEditPanel();
-      rebuildCanvas();
-    });
-  }
-  if (leftBtn) {
-    leftBtn.addEventListener('click', () => {
-      if (c.animIn === 'slide-left') return;
-      pushHistory();
-      c.animIn = 'slide-left';
-      c.animOut = 'slide-left';
-      renderEditPanel();
-      rebuildCanvas();
-    });
-  }
-
+  // v3.28b.18: slide-direction buttons removed (fade-only). Just wire the fade durations.
   $('cc-anim-in-at').addEventListener('change', (e) => { pushHistory(); c.animInAt = parseFloat(e.target.value) || 0; });
   $('cc-anim-out-at').addEventListener('change', (e) => { pushHistory(); c.animOutAt = parseFloat(e.target.value) || 0; });
 
@@ -6601,7 +6568,7 @@ function removeUploadToast(toast) {
 // Load video duration helper for newly uploaded asset
 function loadVideoDuration(v) {
   const vid = document.createElement('video');
-  vid.crossOrigin = 'anonymous';  // v3.28b.7: required for CORS-fetched Dropbox URLs
+  // v3.28b.18: no crossOrigin — Windows Chrome fails with it intermittently
   vid.preload = 'metadata';
   vid.src = v.url;
   vid.onloadedmetadata = () => {
@@ -6611,7 +6578,7 @@ function loadVideoDuration(v) {
 }
 function loadAudioDuration(a) {
   const aud = document.createElement('audio');
-  aud.crossOrigin = 'anonymous';  // v3.28b.7: required for CORS-fetched Dropbox URLs
+  // v3.28b.18: no crossOrigin — same fix as video, prevents Windows failures
   aud.preload = 'metadata';
   aud.src = a.url;
   aud.onloadedmetadata = () => {
