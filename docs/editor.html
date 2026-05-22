@@ -160,7 +160,9 @@
     50% { opacity:1; }
   }
   .stage {
-    width:100%; height:100%; background:#000;
+    /* v3.28b.18: navy bg matches Darwinbox brand and shows through any
+       scaled-down video areas inside the frame (instead of black halo). */
+    width:100%; height:100%; background:#002B54;
     position:relative; overflow:hidden; transform-origin:0 0;
   }
   .stage-inner {
@@ -424,7 +426,11 @@
   .canvas-segment.editor-mode:hover { outline:2px solid rgba(255,255,255,0.3); outline-offset:2px; }
   .canvas-segment.editor-mode.selected { outline:3px solid var(--accent); outline-offset:2px; }
   .canvas-segment video, .canvas-segment img {
-    width:100%; height:100%; object-fit:contain; background:#000;
+    /* v3.28b.18: removed background:#000 — when a recording segment's video
+       is scaled down (e.g. videoScale 0.7), the empty area inside the video
+       element should reveal the segment wrapper's navy bg (#002B54) and the
+       canvas's navy bg underneath the frame, not a black halo. */
+    width:100%; height:100%; object-fit:contain; background:transparent;
   }
   /* v3.28b.2 fix: divider slide images should NOT have black background */
   .canvas-slide-divider img {
