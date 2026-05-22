@@ -131,9 +131,16 @@ async function main() {
       serveUrl: SERVE_URL,
       composition: 'ProductShowcase',
       codec: 'h264',
+      // v3.28b.18: HD-quality settings — no perceptible compression.
+      //   crf 18 = "visually lossless" H.264 (broadcast-quality standard)
+      //   jpegQuality 95 = high-quality intermediate frames
+      //   pixelFormat yuv420p = max compatibility (default but explicit)
+      crf: 18,
+      jpegQuality: 95,
+      pixelFormat: 'yuv420p',
       inputProps: { payload },
       framesPerLambda,
-      maxRetries: 3,             // v3.24: retry transient chunk failures
+      maxRetries: 3,
       privacy: 'public',
       outName: `showcase-${jobId}.mp4`,
     });
