@@ -1377,13 +1377,8 @@
   </div>
 
   <div class="timeline-zone">
-    <div class="tl-summary">
-      <div>
-        <span class="label">Total length:</span>
-        <span class="total-length" id="totalLength">0:00</span>
-      </div>
-      <!-- v3.28b.20: count pills (segments/audios/callouts/effects/texts) removed -->
-    </div>
+    <!-- v3.28b.21: tl-summary block (Total length + count pills) removed entirely.
+         Current/total time still shown in tl-controls below. -->
     <div class="tl-controls">
       <div class="tl-time">
         <strong id="curTime">0:00</strong> / <span id="totalTime">0:00</span>
@@ -3763,7 +3758,8 @@ function renderSegmentPanel(panel) {
     // v3.28b.20: when source audio is on, allow per-segment volume 0-200%
     '<div class="form-row" id="seg-volume-row" style="' + (seg.muteSourceAudio === false ? '' : 'display:none;') + '">' +
       '<label>Volume <span id="seg-volume-val">' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '%</span></label>' +
-      '<input type="range" id="seg-volume" min="0" max="100" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
+      '<input type="range" id="seg-volume" min="0" max="200" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
+      '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">100% = original. Above 100% boosts via WebAudio.</div>' +
     '</div>' +
     '<div class="form-row">' +
       '<label class="checkbox-label">' +
@@ -4712,7 +4708,9 @@ function rebuildTimeline() {
   const ccEmpty = $('customerCardsEmpty');
   if (ccEmpty) ccEmpty.classList.toggle('hidden', (state.customerCards || []).length > 0);
   const totalMs = getTotalDurationMs();
-  $('totalLength').textContent = fmtTime(totalMs);
+  // v3.28b.21: totalLength element removed; guard the assignment
+  const tl = $('totalLength');
+  if (tl) tl.textContent = fmtTime(totalMs);
   $('totalTime').textContent = fmtTime(totalMs);
   // v3.28b.20: count pills removed from UI
 }
@@ -5132,16 +5130,34 @@ function renderSegmentToCanvas(seg) {
       wrap.style.background = '#002B54';
       const v = document.createElement('video');
       v.src = video.url;
-      // v3.28b.20: respect per-segment audio settings. Mute if muteSourceAudio
-      // is true (default) OR if global audio is off. Otherwise apply volume.
+      // v3.28b.20: respect per-segment audio settings.
+      // v3.28b.21: support >100% volume via WebAudio GainNode for amplification.
       if (seg.muteSourceAudio !== false) {
         v.muted = true;
       } else {
         v.muted = false;
         const vol = (seg.audioVolume != null) ? seg.audioVolume : 1.0;
-        // HTMLMediaElement.volume only accepts 0-1, so clamp; if user wants
-        // >100% volume we can't truly amplify without WebAudio, but we cap.
-        v.volume = Math.max(0, Math.min(1, vol));
+        if (vol <= 1.0) {
+          // 0-100% — use native HTMLMediaElement.volume (simple, no glitches)
+          v.volume = Math.max(0, vol);
+        } else {
+          // 100-200% — route through WebAudio with GainNode for true amplification.
+          // Native volume capped at 1.0; gain node multiplies the signal.
+          v.volume = 1.0;
+          v.addEventListener('canplay', () => {
+            try {
+              const ctx = window._wa_ctx || (window._wa_ctx = new (window.AudioContext || window.webkitAudioContext)());
+              if (v._waSource) return; // already wired
+              const source = ctx.createMediaElementSource(v);
+              const gain = ctx.createGain();
+              gain.gain.value = vol;  // 1.0..2.0
+              source.connect(gain).connect(ctx.destination);
+              v._waSource = source;
+              v._waGain = gain;
+              if (ctx.state === 'suspended') ctx.resume();
+            } catch (e) { /* WebAudio may fail in some embed contexts; fall back silently */ }
+          }, { once: true });
+        }
       }
       v.playsInline = true;
       v.preload = 'metadata';
@@ -7071,7 +7087,43 @@ function setupCanvasPan() {
     panning = false;
     viewport.classList.remove('panning');
   });
-  // v3.28b.20: canvas wheel-zoom handler removed (zoom feature retired)
+  // v3.28b.21: Canvas-only zoom via Cmd/Ctrl+wheel AND trackpad pinch.
+  // Bound on the viewport element directly (NOT document), so:
+  //   - Only triggers when cursor is inside the canvas viewport
+  //   - preventDefault() stops browser page-zoom (Cmd+wheel) and
+  //     trackpad pinch-zoom from being interpreted as page zoom
+  //   - Doesn't affect timeline, sidebars, or any other UI
+  viewport.addEventListener('wheel', (e) => {
+    // Cmd/Ctrl + wheel OR trackpad pinch-zoom (which browsers report as
+    // ctrlKey=true synthetic wheel events on macOS/Windows) → zoom the canvas
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Negative deltaY = zoom in. Scale factor based on event delta magnitude.
+    const delta = -e.deltaY * 0.005;
+    setCanvasZoom(view.canvasZoom * Math.exp(delta), e.clientX, e.clientY);
+  }, { passive: false });
+}
+
+// v3.28b.21: keyboard shortcuts for canvas zoom — Cmd/Ctrl + (+/-/=) and Cmd+0 reset
+function setupCanvasKeyboardZoom() {
+  document.addEventListener('keydown', (e) => {
+    if (!e.metaKey && !e.ctrlKey) return;
+    // Skip if user is typing in an input/textarea
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    // Cmd+= or Cmd++  (same key, with/without shift)
+    if (e.key === '=' || e.key === '+') {
+      e.preventDefault();
+      setCanvasZoom(view.canvasZoom * 1.2);
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      setCanvasZoom(view.canvasZoom / 1.2);
+    } else if (e.key === '0') {
+      e.preventDefault();
+      fitCanvasToViewport();  // resets canvasZoom to 1.0 and pan to 0,0
+    }
+  });
 }
 
 function setupTimelineWheelZoom() {
@@ -8023,49 +8075,69 @@ function setupAudioElements() {
       rebuildLeftRailDurations();
     });
     el.addEventListener('error', (e) => {
-      console.warn('Audio failed to load:', a.url, e);
+      const err = el.error;
+      console.warn('Audio failed to load for ' + a.id + ':', a.url, err ? ('code=' + err.code + ' ' + err.message) : e);
     });
+    // v3.28b.22: explicitly trigger load. Windows Chrome sometimes doesn't
+    // auto-load preload="auto" sources until first play() attempt, which
+    // causes the play() in the RAF loop to fail.
     document.body.appendChild(el);
     _audioElements[a.id] = el;
+    try { el.load(); } catch (e) {}
   }
 }
 
-// v3.28b.18: track per-element unlock status (instead of a single page-wide
-// boolean) so audios added AFTER the first Play click still get unlocked when
-// the user clicks Play again.
+// v3.28b.22: aggressive sync unlock — runs INSIDE the user gesture call stack.
+// Strategy: every audio element gets play() called inline (sync), with a chained
+// pause() once it succeeds. The browser sees this as gesture-initiated and
+// "unlocks" the element. We do NOT await — the promise chain handles cleanup
+// in background.
+//
+// On Windows Chrome strict mode, the critical thing is that play() is INVOKED
+// inside the gesture, even if it doesn't resolve immediately.
 function unlockAudioElements() {
   for (const id in _audioElements) {
     const el = _audioElements[id];
     if (el._unlocked) continue;
     try {
-      // Mute briefly, play, pause — this "unlocks" the element for the session.
-      // If the element isn't ready (no metadata yet), this will likely reject;
-      // we mark _unlocked only on success so a subsequent Play attempt retries.
       const wasMuted = el.muted;
+      const wasVolume = el.volume;
+      // Step 1: mute and set volume to 0 (so even if something escapes, no
+      // surprise audio)
       el.muted = true;
+      el.volume = 0;
+      // Step 2: ensure source is loaded (no-op if already loaded)
+      if (el.readyState < 2) {
+        try { el.load(); } catch(e) {}
+      }
+      // Step 3: synchronously call play() inside the gesture
       const p = el.play();
       if (p && typeof p.then === 'function') {
         p.then(() => {
+          // Step 4: immediately pause and reset
           el.pause();
           el.currentTime = 0;
           el.muted = wasMuted;
+          el.volume = wasVolume;
           el._unlocked = true;
         }).catch((err) => {
-          // Not yet ready, or autoplay rejected. We'll retry on next user gesture.
-          console.warn('Audio unlock pending for ' + id + ':', err.message);
+          // Failed — restore state. Will retry on next user gesture.
           el.muted = wasMuted;
+          el.volume = wasVolume;
+          console.warn('Audio unlock pending for ' + id + ': ' + err.name + ' — ' + err.message);
         });
       } else {
-        // Older browsers without promise return — assume success
+        // Sync return — old browser
         el.pause();
         el.currentTime = 0;
+        el.muted = wasMuted;
+        el.volume = wasVolume;
         el._unlocked = true;
       }
     } catch (e) {
       console.warn('Audio unlock threw for ' + id + ':', e);
     }
   }
-  // Also keep the page-wide flag for backwards compat with any other check
   _audioUnlocked = true;
 }
 
@@ -8085,15 +8157,27 @@ function syncAudioPlayback() {
       }
       el.volume = Math.min(1, Math.max(0, ap.volume != null ? ap.volume : 1));
       if (el.paused) {
-        // v3.28b.16: surface play() errors so we can debug Windows issues.
-        // Don't spam — log only the first failure per audio per session.
+        // v3.28b.22: detailed error logging so we can debug Windows issues.
         const p = el.play();
         if (p && typeof p.catch === 'function') {
           p.catch((err) => {
+            // First failure: log loudly with the error name AND likely cause
             if (!el._loggedPlayError) {
-              console.warn('Audio play() rejected for ' + ap.audioId + ':', err.message);
-              console.warn('Tip: click somewhere on the page first to satisfy browser autoplay policy.');
+              console.warn('Audio play() rejected for ' + ap.audioId + ': ' + err.name + ' — ' + err.message);
+              if (err.name === 'NotAllowedError') {
+                console.warn('  Likely cause: autoplay policy. Click anywhere on the page first, then press Play again.');
+              } else if (err.name === 'NotSupportedError') {
+                console.warn('  Likely cause: audio source URL invalid or format unsupported. Check:', el.src);
+              } else if (err.name === 'AbortError') {
+                console.warn('  Likely cause: a newer play()/pause() preempted this one. Usually harmless.');
+              }
               el._loggedPlayError = true;
+            }
+            // For NotAllowedError: try to unlock again on next tick (in case
+            // a user gesture has happened in between)
+            if (err.name === 'NotAllowedError' && !el._unlocked) {
+              // Mark for retry; next user gesture will re-attempt
+              el._needsUnlock = true;
             }
           });
         }
@@ -8112,6 +8196,7 @@ async function init() {
   setupTrackDropTargets();
   setupRuler();
   setupCanvasPan();
+  setupCanvasKeyboardZoom();
   setupTimelineWheelZoom();
   setupKeyboard();
   setupEffectPlacement();
