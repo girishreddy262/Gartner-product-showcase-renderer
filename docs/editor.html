@@ -3776,23 +3776,16 @@ function renderSegmentPanel(panel) {
         '<input type="checkbox" id="seg-frame" ' + (seg.showFrame ? 'checked' : '') + '>' +
         ' Show navy frame around video</label>' +
     '</div>' +
-    // v3.28b.25: crop controls — per-side, in source-video pixels
+    // v3.28b.26: crop — drag-only via canvas handles. Just a label + reset button here.
     (function() {
-      const crop = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
-      // Use a placeholder source size that gets updated when video metadata loads
-      // We'll read videoWidth/videoHeight from _activeVideoElement at render time
-      // For initial display: assume 1920x1080 if we don't yet know
-      const srcW = (seg._srcW || 1920), srcH = (seg._srcH || 1080);
-      const px = (ratio, dim) => Math.round((ratio || 0) * dim);
+      const c = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+      const cropped = (c.top||0) + (c.right||0) + (c.bottom||0) + (c.left||0) > 0;
       return '<div class="align-section">' +
-        '<div class="align-label">Crop (pixels of source <span id="seg-crop-srcdims" style="color:var(--text-dim);font-weight:400;">' + srcW + '×' + srcH + '</span>)</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">' +
-          '<label style="font-size:11px;color:var(--text-dim);">Top<input type="number" id="seg-crop-top" min="0" step="1" value="' + px(crop.top, srcH) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
-          '<label style="font-size:11px;color:var(--text-dim);">Right<input type="number" id="seg-crop-right" min="0" step="1" value="' + px(crop.right, srcW) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
-          '<label style="font-size:11px;color:var(--text-dim);">Bottom<input type="number" id="seg-crop-bottom" min="0" step="1" value="' + px(crop.bottom, srcH) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
-          '<label style="font-size:11px;color:var(--text-dim);">Left<input type="number" id="seg-crop-left" min="0" step="1" value="' + px(crop.left, srcW) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
+        '<div class="align-label" style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span>Crop</span>' +
+          '<span style="font-size:11px;color:var(--text-dim);font-weight:400;">' + (cropped ? 'Cropped — drag blue edges on canvas' : 'Drag blue edges on the canvas') + '</span>' +
         '</div>' +
-        '<button id="seg-crop-reset" style="margin-top:8px;background:#2A2D34;border:1px solid var(--line-hover);color:#fff;padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;width:100%;">Reset crop</button>' +
+        '<button id="seg-crop-reset" style="margin-top:6px;background:#2A2D34;border:1px solid var(--line-hover);color:#fff;padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;width:100%;' + (cropped ? '' : 'opacity:0.5;') + '">Reset crop</button>' +
       '</div>';
     })() +
     '<div class="align-section">' +
@@ -4328,34 +4321,14 @@ function wireSegmentPanel(seg) {
       });
     }
     $('seg-frame').addEventListener('change', (e) => { pushHistory(); seg.showFrame = e.target.checked; rebuildCanvas(); });
-    // v3.28b.25: crop input handlers. Convert pixel values to ratios using
-    // source video dimensions (which may not be loaded yet — falls back to 1920x1080).
+    // v3.28b.26: crop reset button only (inputs removed — pure drag-to-crop)
     (function() {
-      function applyCropFromInputs() {
-        if (!seg.crop) seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
-        const srcW = seg._srcW || 1920, srcH = seg._srcH || 1080;
-        const t = Math.max(0, parseFloat($('seg-crop-top').value) || 0);
-        const r = Math.max(0, parseFloat($('seg-crop-right').value) || 0);
-        const b = Math.max(0, parseFloat($('seg-crop-bottom').value) || 0);
-        const l = Math.max(0, parseFloat($('seg-crop-left').value) || 0);
-        seg.crop.top = Math.min(0.95, t / srcH);
-        seg.crop.right = Math.min(0.95, r / srcW);
-        seg.crop.bottom = Math.min(0.95, b / srcH);
-        seg.crop.left = Math.min(0.95, l / srcW);
-        rebuildCanvas();
-      }
-      ['seg-crop-top', 'seg-crop-right', 'seg-crop-bottom', 'seg-crop-left'].forEach(id => {
-        const el = $(id);
-        if (!el) return;
-        el.addEventListener('input', applyCropFromInputs);
-        el.addEventListener('change', () => pushHistory());
-      });
       const reset = $('seg-crop-reset');
       if (reset) reset.addEventListener('click', () => {
         pushHistory();
         seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
         rebuildCanvas();
-        renderEditPanel();  // re-render to update input values
+        renderEditPanel();  // refresh the panel state
       });
     })();
     // v3.28b.5: video scale slider — live update label, persist on change
@@ -5295,16 +5268,9 @@ function applyCropClipPath(videoEl, seg) {
 }
 
 function updateCropEditPanelInputs(seg) {
-  if (view.selectedId !== seg.id) return;
-  const srcW = seg._srcW || 1920, srcH = seg._srcH || 1080;
-  const t = document.getElementById('seg-crop-top');
-  const r = document.getElementById('seg-crop-right');
-  const b = document.getElementById('seg-crop-bottom');
-  const l = document.getElementById('seg-crop-left');
-  if (t) t.value = Math.round((seg.crop.top || 0) * srcH);
-  if (r) r.value = Math.round((seg.crop.right || 0) * srcW);
-  if (b) b.value = Math.round((seg.crop.bottom || 0) * srcH);
-  if (l) l.value = Math.round((seg.crop.left || 0) * srcW);
+  // v3.28b.26: pixel inputs removed. No-op; drag handles update the canvas
+  // directly via positionCropHandle/applyCropClipPath, and the edit panel
+  // label refreshes on next renderEditPanel call (e.g. after pushHistory).
 }
 
 function renderSegmentToCanvas(seg) {
@@ -6569,7 +6535,15 @@ async function uploadOneFile(file, kind, labelPrefix) {
     const newId = (kind === 'video' ? 'video_' : 'audio_') + Date.now();
     const newAsset = { id: newId, filename: file.name, url: directUrl };
     if (kind === 'video') state.videos.push(newAsset);
-    else state.audios.push(newAsset);
+    else {
+      state.audios.push(newAsset);
+      // v3.28b.27 BUGFIX: create the <audio> DOM element for this new asset.
+      // Without this, the upload "succeeds" but the audio is never playable.
+      setupAudioElements();
+      if (_audioUnlocked) {
+        try { unlockAudioElements(); } catch (e) {}
+      }
+    }
     renderLeftRail();
     if (kind === 'video') loadVideoDuration(newAsset);
     else loadAudioDuration(newAsset);
@@ -8326,8 +8300,21 @@ function unlockAudioElements() {
 function syncAudioPlayback() {
   // For each placement, decide if it should be playing at view.curTimeMs
   for (const ap of state.audioPlacements) {
-    const el = _audioElements[ap.audioId];
-    if (!el) continue;
+    let el = _audioElements[ap.audioId];
+    if (!el) {
+      // v3.28b.27 BUGFIX: element missing — try to create it now if the audio
+      // exists in state. This catches cases where setupAudioElements() didn't
+      // run after an upload, or a saved project loaded audios out of order.
+      const audioAsset = state.audios.find(a => a.id === ap.audioId);
+      if (audioAsset) {
+        setupAudioElements();
+        el = _audioElements[ap.audioId];
+        if (el && _audioUnlocked) {
+          try { unlockAudioElements(); } catch(e) {}
+        }
+      }
+      if (!el) continue;
+    }
     const startMs = ap.startMs || 0;
     const endMs = startMs + (ap.durationMs || 0);
     const shouldPlay = view.isPlaying && view.curTimeMs >= startMs && view.curTimeMs < endMs;
