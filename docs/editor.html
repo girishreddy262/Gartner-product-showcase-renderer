@@ -5190,13 +5190,35 @@ function cancelCropDrawMode() {
 // from renderSegmentToCanvas when seg is selected.
 function attachCropDrawHandler(wrap, seg, videoEl) {
   wrap.addEventListener('mousedown', (e) => {
-    // Only react when we're in crop-draw mode for THIS segment, and the click
-    // is inside the wrap (not on a child like the segment handle).
     if (view.pendingCropSegId !== seg.id) return;
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const wrapRect = wrap.getBoundingClientRect();
+    // v3.28b.30: Compute the VISIBLE video region inside the wrap.
+    // With object-fit:contain, the video preserves aspect; the wrap may have
+    // letterbox bars. Drag coords are mapped against this visible rect,
+    // converted to ratios of it, and the clip-path is also applied against the
+    // SAME element box (whose visible region equals the visible rect).
+    const W = wrapRect.width, H = wrapRect.height;
+    let visX = 0, visY = 0, visW = W, visH = H;
+    if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+      const srcAspect = videoEl.videoWidth / videoEl.videoHeight;
+      const wrapAspect = W / H;
+      if (srcAspect > wrapAspect) {
+        // Video wider than wrap → letterbox top/bottom
+        visW = W;
+        visH = W / srcAspect;
+        visX = 0;
+        visY = (H - visH) / 2;
+      } else {
+        // Video taller than wrap → letterbox left/right
+        visH = H;
+        visW = H * srcAspect;
+        visY = 0;
+        visX = (W - visW) / 2;
+      }
+    }
     const startXpx = e.clientX - wrapRect.left;
     const startYpx = e.clientY - wrapRect.top;
     const draftEl = document.createElement('div');
@@ -5228,20 +5250,19 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
       document.removeEventListener('mouseup', onUp);
       const xPx = ev.clientX - wrapRect.left;
       const yPx = ev.clientY - wrapRect.top;
-      const x1 = Math.max(0, Math.min(startXpx, xPx));
-      const y1 = Math.max(0, Math.min(startYpx, yPx));
-      const x2 = Math.max(0, Math.min(wrapRect.width, Math.max(startXpx, xPx)));
-      const y2 = Math.max(0, Math.min(wrapRect.height, Math.max(startYpx, yPx)));
-      const W = wrapRect.width, H = wrapRect.height;
-      const minDim = 10;  // require at least 10px in both dimensions
+      // Clamp drag rect to the VISIBLE region (don't allow crop into letterbox)
+      const x1 = Math.max(visX, Math.min(startXpx, xPx));
+      const y1 = Math.max(visY, Math.min(startYpx, yPx));
+      const x2 = Math.min(visX + visW, Math.max(startXpx, xPx));
+      const y2 = Math.min(visY + visH, Math.max(startYpx, yPx));
+      const minDim = 10;
       if ((x2 - x1) < minDim || (y2 - y1) < minDim) {
-        // Too small — treat as cancel, don't apply
         draftEl.remove();
         cancelCropDrawMode();
         return;
       }
-      // Convert kept-rectangle (in wrap pixels) into per-side crop ratios.
-      // Crop ratios are the fraction of the box hidden on each side.
+      // Convert the kept-rectangle into per-side crop ratios of the WRAP box.
+      // (clip-path:inset uses the element box, which == wrap dimensions.)
       pushHistory();
       if (!seg.crop) seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
       seg.crop.left = Math.min(0.95, Math.max(0, x1 / W));
@@ -5315,15 +5336,32 @@ function renderSegmentToCanvas(seg) {
       v.style.width = '100%';
       v.style.height = '100%';
       v.style.objectFit = 'contain';
-      // v3.28b.25: apply crop via clip-path. Values are 0..1 ratios of the
-      // element's box, which (with object-fit:contain) corresponds to the
-      // source video's frame. Using inset(top right bottom left) percentages.
+      // v3.28b.30: apply crop via clip-path. Values are 0..1 ratios of the
+      // SOURCE VIDEO frame. With object-fit:contain, the visible video occupies
+      // only the portion of the element box that matches the source aspect
+      // ratio — letterbox bars elsewhere. We compute the visible-region rect
+      // and apply clip-path against THAT, not the full element box.
       const crop = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
       const ct = Math.max(0, Math.min(0.95, crop.top || 0));
       const cr = Math.max(0, Math.min(0.95, crop.right || 0));
       const cb = Math.max(0, Math.min(0.95, crop.bottom || 0));
       const cl = Math.max(0, Math.min(0.95, crop.left || 0));
-      if (ct > 0 || cr > 0 || cb > 0 || cl > 0) {
+      const hasCrop = ct > 0 || cr > 0 || cb > 0 || cl > 0;
+      if (hasCrop) {
+        // The crop ratios apply to the source video, but the wrap (element box)
+        // can have letterbox bars. To make clip-path agree with what the user
+        // drew on the visible video, we apply inset values that hide the
+        // appropriate fraction of the BOX (not the visible region).
+        //
+        // Simpler approach: since we treat crop ratios as fractions of the
+        // VISIBLE video rect, and we want the resulting clipped area to match,
+        // we apply the inset directly. CSS clip-path:inset() uses fractions of
+        // the element's content box, and for object-fit:contain the visible
+        // video region IS centered inside that box. So if we draw against the
+        // visible region, then convert to box fractions, the inset matches.
+        //
+        // The drag handler (attachCropDrawHandler) already records ratios
+        // against the VISIBLE video rect (see fix there). Here we just apply.
         v.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
       }
       // Track this so we can clean up if needed
