@@ -450,14 +450,9 @@
   .canvas-segment.editor-mode { cursor:move; }
   .canvas-segment.editor-mode:hover { outline:2px solid rgba(255,255,255,0.3); outline-offset:2px; }
   .canvas-segment.editor-mode.selected { outline:3px solid var(--accent); outline-offset:2px; }
-  /* v3.28b.25: crop handles — only visible when segment selected */
-  .crop-handle {
-    pointer-events: auto;
-    transition: background 0.1s;
-  }
-  .crop-handle:hover {
-    background: #fff !important;
-  }
+  /* v3.28b.28: when in crop-draw mode, show crosshair cursor over the segment */
+  .canvas-segment.crop-drawing { cursor:crosshair !important; }
+  .canvas-segment.crop-drawing video { pointer-events:none; }
   .canvas-segment video, .canvas-segment img {
     /* v3.28b.18: removed background:#000 — when a recording segment's video
        is scaled down (e.g. videoScale 0.7), the empty area inside the video
@@ -1726,7 +1721,11 @@ const view = {
   multiSelect: [],
   pxPerMs: 0.05, tlZoom: 1.0,
   canvasZoom: 1.0, canvasPanX: 0, canvasPanY: 0, fitScale: 1.0,
-  isPlaying: false, curTimeMs: 0, pendingEffect: null, pendingEffectSegId: null, tool: 'select'
+  isPlaying: false, curTimeMs: 0, pendingEffect: null, pendingEffectSegId: null,
+  // v3.28b.28: when set to a segment id, the next mousedown on that segment's
+  // wrap starts a drag-rectangle that sets seg.crop.
+  pendingCropSegId: null,
+  tool: 'select'
 };
 
 const state = {
@@ -3776,16 +3775,23 @@ function renderSegmentPanel(panel) {
         '<input type="checkbox" id="seg-frame" ' + (seg.showFrame ? 'checked' : '') + '>' +
         ' Show navy frame around video</label>' +
     '</div>' +
-    // v3.28b.26: crop — drag-only via canvas handles. Just a label + reset button here.
+    // v3.28b.28: crop — click "Crop area" then drag a rectangle on the video.
     (function() {
       const c = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
       const cropped = (c.top||0) + (c.right||0) + (c.bottom||0) + (c.left||0) > 0;
+      const drawing = view.pendingCropSegId === seg.id;
       return '<div class="align-section">' +
-        '<div class="align-label" style="display:flex;justify-content:space-between;align-items:center;">' +
-          '<span>Crop</span>' +
-          '<span style="font-size:11px;color:var(--text-dim);font-weight:400;">' + (cropped ? 'Cropped — drag blue edges on canvas' : 'Drag blue edges on the canvas') + '</span>' +
+        '<div class="align-label">Crop' +
+          (drawing ? ' <span style="color:#0183FF;font-weight:400;font-size:11px;">— drag on video</span>'
+           : cropped ? ' <span style="color:var(--text-dim);font-weight:400;font-size:11px;">— area set</span>'
+           : '') +
         '</div>' +
-        '<button id="seg-crop-reset" style="margin-top:6px;background:#2A2D34;border:1px solid var(--line-hover);color:#fff;padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;width:100%;' + (cropped ? '' : 'opacity:0.5;') + '">Reset crop</button>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">' +
+          '<button id="seg-crop-draw" style="background:' + (drawing ? '#0183FF' : '#2A2D34') + ';border:1px solid var(--line-hover);color:#fff;padding:8px 12px;border-radius:4px;font-size:12px;cursor:pointer;">' +
+            (drawing ? 'Drawing… (Esc to cancel)' : 'Crop area') +
+          '</button>' +
+          '<button id="seg-crop-reset" style="background:#2A2D34;border:1px solid var(--line-hover);color:#fff;padding:8px 12px;border-radius:4px;font-size:12px;cursor:pointer;' + (cropped ? '' : 'opacity:0.5;') + '">Reset</button>' +
+        '</div>' +
       '</div>';
     })() +
     '<div class="align-section">' +
@@ -4321,14 +4327,26 @@ function wireSegmentPanel(seg) {
       });
     }
     $('seg-frame').addEventListener('change', (e) => { pushHistory(); seg.showFrame = e.target.checked; rebuildCanvas(); });
-    // v3.28b.26: crop reset button only (inputs removed — pure drag-to-crop)
+    // v3.28b.28: crop draw + reset buttons
     (function() {
+      const draw = $('seg-crop-draw');
+      if (draw) draw.addEventListener('click', () => {
+        if (view.pendingCropSegId === seg.id) {
+          // Already drawing — toggle off
+          cancelCropDrawMode();
+          renderEditPanel();
+        } else {
+          activateCropDrawMode(seg);
+          renderEditPanel();
+        }
+      });
       const reset = $('seg-crop-reset');
       if (reset) reset.addEventListener('click', () => {
         pushHistory();
         seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+        cancelCropDrawMode();
         rebuildCanvas();
-        renderEditPanel();  // refresh the panel state
+        renderEditPanel();
       });
     })();
     // v3.28b.5: video scale slider — live update label, persist on change
@@ -5146,111 +5164,98 @@ function rebuildCanvas() {
   applyCanvasTransform();
 }
 
-// v3.28b.25: draw 4 draggable handles on the wrap (one per edge) for visual crop.
-// Each handle sits at the cropped edge of the displayed video. Dragging it
-// updates seg.crop.<side> and re-renders the canvas live.
-function attachCropHandles(wrap, seg, videoEl) {
-  if (!seg.crop) seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
-  const sides = ['top', 'right', 'bottom', 'left'];
-  for (const side of sides) {
-    const h = document.createElement('div');
-    h.className = 'crop-handle crop-handle-' + side;
-    h.dataset.side = side;
-    h.title = 'Drag to crop ' + side;
-    // Position via inline style — recalculated on every transform
-    positionCropHandle(h, side, seg);
-    // Drag logic
-    h.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      pushHistory();
-      const startX = e.clientX, startY = e.clientY;
-      const startCrop = { top: seg.crop.top || 0, right: seg.crop.right || 0, bottom: seg.crop.bottom || 0, left: seg.crop.left || 0 };
-      // Convert pixel deltas to ratio deltas. Need video display size on screen.
-      // wrap is in canvas-coords (1920x1080 space); the canvas itself is scaled
-      // by view.fitScale * view.canvasZoom on screen.
-      const effectiveScale = view.fitScale * view.canvasZoom;
-      const wrapRect = wrap.getBoundingClientRect();
-      // The wrap's screen size: (seg.width × effectiveScale) by (seg.height × effectiveScale)
-      // We're cropping in 0..1 ratios of the video's source frame, which fills the wrap.
-      // So a pixel drag of N pixels on screen = N / (wrapDisplayDim) ratio units.
-      const wrapWidthScreen = wrapRect.width;
-      const wrapHeightScreen = wrapRect.height;
-      const onMove = (ev) => {
-        const dxPx = ev.clientX - startX;
-        const dyPx = ev.clientY - startY;
-        // Convert pixel delta to ratio delta (0..1)
-        if (side === 'top') {
-          const r = startCrop.top + (dyPx / wrapHeightScreen);
-          seg.crop.top = Math.max(0, Math.min(0.95 - startCrop.bottom, r));
-        } else if (side === 'bottom') {
-          const r = startCrop.bottom - (dyPx / wrapHeightScreen);
-          seg.crop.bottom = Math.max(0, Math.min(0.95 - startCrop.top, r));
-        } else if (side === 'left') {
-          const r = startCrop.left + (dxPx / wrapWidthScreen);
-          seg.crop.left = Math.max(0, Math.min(0.95 - startCrop.right, r));
-        } else if (side === 'right') {
-          const r = startCrop.right - (dxPx / wrapWidthScreen);
-          seg.crop.right = Math.max(0, Math.min(0.95 - startCrop.left, r));
-        }
-        // Live update: clip-path on the video + reposition handle
-        applyCropClipPath(videoEl, seg);
-        positionCropHandle(h, side, seg);
-        // Update edit panel inputs if visible
-        updateCropEditPanelInputs(seg);
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-    wrap.appendChild(h);
-  }
+// v3.28b.28: draw-rectangle crop mode. When the user clicks "Crop area" in the
+// edit panel, we set view.pendingCropSegId. On the next mousedown over the
+// matching segment's video, we capture a drag-rectangle. On mouseup the
+// rectangle becomes the kept-area; everything outside is cropped.
+function activateCropDrawMode(seg) {
+  view.pendingCropSegId = seg.id;
+  $('status-text').textContent = 'Drag a rectangle on the video to set crop. (Esc to cancel)';
+  // Show a hint by changing cursor on the segment's wrap
+  document.querySelectorAll('.canvas-segment.recording').forEach(el => {
+    if (el.dataset.id === seg.id) el.classList.add('crop-drawing');
+  });
 }
 
-function positionCropHandle(h, side, seg) {
-  const c = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
-  // Each handle is a thin bar (8px) at the cropped edge. We position it in
-  // percentages of the wrap so it scales naturally with the segment box.
-  h.style.position = 'absolute';
-  h.style.background = 'rgba(1, 131, 255, 0.85)';
-  h.style.border = '1px solid #fff';
-  h.style.zIndex = '10';
-  h.style.cursor = (side === 'left' || side === 'right') ? 'ew-resize' : 'ns-resize';
-  if (side === 'top') {
-    h.style.top = ((c.top || 0) * 100).toFixed(2) + '%';
-    h.style.left = ((c.left || 0) * 100).toFixed(2) + '%';
-    h.style.right = ((c.right || 0) * 100).toFixed(2) + '%';
-    h.style.height = '8px';
-    h.style.marginTop = '-4px';
-    h.style.width = '';
-  } else if (side === 'bottom') {
-    h.style.bottom = ((c.bottom || 0) * 100).toFixed(2) + '%';
-    h.style.left = ((c.left || 0) * 100).toFixed(2) + '%';
-    h.style.right = ((c.right || 0) * 100).toFixed(2) + '%';
-    h.style.height = '8px';
-    h.style.marginBottom = '-4px';
-    h.style.top = '';
-    h.style.width = '';
-  } else if (side === 'left') {
-    h.style.left = ((c.left || 0) * 100).toFixed(2) + '%';
-    h.style.top = ((c.top || 0) * 100).toFixed(2) + '%';
-    h.style.bottom = ((c.bottom || 0) * 100).toFixed(2) + '%';
-    h.style.width = '8px';
-    h.style.marginLeft = '-4px';
-    h.style.right = '';
-    h.style.height = '';
-  } else if (side === 'right') {
-    h.style.right = ((c.right || 0) * 100).toFixed(2) + '%';
-    h.style.top = ((c.top || 0) * 100).toFixed(2) + '%';
-    h.style.bottom = ((c.bottom || 0) * 100).toFixed(2) + '%';
-    h.style.width = '8px';
-    h.style.marginRight = '-4px';
-    h.style.left = '';
-    h.style.height = '';
-  }
+function cancelCropDrawMode() {
+  view.pendingCropSegId = null;
+  $('status-text').textContent = 'Ready';
+  document.querySelectorAll('.canvas-segment.crop-drawing').forEach(el => el.classList.remove('crop-drawing'));
+  // Remove any leftover draft rectangle
+  const d = document.querySelector('.crop-draft-rect');
+  if (d) d.remove();
+}
+
+// Wire mousedown/move/up on a recording-segment wrap for draw-crop. Called
+// from renderSegmentToCanvas when seg is selected.
+function attachCropDrawHandler(wrap, seg, videoEl) {
+  wrap.addEventListener('mousedown', (e) => {
+    // Only react when we're in crop-draw mode for THIS segment, and the click
+    // is inside the wrap (not on a child like the segment handle).
+    if (view.pendingCropSegId !== seg.id) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const wrapRect = wrap.getBoundingClientRect();
+    const startXpx = e.clientX - wrapRect.left;
+    const startYpx = e.clientY - wrapRect.top;
+    const draftEl = document.createElement('div');
+    draftEl.className = 'crop-draft-rect';
+    draftEl.style.position = 'absolute';
+    draftEl.style.left = startXpx + 'px';
+    draftEl.style.top = startYpx + 'px';
+    draftEl.style.width = '0';
+    draftEl.style.height = '0';
+    draftEl.style.border = '2px dashed #0183FF';
+    draftEl.style.background = 'rgba(1, 131, 255, 0.1)';
+    draftEl.style.pointerEvents = 'none';
+    draftEl.style.zIndex = '20';
+    wrap.appendChild(draftEl);
+    const onMove = (ev) => {
+      const xPx = ev.clientX - wrapRect.left;
+      const yPx = ev.clientY - wrapRect.top;
+      const x1 = Math.min(startXpx, xPx);
+      const y1 = Math.min(startYpx, yPx);
+      const x2 = Math.max(startXpx, xPx);
+      const y2 = Math.max(startYpx, yPx);
+      draftEl.style.left = x1 + 'px';
+      draftEl.style.top = y1 + 'px';
+      draftEl.style.width = (x2 - x1) + 'px';
+      draftEl.style.height = (y2 - y1) + 'px';
+    };
+    const onUp = (ev) => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      const xPx = ev.clientX - wrapRect.left;
+      const yPx = ev.clientY - wrapRect.top;
+      const x1 = Math.max(0, Math.min(startXpx, xPx));
+      const y1 = Math.max(0, Math.min(startYpx, yPx));
+      const x2 = Math.max(0, Math.min(wrapRect.width, Math.max(startXpx, xPx)));
+      const y2 = Math.max(0, Math.min(wrapRect.height, Math.max(startYpx, yPx)));
+      const W = wrapRect.width, H = wrapRect.height;
+      const minDim = 10;  // require at least 10px in both dimensions
+      if ((x2 - x1) < minDim || (y2 - y1) < minDim) {
+        // Too small — treat as cancel, don't apply
+        draftEl.remove();
+        cancelCropDrawMode();
+        return;
+      }
+      // Convert kept-rectangle (in wrap pixels) into per-side crop ratios.
+      // Crop ratios are the fraction of the box hidden on each side.
+      pushHistory();
+      if (!seg.crop) seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+      seg.crop.left = Math.min(0.95, Math.max(0, x1 / W));
+      seg.crop.top = Math.min(0.95, Math.max(0, y1 / H));
+      seg.crop.right = Math.min(0.95, Math.max(0, (W - x2) / W));
+      seg.crop.bottom = Math.min(0.95, Math.max(0, (H - y2) / H));
+      draftEl.remove();
+      cancelCropDrawMode();
+      rebuildCanvas();
+      renderEditPanel();  // refresh hint text in panel
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 function applyCropClipPath(videoEl, seg) {
@@ -5268,9 +5273,7 @@ function applyCropClipPath(videoEl, seg) {
 }
 
 function updateCropEditPanelInputs(seg) {
-  // v3.28b.26: pixel inputs removed. No-op; drag handles update the canvas
-  // directly via positionCropHandle/applyCropClipPath, and the edit panel
-  // label refreshes on next renderEditPanel call (e.g. after pushHistory).
+  // v3.28b.26: pixel inputs removed. No-op kept for backwards-call safety.
 }
 
 function renderSegmentToCanvas(seg) {
@@ -5371,9 +5374,11 @@ function renderSegmentToCanvas(seg) {
       });
       // Time update sync — if user scrubs, the video tag's currentTime gets updated each rebuildCanvas
       wrap.appendChild(v);
-      // v3.28b.25: visual crop drag handles (only when seg is selected)
+      // v3.28b.28: attach the draw-crop mousedown handler. The handler only
+      // ACTS when view.pendingCropSegId matches this seg's id (set by the
+      // "Crop area" button). Otherwise it's a no-op and click-to-select works.
       if (view.selectedId === seg.id) {
-        attachCropHandles(wrap, seg, v);
+        attachCropDrawHandler(wrap, seg, v);
       }
     }
   } else if (seg.kind === 'slide-intro') {
@@ -8110,6 +8115,13 @@ function setupKeyboard() {
         view.pendingEffectSegId = null;
         $('status-text').textContent = 'Ready';
         $('stageViewport').classList.remove('placing-effect');
+        return;
+      }
+      // v3.28b.28: cancel crop-draw mode
+      if (view.pendingCropSegId) {
+        e.preventDefault();
+        cancelCropDrawMode();
+        renderEditPanel();
         return;
       }
       if (view.tool === 'cut') {
