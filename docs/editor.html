@@ -47,6 +47,29 @@
   .right-rail { grid-area:right; background:var(--panel); overflow-y:auto; }
   .timeline-zone { grid-area:timeline; background:var(--panel); overflow:hidden; }
 
+  /* v3.28b.20: rail collapse — when .rail-collapsed is on .app, the left
+     column shrinks to 0 and the center stretches into its space. Smooth
+     transition. The expand button (floating) appears for re-opening. */
+  .app.rail-collapsed { grid-template-columns:0 1fr 320px; }
+  .app.rail-collapsed .left-rail { display:none; }
+  .rail-collapse-btn {
+    position:sticky; top:0; right:0; z-index:5;
+    background:#2A2D34; border:1px solid var(--line-hover); color:#fff;
+    width:24px; height:24px; border-radius:4px; cursor:pointer;
+    font-size:18px; line-height:1; padding:0; float:right;
+    transition:background 0.15s;
+  }
+  .rail-collapse-btn:hover { background:var(--line-hover); }
+  .rail-expand-btn {
+    position:absolute; left:8px; top:50%; transform:translateY(-50%);
+    background:rgba(31, 138, 255, 0.85); border:1px solid var(--accent);
+    color:#fff; width:28px; height:48px; border-radius:0 6px 6px 0;
+    cursor:pointer; font-size:18px; line-height:1; padding:0; z-index:10;
+    box-shadow:2px 0 8px rgba(0,0,0,0.3);
+    transition:background 0.15s;
+  }
+  .rail-expand-btn:hover { background:var(--accent); }
+
   .header { display:flex; align-items:center; justify-content:space-between; padding:0 20px; }
   .h-title { font-size:16px; font-weight:700; }
   .h-title small { color:var(--text-dim); font-weight:400; margin-left:8px; font-size:13px; }
@@ -334,6 +357,8 @@
   .tl-block.audio-block { background:linear-gradient(180deg, var(--audio-color), #6D28D9); }
   .tl-block.callout-block { background:linear-gradient(180deg, #FFE17A, #FDDB5D); color:var(--navy-900); }
   .tl-block.callout-block.selected { box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 0 2px var(--navy-900); }
+  /* v3.28b.20: vivid pink so customer card blocks don't blend into navy timeline */
+  .tl-block.customercard-block { background:linear-gradient(180deg, #EC4899, #BE185D); color:#fff; }
   .tl-block.zoom-block { background:linear-gradient(180deg, #FFB84D, #FF9500); color:#1A1D24; }
   .tl-block.spotlight-block { background:linear-gradient(180deg, #FFD43B, #FFA500); color:#1A1D24; }
   .tl-block-handle {
@@ -1222,7 +1247,9 @@
     </div>
   </div>
 
-  <div class="left-rail">
+  <div class="left-rail" id="leftRail">
+    <!-- v3.28b.20: collapse button gives canvas more horizontal space -->
+    <button class="rail-collapse-btn" id="btnRailCollapse" title="Hide left rail (gives more canvas space)" aria-label="Collapse left rail">‹</button>
     <div class="rail-section">
       <h3>Slides</h3>
       <button class="add-slide-btn" id="btnAddSlide">+ Add Slide</button>
@@ -1317,17 +1344,13 @@
   </div>
 
   <div class="center-zone">
+    <!-- v3.28b.20: floating expand button shown when rail is collapsed -->
+    <button class="rail-expand-btn" id="btnRailExpand" title="Show left rail" aria-label="Expand left rail" style="display:none;">›</button>
     <div class="stage-wrap">
       <div class="stage-meta">
         <span>Canvas: <strong>1920×1080</strong></span>
         <span id="canvas-info" style="flex:1; text-align:center; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">No segment active</span>
-        <div class="stage-zoom-controls" title="Cmd+scroll to zoom canvas">
-          <button id="btnZoomOut" title="Zoom out (−)">−</button>
-          <span class="zoom-display" id="zoomDisplay">100%</span>
-          <button id="btnZoomIn" title="Zoom in (+)">+</button>
-          <button id="btnZoomFit" class="fit-btn" title="Fit canvas to viewport">Fit</button>
-          <button id="btnZoomReset" class="fit-btn" title="Reset zoom (0)">100%</button>
-        </div>
+        <!-- v3.28b.20: canvas zoom controls removed (caused confusion, not needed) -->
       </div>
       <div class="stage-viewport" id="stageViewport">
         <div class="stage" id="stage">
@@ -1359,19 +1382,13 @@
         <span class="label">Total length:</span>
         <span class="total-length" id="totalLength">0:00</span>
       </div>
-      <div class="meta-pill" id="segmentCountPill">0 segments</div>
-      <div class="meta-pill" id="audioCountPill">0 audios placed</div>
-      <div class="meta-pill" id="calloutCountPill">0 callouts</div>
-      <div class="meta-pill" id="effectCountPill">0 effects</div>
-      <div class="meta-pill" id="textOverlayCountPill">0 texts</div>
+      <!-- v3.28b.20: count pills (segments/audios/callouts/effects/texts) removed -->
     </div>
     <div class="tl-controls">
       <div class="tl-time">
         <strong id="curTime">0:00</strong> / <span id="totalTime">0:00</span>
       </div>
-      <div class="tl-shortcut-hint">
-        <kbd>Space</kbd> play/pause &nbsp;·&nbsp; <kbd>Cmd</kbd>+scroll zoom &nbsp;·&nbsp; <kbd>Del</kbd> delete selected
-      </div>
+      <!-- v3.28b.20: shortcut hint removed for cleaner timeline -->
       <div class="tl-zoom-controls" title="Cmd+scroll on timeline to zoom">
         <button id="tlZoomOut" title="Zoom out timeline">−</button>
         <span class="zoom-display" id="tlZoomDisplay">1.0×</span>
@@ -2646,7 +2663,9 @@ function applyCanvasTransform() {
     frameLayer.style.transition = '';
   }
   viewport.classList.toggle('zoomed', view.canvasZoom > 1 || inZoomEffect);
-  $('zoomDisplay').textContent = Math.round(view.canvasZoom * 100) + '%';
+  // v3.28b.20: zoomDisplay element removed; guard the assignment
+  const zd = $('zoomDisplay');
+  if (zd) zd.textContent = Math.round(view.canvasZoom * 100) + '%';
 }
 
 // Flag to preview zoom effect when user clicks on it (in editor, even when paused)
@@ -3738,8 +3757,13 @@ function renderSegmentPanel(panel) {
     '</div>' +
     '<div class="form-row">' +
       '<label class="checkbox-label">' +
-        '<input type="checkbox" id="seg-mute" ' + (seg.muteSourceAudio !== false ? 'checked' : '') + '>' +
-        ' Mute source audio</label>' +
+        '<input type="checkbox" id="seg-use-audio" ' + (seg.muteSourceAudio === false ? 'checked' : '') + '>' +
+        ' Use source audio</label>' +
+    '</div>' +
+    // v3.28b.20: when source audio is on, allow per-segment volume 0-200%
+    '<div class="form-row" id="seg-volume-row" style="' + (seg.muteSourceAudio === false ? '' : 'display:none;') + '">' +
+      '<label>Volume <span id="seg-volume-val">' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '%</span></label>' +
+      '<input type="range" id="seg-volume" min="0" max="100" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
     '</div>' +
     '<div class="form-row">' +
       '<label class="checkbox-label">' +
@@ -4256,7 +4280,28 @@ function wireSegmentPanel(seg) {
     $('seg-y').addEventListener('change', (e) => { pushHistory(); seg.y = Math.round(parseFloat(e.target.value) || 0); rebuildAll(); });
     $('seg-w').addEventListener('change', (e) => { pushHistory(); seg.width = Math.max(50, Math.round(parseFloat(e.target.value) || 0)); rebuildAll(); });
     $('seg-h').addEventListener('change', (e) => { pushHistory(); seg.height = Math.max(50, Math.round(parseFloat(e.target.value) || 0)); rebuildAll(); });
-    $('seg-mute').addEventListener('change', (e) => { pushHistory(); seg.muteSourceAudio = e.target.checked; });
+    // v3.28b.20: source audio toggle + volume slider
+    $('seg-use-audio').addEventListener('change', (e) => {
+      pushHistory();
+      seg.muteSourceAudio = !e.target.checked;
+      // show/hide volume slider row
+      const row = document.getElementById('seg-volume-row');
+      if (row) row.style.display = e.target.checked ? '' : 'none';
+      rebuildCanvas();  // re-apply volume on the video element
+    });
+    const _vol = document.getElementById('seg-volume');
+    const _volLbl = document.getElementById('seg-volume-val');
+    if (_vol) {
+      _vol.addEventListener('input', (e) => {
+        // live update label
+        if (_volLbl) _volLbl.textContent = e.target.value + '%';
+      });
+      _vol.addEventListener('change', (e) => {
+        pushHistory();
+        seg.audioVolume = (parseInt(e.target.value, 10) || 100) / 100;
+        rebuildCanvas();
+      });
+    }
     $('seg-frame').addEventListener('change', (e) => { pushHistory(); seg.showFrame = e.target.checked; rebuildCanvas(); });
     // v3.28b.5: video scale slider — live update label, persist on change
     const _vsInput = $('seg-videoscale');
@@ -4669,11 +4714,7 @@ function rebuildTimeline() {
   const totalMs = getTotalDurationMs();
   $('totalLength').textContent = fmtTime(totalMs);
   $('totalTime').textContent = fmtTime(totalMs);
-  $('segmentCountPill').textContent = state.segments.length + ' segment' + (state.segments.length===1?'':'s');
-  $('audioCountPill').textContent = state.audioPlacements.length + ' audio' + (state.audioPlacements.length===1?'':'s') + ' placed';
-  $('calloutCountPill').textContent = state.callouts.length + ' callout' + (state.callouts.length===1?'':'s');
-  $('effectCountPill').textContent = state.effects.length + ' effect' + (state.effects.length===1?'':'s');
-  $('textOverlayCountPill').textContent = state.textOverlays.length + ' text' + (state.textOverlays.length===1?'':'s');
+  // v3.28b.20: count pills removed from UI
 }
 
 function rebuildRuler(width) {
@@ -5091,7 +5132,17 @@ function renderSegmentToCanvas(seg) {
       wrap.style.background = '#002B54';
       const v = document.createElement('video');
       v.src = video.url;
-      v.muted = true;
+      // v3.28b.20: respect per-segment audio settings. Mute if muteSourceAudio
+      // is true (default) OR if global audio is off. Otherwise apply volume.
+      if (seg.muteSourceAudio !== false) {
+        v.muted = true;
+      } else {
+        v.muted = false;
+        const vol = (seg.audioVolume != null) ? seg.audioVolume : 1.0;
+        // HTMLMediaElement.volume only accepts 0-1, so clamp; if user wants
+        // >100% volume we can't truly amplify without WebAudio, but we cap.
+        v.volume = Math.max(0, Math.min(1, vol));
+      }
       v.playsInline = true;
       v.preload = 'metadata';
       // v3.28b.18: no crossOrigin — fixes Windows preview failures
@@ -7020,21 +7071,7 @@ function setupCanvasPan() {
     panning = false;
     viewport.classList.remove('panning');
   });
-  // v3.28b.17: Cmd/Ctrl + wheel anywhere inside the canvas viewport zooms the canvas.
-  // Bound on `document` in CAPTURE phase with a rect hit-test, so the handler
-  // fires before any child element can swallow it AND we still preventDefault()
-  // before the browser interprets Cmd+wheel as page zoom.
-  document.addEventListener('wheel', (e) => {
-    if (!e.metaKey && !e.ctrlKey) return;
-    // Hit-test: is the cursor inside the canvas viewport rect?
-    const rect = viewport.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX > rect.right ||
-        e.clientY < rect.top  || e.clientY > rect.bottom) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const delta = -e.deltaY * 0.002;
-    setCanvasZoom(view.canvasZoom + delta, e.clientX, e.clientY);
-  }, { passive: false, capture: true });
+  // v3.28b.20: canvas wheel-zoom handler removed (zoom feature retired)
 }
 
 function setupTimelineWheelZoom() {
@@ -7052,7 +7089,8 @@ let _clipboard = null;
 
 function copySelectedItem() {
   if (!view.selectedId) return;
-  // Try segments, callouts, textOverlays, customerCards in order
+  // v3.28b.20: universal — segments (recording + slides), callouts,
+  // textOverlays, customerCards, audioPlacements
   let item = state.segments.find(s => s.id === view.selectedId);
   let kind = 'segment';
   if (!item) {
@@ -7067,16 +7105,16 @@ function copySelectedItem() {
     item = (state.customerCards || []).find(c => c.id === view.selectedId);
     if (item) kind = 'customerCard';
   }
-  if (!item) return;
-  // Don't allow copying recording segments (they reference videoId — duplication is ambiguous)
-  if (kind === 'segment' && item.kind === 'recording') {
-    showToast('Cannot copy video segments', 'warning');
-    return;
+  if (!item) {
+    item = (state.audioPlacements || []).find(a => a.id === view.selectedId);
+    if (item) kind = 'audioPlacement';
   }
+  if (!item) return;
   _clipboard = { kind, data: JSON.parse(JSON.stringify(item)) };
-  const label = kind === 'segment' ? (item.title || 'Slide')
+  const label = kind === 'segment' ? (item.kind === 'recording' ? 'Video segment' : (item.title || 'Slide'))
     : (kind === 'callout' ? 'Callout'
-    : (kind === 'textOverlay' ? 'Text' : 'Customer Card'));
+    : (kind === 'textOverlay' ? 'Text'
+    : (kind === 'audioPlacement' ? 'Audio clip' : 'Customer Card')));
   showToast('Copied: ' + label, 'success');
 }
 
@@ -7087,14 +7125,13 @@ function pasteClipboardAtPlayhead() {
   }
   pushHistory();
   const dropMs = Math.round(view.curTimeMs || 0);
-  // Deep-clone the stored data and assign a new id
   const fresh = JSON.parse(JSON.stringify(_clipboard.data));
   const idPrefix = _clipboard.kind === 'segment' ? 'seg'
     : (_clipboard.kind === 'callout' ? 'co'
-    : (_clipboard.kind === 'textOverlay' ? 'to' : 'cc'));
+    : (_clipboard.kind === 'textOverlay' ? 'to'
+    : (_clipboard.kind === 'audioPlacement' ? 'ap' : 'cc')));
   fresh.id = uid(idPrefix);
   fresh.startMs = dropMs;
-  // Make sure each nested object with an id gets a fresh id too
   ['rows', 'columns', 'bullets', 'statPills', 'customerStats'].forEach(k => {
     if (Array.isArray(fresh[k])) {
       fresh[k].forEach(item => { if (item && item.id) item.id = uid(k.slice(0, 3)); });
@@ -7110,8 +7147,13 @@ function pasteClipboardAtPlayhead() {
   } else if (_clipboard.kind === 'customerCard') {
     if (!state.customerCards) state.customerCards = [];
     state.customerCards.push(fresh);
+  } else if (_clipboard.kind === 'audioPlacement') {
+    if (!state.audioPlacements) state.audioPlacements = [];
+    state.audioPlacements.push(fresh);
   }
   view.selectedId = fresh.id;
+  // v3.28b.20: also set selectedKind so the edit panel rerenders correctly
+  view.selectedKind = (_clipboard.kind === 'audioPlacement') ? 'audio' : _clipboard.kind;
   rebuildAll();
   renderEditPanel();
   showToast('Pasted at ' + (dropMs / 1000).toFixed(1) + 's', 'success');
@@ -7620,6 +7662,7 @@ function cutVideoSegment(seg, atTimelineMs) {
     durationMs: Math.round(secondDur),
     x: seg.x, y: seg.y, width: seg.width, height: seg.height,
     scale: seg.scale, muteSourceAudio: seg.muteSourceAudio, showFrame: seg.showFrame,
+    audioVolume: seg.audioVolume,
     videoScale: seg.videoScale,
     speed: speed,
     sourceStartMs: Math.round(sourceStartMs + sourceOffsetAtCut)
@@ -7886,10 +7929,7 @@ function setupHeader() {
   $('btnSaveProject').addEventListener('click', saveProjectToCloud);
   $('btnDownloadProject').addEventListener('click', saveProjectToFile);
   $('btnOpenProject').addEventListener('click', openProjectFromFile);
-  $('btnZoomIn').addEventListener('click', () => setCanvasZoom(view.canvasZoom * 1.25));
-  $('btnZoomOut').addEventListener('click', () => setCanvasZoom(view.canvasZoom / 1.25));
-  $('btnZoomReset').addEventListener('click', () => setCanvasZoom(1.0));
-  $('btnZoomFit').addEventListener('click', fitCanvasToViewport);
+  // v3.28b.20: zoom button bindings removed (buttons no longer in DOM)
   $('tlZoomIn').addEventListener('click', () => setTimelineZoom(view.tlZoom * 1.25));
   $('tlZoomOut').addEventListener('click', () => setTimelineZoom(view.tlZoom / 1.25));
   $('tlZoomFit').addEventListener('click', fitTimelineToTotalLength);
@@ -8077,6 +8117,34 @@ async function init() {
   setupEffectPlacement();
   setupCutIndicator();
   setupAudioElements();
+  // v3.28b.20: rail collapse buttons
+  const app = document.querySelector('.app');
+  const btnCollapse = document.getElementById('btnRailCollapse');
+  const btnExpand = document.getElementById('btnRailExpand');
+  // Restore prior collapse state from localStorage
+  try {
+    if (localStorage.getItem('railCollapsed') === '1') {
+      app.classList.add('rail-collapsed');
+      if (btnExpand) btnExpand.style.display = '';
+    }
+  } catch (e) {}
+  if (btnCollapse) {
+    btnCollapse.addEventListener('click', () => {
+      app.classList.add('rail-collapsed');
+      if (btnExpand) btnExpand.style.display = '';
+      try { localStorage.setItem('railCollapsed', '1'); } catch (e) {}
+      // Re-fit canvas because center grew wider
+      setTimeout(() => { if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport(); }, 50);
+    });
+  }
+  if (btnExpand) {
+    btnExpand.addEventListener('click', () => {
+      app.classList.remove('rail-collapsed');
+      btnExpand.style.display = 'none';
+      try { localStorage.setItem('railCollapsed', '0'); } catch (e) {}
+      setTimeout(() => { if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport(); }, 50);
+    });
+  }
   // v3.28b.18: Unlock audio elements on the FIRST user gesture anywhere on the
   // page (not just the Play button). Many users click around (timeline, edit
   // panel) before pressing Play. Without an early unlock, Windows Chrome

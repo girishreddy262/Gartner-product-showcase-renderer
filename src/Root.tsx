@@ -52,6 +52,8 @@ const RecordingComp: React.FC<{
           startFrom={Math.round(sourceStartSec * FPS)}
           playbackRate={seg.speed || 1.0}
           muted={seg.muteSourceAudio !== false}
+          /* v3.28b.20: per-segment volume when source audio is enabled */
+          volume={seg.muteSourceAudio === false ? (seg.audioVolume != null ? seg.audioVolume : 1.0) : 0}
           style={{
             width: '100%', height: '100%', objectFit: 'contain',
             transform: videoScale !== 1.0 ? `scale(${videoScale})` : 'none',
