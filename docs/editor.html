@@ -450,6 +450,14 @@
   .canvas-segment.editor-mode { cursor:move; }
   .canvas-segment.editor-mode:hover { outline:2px solid rgba(255,255,255,0.3); outline-offset:2px; }
   .canvas-segment.editor-mode.selected { outline:3px solid var(--accent); outline-offset:2px; }
+  /* v3.28b.25: crop handles — only visible when segment selected */
+  .crop-handle {
+    pointer-events: auto;
+    transition: background 0.1s;
+  }
+  .crop-handle:hover {
+    background: #fff !important;
+  }
   .canvas-segment video, .canvas-segment img {
     /* v3.28b.18: removed background:#000 — when a recording segment's video
        is scaled down (e.g. videoScale 0.7), the empty area inside the video
@@ -2871,6 +2879,9 @@ async function addVideoSegment(videoId, startMs) {
   const dur = videoDurations[videoId] || DEFAULT_VIDEO_DURATION_MS;
   const seg = { id: uid('seg'), kind: 'recording', videoId, startMs: Math.round(startMs || 0), durationMs: dur,
     x: 0, y: 0, width: CANVAS_W, height: CANVAS_H, scale: 1.0, muteSourceAudio: true, showFrame: true, videoScale: 1.0,
+    // v3.28b.25: per-side crop as 0..1 ratios of source dimensions.
+    // UI converts to pixels using video.videoWidth/videoHeight on load.
+    crop: { top: 0, right: 0, bottom: 0, left: 0 },
     speed: 1.0, sourceStartMs: 0 };
   state.segments.push(seg); setSelected(seg.id, 'segment'); rebuildAll();
   // Lazy-load real duration in background, then update segment if user hasn't manually changed it
@@ -3765,6 +3776,25 @@ function renderSegmentPanel(panel) {
         '<input type="checkbox" id="seg-frame" ' + (seg.showFrame ? 'checked' : '') + '>' +
         ' Show navy frame around video</label>' +
     '</div>' +
+    // v3.28b.25: crop controls — per-side, in source-video pixels
+    (function() {
+      const crop = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+      // Use a placeholder source size that gets updated when video metadata loads
+      // We'll read videoWidth/videoHeight from _activeVideoElement at render time
+      // For initial display: assume 1920x1080 if we don't yet know
+      const srcW = (seg._srcW || 1920), srcH = (seg._srcH || 1080);
+      const px = (ratio, dim) => Math.round((ratio || 0) * dim);
+      return '<div class="align-section">' +
+        '<div class="align-label">Crop (pixels of source <span id="seg-crop-srcdims" style="color:var(--text-dim);font-weight:400;">' + srcW + '×' + srcH + '</span>)</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">' +
+          '<label style="font-size:11px;color:var(--text-dim);">Top<input type="number" id="seg-crop-top" min="0" step="1" value="' + px(crop.top, srcH) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
+          '<label style="font-size:11px;color:var(--text-dim);">Right<input type="number" id="seg-crop-right" min="0" step="1" value="' + px(crop.right, srcW) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
+          '<label style="font-size:11px;color:var(--text-dim);">Bottom<input type="number" id="seg-crop-bottom" min="0" step="1" value="' + px(crop.bottom, srcH) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
+          '<label style="font-size:11px;color:var(--text-dim);">Left<input type="number" id="seg-crop-left" min="0" step="1" value="' + px(crop.left, srcW) + '" style="width:100%;background:#1a1d24;color:#fff;border:1px solid #333;border-radius:4px;padding:6px 8px;margin-top:2px;"></label>' +
+        '</div>' +
+        '<button id="seg-crop-reset" style="margin-top:8px;background:#2A2D34;border:1px solid var(--line-hover);color:#fff;padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;width:100%;">Reset crop</button>' +
+      '</div>';
+    })() +
     '<div class="align-section">' +
       '<div class="align-label">Video scale: <span id="seg-videoscale-val" style="font-weight:700;color:#0183FF;">' + Math.round((seg.videoScale != null ? seg.videoScale : 1.0) * 100) + '%</span></div>' +
       '<input type="range" id="seg-videoscale" min="50" max="150" step="1" value="' + Math.round((seg.videoScale != null ? seg.videoScale : 1.0) * 100) + '" style="width:100%;">' +
@@ -4298,6 +4328,36 @@ function wireSegmentPanel(seg) {
       });
     }
     $('seg-frame').addEventListener('change', (e) => { pushHistory(); seg.showFrame = e.target.checked; rebuildCanvas(); });
+    // v3.28b.25: crop input handlers. Convert pixel values to ratios using
+    // source video dimensions (which may not be loaded yet — falls back to 1920x1080).
+    (function() {
+      function applyCropFromInputs() {
+        if (!seg.crop) seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+        const srcW = seg._srcW || 1920, srcH = seg._srcH || 1080;
+        const t = Math.max(0, parseFloat($('seg-crop-top').value) || 0);
+        const r = Math.max(0, parseFloat($('seg-crop-right').value) || 0);
+        const b = Math.max(0, parseFloat($('seg-crop-bottom').value) || 0);
+        const l = Math.max(0, parseFloat($('seg-crop-left').value) || 0);
+        seg.crop.top = Math.min(0.95, t / srcH);
+        seg.crop.right = Math.min(0.95, r / srcW);
+        seg.crop.bottom = Math.min(0.95, b / srcH);
+        seg.crop.left = Math.min(0.95, l / srcW);
+        rebuildCanvas();
+      }
+      ['seg-crop-top', 'seg-crop-right', 'seg-crop-bottom', 'seg-crop-left'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener('input', applyCropFromInputs);
+        el.addEventListener('change', () => pushHistory());
+      });
+      const reset = $('seg-crop-reset');
+      if (reset) reset.addEventListener('click', () => {
+        pushHistory();
+        seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+        rebuildCanvas();
+        renderEditPanel();  // re-render to update input values
+      });
+    })();
     // v3.28b.5: video scale slider — live update label, persist on change
     const _vsInput = $('seg-videoscale');
     const _vsLabel = $('seg-videoscale-val');
@@ -5113,6 +5173,140 @@ function rebuildCanvas() {
   applyCanvasTransform();
 }
 
+// v3.28b.25: draw 4 draggable handles on the wrap (one per edge) for visual crop.
+// Each handle sits at the cropped edge of the displayed video. Dragging it
+// updates seg.crop.<side> and re-renders the canvas live.
+function attachCropHandles(wrap, seg, videoEl) {
+  if (!seg.crop) seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+  const sides = ['top', 'right', 'bottom', 'left'];
+  for (const side of sides) {
+    const h = document.createElement('div');
+    h.className = 'crop-handle crop-handle-' + side;
+    h.dataset.side = side;
+    h.title = 'Drag to crop ' + side;
+    // Position via inline style — recalculated on every transform
+    positionCropHandle(h, side, seg);
+    // Drag logic
+    h.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      pushHistory();
+      const startX = e.clientX, startY = e.clientY;
+      const startCrop = { top: seg.crop.top || 0, right: seg.crop.right || 0, bottom: seg.crop.bottom || 0, left: seg.crop.left || 0 };
+      // Convert pixel deltas to ratio deltas. Need video display size on screen.
+      // wrap is in canvas-coords (1920x1080 space); the canvas itself is scaled
+      // by view.fitScale * view.canvasZoom on screen.
+      const effectiveScale = view.fitScale * view.canvasZoom;
+      const wrapRect = wrap.getBoundingClientRect();
+      // The wrap's screen size: (seg.width × effectiveScale) by (seg.height × effectiveScale)
+      // We're cropping in 0..1 ratios of the video's source frame, which fills the wrap.
+      // So a pixel drag of N pixels on screen = N / (wrapDisplayDim) ratio units.
+      const wrapWidthScreen = wrapRect.width;
+      const wrapHeightScreen = wrapRect.height;
+      const onMove = (ev) => {
+        const dxPx = ev.clientX - startX;
+        const dyPx = ev.clientY - startY;
+        // Convert pixel delta to ratio delta (0..1)
+        if (side === 'top') {
+          const r = startCrop.top + (dyPx / wrapHeightScreen);
+          seg.crop.top = Math.max(0, Math.min(0.95 - startCrop.bottom, r));
+        } else if (side === 'bottom') {
+          const r = startCrop.bottom - (dyPx / wrapHeightScreen);
+          seg.crop.bottom = Math.max(0, Math.min(0.95 - startCrop.top, r));
+        } else if (side === 'left') {
+          const r = startCrop.left + (dxPx / wrapWidthScreen);
+          seg.crop.left = Math.max(0, Math.min(0.95 - startCrop.right, r));
+        } else if (side === 'right') {
+          const r = startCrop.right - (dxPx / wrapWidthScreen);
+          seg.crop.right = Math.max(0, Math.min(0.95 - startCrop.left, r));
+        }
+        // Live update: clip-path on the video + reposition handle
+        applyCropClipPath(videoEl, seg);
+        positionCropHandle(h, side, seg);
+        // Update edit panel inputs if visible
+        updateCropEditPanelInputs(seg);
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    wrap.appendChild(h);
+  }
+}
+
+function positionCropHandle(h, side, seg) {
+  const c = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+  // Each handle is a thin bar (8px) at the cropped edge. We position it in
+  // percentages of the wrap so it scales naturally with the segment box.
+  h.style.position = 'absolute';
+  h.style.background = 'rgba(1, 131, 255, 0.85)';
+  h.style.border = '1px solid #fff';
+  h.style.zIndex = '10';
+  h.style.cursor = (side === 'left' || side === 'right') ? 'ew-resize' : 'ns-resize';
+  if (side === 'top') {
+    h.style.top = ((c.top || 0) * 100).toFixed(2) + '%';
+    h.style.left = ((c.left || 0) * 100).toFixed(2) + '%';
+    h.style.right = ((c.right || 0) * 100).toFixed(2) + '%';
+    h.style.height = '8px';
+    h.style.marginTop = '-4px';
+    h.style.width = '';
+  } else if (side === 'bottom') {
+    h.style.bottom = ((c.bottom || 0) * 100).toFixed(2) + '%';
+    h.style.left = ((c.left || 0) * 100).toFixed(2) + '%';
+    h.style.right = ((c.right || 0) * 100).toFixed(2) + '%';
+    h.style.height = '8px';
+    h.style.marginBottom = '-4px';
+    h.style.top = '';
+    h.style.width = '';
+  } else if (side === 'left') {
+    h.style.left = ((c.left || 0) * 100).toFixed(2) + '%';
+    h.style.top = ((c.top || 0) * 100).toFixed(2) + '%';
+    h.style.bottom = ((c.bottom || 0) * 100).toFixed(2) + '%';
+    h.style.width = '8px';
+    h.style.marginLeft = '-4px';
+    h.style.right = '';
+    h.style.height = '';
+  } else if (side === 'right') {
+    h.style.right = ((c.right || 0) * 100).toFixed(2) + '%';
+    h.style.top = ((c.top || 0) * 100).toFixed(2) + '%';
+    h.style.bottom = ((c.bottom || 0) * 100).toFixed(2) + '%';
+    h.style.width = '8px';
+    h.style.marginRight = '-4px';
+    h.style.left = '';
+    h.style.height = '';
+  }
+}
+
+function applyCropClipPath(videoEl, seg) {
+  if (!videoEl) return;
+  const c = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+  const ct = Math.max(0, Math.min(0.95, c.top || 0));
+  const cr = Math.max(0, Math.min(0.95, c.right || 0));
+  const cb = Math.max(0, Math.min(0.95, c.bottom || 0));
+  const cl = Math.max(0, Math.min(0.95, c.left || 0));
+  if (ct > 0 || cr > 0 || cb > 0 || cl > 0) {
+    videoEl.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
+  } else {
+    videoEl.style.clipPath = '';
+  }
+}
+
+function updateCropEditPanelInputs(seg) {
+  if (view.selectedId !== seg.id) return;
+  const srcW = seg._srcW || 1920, srcH = seg._srcH || 1080;
+  const t = document.getElementById('seg-crop-top');
+  const r = document.getElementById('seg-crop-right');
+  const b = document.getElementById('seg-crop-bottom');
+  const l = document.getElementById('seg-crop-left');
+  if (t) t.value = Math.round((seg.crop.top || 0) * srcH);
+  if (r) r.value = Math.round((seg.crop.right || 0) * srcW);
+  if (b) b.value = Math.round((seg.crop.bottom || 0) * srcH);
+  if (l) l.value = Math.round((seg.crop.left || 0) * srcW);
+}
+
 function renderSegmentToCanvas(seg) {
   const wrap = document.createElement('div');
   wrap.className = 'canvas-segment editor-mode' + (isRecordingSegment(seg) ? ' recording' : '');
@@ -5152,10 +5346,34 @@ function renderSegmentToCanvas(seg) {
       v.style.width = '100%';
       v.style.height = '100%';
       v.style.objectFit = 'contain';
+      // v3.28b.25: apply crop via clip-path. Values are 0..1 ratios of the
+      // element's box, which (with object-fit:contain) corresponds to the
+      // source video's frame. Using inset(top right bottom left) percentages.
+      const crop = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+      const ct = Math.max(0, Math.min(0.95, crop.top || 0));
+      const cr = Math.max(0, Math.min(0.95, crop.right || 0));
+      const cb = Math.max(0, Math.min(0.95, crop.bottom || 0));
+      const cl = Math.max(0, Math.min(0.95, crop.left || 0));
+      if (ct > 0 || cr > 0 || cb > 0 || cl > 0) {
+        v.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
+      }
       // Track this so we can clean up if needed
       _activeVideoElement = v;
       // Apply playback speed (default 1.0)
       v.playbackRate = seg.speed || 1.0;
+      // v3.28b.25: capture source dimensions so the crop UI can show real pixels
+      v.addEventListener('loadedmetadata', () => {
+        if (v.videoWidth && v.videoHeight) {
+          // Stash on the seg AND on the asset for future segments using same video
+          seg._srcW = v.videoWidth;
+          seg._srcH = v.videoHeight;
+          // If user has the edit panel open for THIS seg, refresh it so inputs show real pixels
+          if (view.selectedId === seg.id) {
+            const dims = document.getElementById('seg-crop-srcdims');
+            if (dims) dims.textContent = v.videoWidth + '×' + v.videoHeight;
+          }
+        }
+      });
       v.addEventListener('loadeddata', () => {
         // localTimeline (seconds since segment start) → source video time
         // Source video advances at `speed` × timeline rate, plus source start offset
@@ -5187,6 +5405,10 @@ function renderSegmentToCanvas(seg) {
       });
       // Time update sync — if user scrubs, the video tag's currentTime gets updated each rebuildCanvas
       wrap.appendChild(v);
+      // v3.28b.25: visual crop drag handles (only when seg is selected)
+      if (view.selectedId === seg.id) {
+        attachCropHandles(wrap, seg, v);
+      }
     }
   } else if (seg.kind === 'slide-intro') {
     // v3.28b.1: render module SVG background full-bleed, title overlaid at per-module Y. No subtitle.
@@ -7673,6 +7895,8 @@ function cutVideoSegment(seg, atTimelineMs) {
     x: seg.x, y: seg.y, width: seg.width, height: seg.height,
     scale: seg.scale, muteSourceAudio: seg.muteSourceAudio, showFrame: seg.showFrame,
     audioVolume: seg.audioVolume,
+    // v3.28b.25: preserve crop on cut
+    crop: seg.crop ? { top: seg.crop.top, right: seg.crop.right, bottom: seg.crop.bottom, left: seg.crop.left } : { top: 0, right: 0, bottom: 0, left: 0 },
     videoScale: seg.videoScale,
     speed: speed,
     sourceStartMs: Math.round(sourceStartMs + sourceOffsetAtCut)

@@ -63,6 +63,10 @@ export interface RecordingSegment extends BaseSegment {
   sourceStartMs: number;
   muteSourceAudio: boolean;
   showFrame: boolean;
+  videoScale?: number;  // v3.28b.5: scale factor 0.5–1.5, default 1.0
+  audioVolume?: number; // v3.28b.20: 0..1 (or higher) when source audio is on
+  // v3.28b.25: per-side crop as 0..1 ratios of source video dimensions
+  crop?: { top: number; right: number; bottom: number; left: number };
 }
 
 export interface IntroSegment extends BaseSegment {
@@ -184,6 +188,15 @@ export interface DividerSegment extends BaseSegment {
   textStyles: TextStyles;
 }
 
+
+// v3.28b.5: full-bleed image slide — uploaded JPEG/PNG fills the 1920x1080 canvas
+// with a simple fade-in animation. No chrome, no text, no frame.
+export interface ImageSegment extends BaseSegment {
+  kind: 'slide-image';
+  imageUrl: string;
+  filename?: string;
+}
+
 export type Segment =
   | RecordingSegment
   | IntroSegment
@@ -191,9 +204,10 @@ export type Segment =
   | FocusSegment
   | KeyGoalsSegment
   | EmptySegment
-  | DividerSegment;
+  | DividerSegment
+  | ImageSegment;
 
-export type SlideSegment = Exclude<Segment, RecordingSegment>;
+export type SlideSegment = Exclude<Segment, RecordingSegment | ImageSegment>;
 
 // --- Overlays ---
 
