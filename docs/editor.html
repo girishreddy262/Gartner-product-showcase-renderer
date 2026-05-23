@@ -5336,34 +5336,16 @@ function renderSegmentToCanvas(seg) {
       v.style.width = '100%';
       v.style.height = '100%';
       v.style.objectFit = 'contain';
-      // v3.28b.30: apply crop via clip-path. Values are 0..1 ratios of the
-      // SOURCE VIDEO frame. With object-fit:contain, the visible video occupies
-      // only the portion of the element box that matches the source aspect
-      // ratio — letterbox bars elsewhere. We compute the visible-region rect
-      // and apply clip-path against THAT, not the full element box.
+      // v3.28b.31: crop is applied later by wrapping the video in a clipper
+      // div sized to the visible video region. We DON'T apply clipPath on the
+      // video element directly anymore — that caused mis-alignment due to
+      // letterbox bars when source aspect != wrap aspect.
       const crop = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
       const ct = Math.max(0, Math.min(0.95, crop.top || 0));
       const cr = Math.max(0, Math.min(0.95, crop.right || 0));
       const cb = Math.max(0, Math.min(0.95, crop.bottom || 0));
       const cl = Math.max(0, Math.min(0.95, crop.left || 0));
       const hasCrop = ct > 0 || cr > 0 || cb > 0 || cl > 0;
-      if (hasCrop) {
-        // The crop ratios apply to the source video, but the wrap (element box)
-        // can have letterbox bars. To make clip-path agree with what the user
-        // drew on the visible video, we apply inset values that hide the
-        // appropriate fraction of the BOX (not the visible region).
-        //
-        // Simpler approach: since we treat crop ratios as fractions of the
-        // VISIBLE video rect, and we want the resulting clipped area to match,
-        // we apply the inset directly. CSS clip-path:inset() uses fractions of
-        // the element's content box, and for object-fit:contain the visible
-        // video region IS centered inside that box. So if we draw against the
-        // visible region, then convert to box fractions, the inset matches.
-        //
-        // The drag handler (attachCropDrawHandler) already records ratios
-        // against the VISIBLE video rect (see fix there). Here we just apply.
-        v.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
-      }
       // Track this so we can clean up if needed
       _activeVideoElement = v;
       // Apply playback speed (default 1.0)
@@ -5378,6 +5360,12 @@ function renderSegmentToCanvas(seg) {
           if (view.selectedId === seg.id) {
             const dims = document.getElementById('seg-crop-srcdims');
             if (dims) dims.textContent = v.videoWidth + '×' + v.videoHeight;
+          }
+          // v3.28b.31: if crop is active and we just learned source dims,
+          // rebuild so the clipper div gets sized correctly.
+          const c = seg.crop || {};
+          if ((c.top||0) + (c.right||0) + (c.bottom||0) + (c.left||0) > 0) {
+            rebuildCanvas();
           }
         }
       });
@@ -5410,8 +5398,51 @@ function renderSegmentToCanvas(seg) {
         console.warn('Video failed to load:', video.url);
         wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#fff;font-size:48px;text-align:center;padding:40px;">Could not load video<br><span style="font-size:24px;color:#888;margin-top:20px;display:block;">' + (video.filename || video.id) + '</span></div>';
       });
-      // Time update sync — if user scrubs, the video tag's currentTime gets updated each rebuildCanvas
-      wrap.appendChild(v);
+      // v3.28b.31: when crop is set, wrap the video in a div sized to its
+      // visible pixel region. Apply clip-path to THAT div. This avoids the
+      // letterbox-bar misalignment we had when applying clip-path to the
+      // video element itself.
+      if (hasCrop && v.videoWidth > 0 && v.videoHeight > 0) {
+        // Compute visible region inside the wrap (with object-fit:contain math)
+        const wrapW = seg.width || CANVAS_W;
+        const wrapH = seg.height || CANVAS_H;
+        const srcAspect = v.videoWidth / v.videoHeight;
+        const wrapAspect = wrapW / wrapH;
+        let visW, visH, visX, visY;
+        if (srcAspect > wrapAspect) {
+          visW = wrapW; visH = wrapW / srcAspect;
+          visX = 0; visY = (wrapH - visH) / 2;
+        } else {
+          visH = wrapH; visW = wrapH * srcAspect;
+          visY = 0; visX = (wrapW - visW) / 2;
+        }
+        // Build a clipper div at the visible-region rect with clip-path.
+        const clipper = document.createElement('div');
+        clipper.style.position = 'absolute';
+        clipper.style.left = visX + 'px';
+        clipper.style.top = visY + 'px';
+        clipper.style.width = visW + 'px';
+        clipper.style.height = visH + 'px';
+        clipper.style.overflow = 'hidden';
+        clipper.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
+        // Re-style the video to fill the clipper exactly
+        v.style.position = 'absolute';
+        v.style.left = '0';
+        v.style.top = '0';
+        v.style.width = '100%';
+        v.style.height = '100%';
+        v.style.objectFit = 'fill';  // safe now — clipper IS the visible rect
+        clipper.appendChild(v);
+        wrap.appendChild(clipper);
+      } else if (hasCrop) {
+        // No source dims yet (metadata not loaded). Fall back: just append
+        // video and apply clip-path on it. Will re-render correctly once
+        // metadata loads (loadedmetadata handler calls rebuildCanvas).
+        v.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
+        wrap.appendChild(v);
+      } else {
+        wrap.appendChild(v);
+      }
       // v3.28b.28: attach the draw-crop mousedown handler. The handler only
       // ACTS when view.pendingCropSegId matches this seg's id (set by the
       // "Crop area" button). Otherwise it's a no-op and click-to-select works.
