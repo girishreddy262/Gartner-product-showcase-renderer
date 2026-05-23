@@ -7474,6 +7474,12 @@ function openProjectFromFile() {
 // ====================================================================
 
 const AUTOSAVE_LS_KEY = 'pseditor.autosave';
+// v3.28b.29: when working in a cloud project, also save under a project-specific
+// key. This way opening Project A doesn't clobber Project B's autosave.
+function getAutoSaveLSKey() {
+  if (_cloudProjectId) return AUTOSAVE_LS_KEY + '.' + _cloudProjectId;
+  return AUTOSAVE_LS_KEY;
+}
 const AUTOSAVE_DEBOUNCE_MS = 5000;
 let _autoSaveTimer = null;
 
@@ -7511,10 +7517,14 @@ function updateAutoSaveIndicatorLabel() {
 function autoSaveSnapshot() {
   try {
     const proj = buildProjectJson();
+    // v3.28b.29: tag the autosave with the cloud project/file ID so we can
+    // strictly match it on restore. Without this, an autosave from project A
+    // could pop up as "Restore?" when you open project B and wipe it.
+    proj._autoSaveProjectId = _cloudProjectId || null;
     const json = JSON.stringify(proj);
     const mode = detectAutoSaveMode();
     if (mode === 'localStorage') {
-      localStorage.setItem(AUTOSAVE_LS_KEY, json);
+      localStorage.setItem(getAutoSaveLSKey(), json);
     } else if (mode === 'memory') {
       _autoSaveMemory = proj;
     } else {
@@ -7748,7 +7758,11 @@ async function loadCloudProjectIfRequested() {
 
 function clearAutoSave() {
   try {
-    if (detectAutoSaveMode() === 'localStorage') localStorage.removeItem(AUTOSAVE_LS_KEY);
+    if (detectAutoSaveMode() === 'localStorage') {
+      // v3.28b.29: clear per-project key, AND clean up legacy key
+      localStorage.removeItem(getAutoSaveLSKey());
+      localStorage.removeItem(AUTOSAVE_LS_KEY);  // also remove legacy unprefixed key
+    }
   } catch (e) {}
   _autoSaveMemory = null;
 }
@@ -7757,7 +7771,22 @@ function loadAutoSave() {
   try {
     const mode = detectAutoSaveMode();
     if (mode === 'localStorage') {
-      const raw = localStorage.getItem(AUTOSAVE_LS_KEY);
+      // v3.28b.29: prefer per-project key; fall back to legacy key
+      let raw = localStorage.getItem(getAutoSaveLSKey());
+      if (!raw && _cloudProjectId) {
+        // Try legacy key (one-time migration assist) — only if it tags this project
+        const legacy = localStorage.getItem(AUTOSAVE_LS_KEY);
+        if (legacy) {
+          try {
+            const lp = JSON.parse(legacy);
+            if (lp && lp._autoSaveProjectId === _cloudProjectId) raw = legacy;
+          } catch (e) {}
+        }
+      } else if (!raw && !_cloudProjectId) {
+        // No project loaded — also check legacy key (will be ignored by restore prompt
+        // because of "no current project" rule, but still loadable for debugging)
+        raw = localStorage.getItem(AUTOSAVE_LS_KEY);
+      }
       if (!raw) return null;
       const proj = JSON.parse(raw);
       if (!proj || proj.fileType !== 'product-showcase-project' || !proj.payload) return null;
@@ -7789,20 +7818,49 @@ function fmtSavedAgo(iso) {
 function maybeShowRestorePrompt() {
   const proj = loadAutoSave();
   if (!proj) return;
-  // Skip restore prompt if this is a different job
-  const sameJob = typeof JOB_ID !== 'undefined' && proj.jobId === JOB_ID;
-  if (!sameJob) {
-    // Different job — silently ignore the autosave (will be overwritten on next save)
+
+  // v3.28b.29: STRICT same-project check.
+  //
+  // The autosave is per-browser. A user can autosave on Project A, then open
+  // Project B in the same browser. Without strict checking, the Restore banner
+  // would pop up on B with A's content — clicking it overwrites B.
+  //
+  // Rules:
+  //  1. If we're NOT currently in a cloud project (raw editor, no ?project= or
+  //     ?file= in URL): NEVER show restore. Too risky — we have no way to
+  //     verify the autosave belongs here.
+  //  2. If we ARE in a cloud project: only show restore when the autosave's
+  //     project ID matches the current one EXACTLY.
+  const currentProjectId = _cloudProjectId || null;
+  const savedProjectId = proj._autoSaveProjectId || null;
+
+  if (!currentProjectId) {
+    // Rule 1: not in a cloud project — never show restore. Clear stale data.
+    console.log('Autosave exists but no current cloud project loaded — autosave ignored.');
+    clearAutoSave();
     return;
   }
+
+  // Rule 2: must match
+  if (savedProjectId !== currentProjectId) {
+    console.log('Autosave is for a different project (saved:', savedProjectId,
+                'current:', currentProjectId, ') — ignored.');
+    // Don't clear — the other project may want it. We just don't offer it here.
+    return;
+  }
+
+  // Same project — show the banner with context about what we'll restore
   const banner = document.createElement('div');
   banner.id = 'restoreBanner';
   banner.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);' +
     'background:#1a3a5c;color:#fff;padding:14px 22px;border-radius:8px;border:1px solid #1F8AFF;' +
     'box-shadow:0 4px 24px rgba(0,0,0,0.5);z-index:9999;display:flex;gap:14px;align-items:center;' +
     'font-family:Satoshi,system-ui,sans-serif;font-size:14px;';
+  const segCount = (proj.payload && proj.payload.segments && proj.payload.segments.length) || 0;
+  const audCount = (proj.payload && proj.payload.audioPlacements && proj.payload.audioPlacements.length) || 0;
   banner.innerHTML =
-    '<span>💾 Unsaved session from ' + fmtSavedAgo(proj.savedAt) + '. Restore?</span>' +
+    '<span>💾 Unsaved edits to <b>this project</b> from ' + fmtSavedAgo(proj.savedAt) +
+    ' (' + segCount + ' segments, ' + audCount + ' audio clips). Restore?</span>' +
     '<button id="restoreYes" style="background:#1F8AFF;border:none;color:#fff;padding:6px 14px;border-radius:5px;cursor:pointer;font-weight:600;">Restore</button>' +
     '<button id="restoreNo" style="background:transparent;border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 14px;border-radius:5px;cursor:pointer;">Dismiss</button>';
   document.body.appendChild(banner);
