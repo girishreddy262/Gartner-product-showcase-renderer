@@ -6222,27 +6222,11 @@ async function pickAndUploadAsset(opts = {}) {
   _uploadInProgress = true;
   const toast = showUploadToast(file.name);
   try {
-    updateUploadToast(toast, 0, 'Preparing upload...');
-    const tokenRes = await fetch(UPLOAD_TOKEN_URL + '?job_id=' + encodeURIComponent(JOB_ID));
-    if (!tokenRes.ok) throw new Error('Failed to get upload token: ' + tokenRes.status);
-    let tokenData = await tokenRes.json();
-    if (Array.isArray(tokenData)) tokenData = tokenData[0] || {};
-    if (tokenData.error) throw new Error(tokenData.error);
-    if (!tokenData.accessToken) throw new Error('No access token in response');
-
-    const newId = kind + '_' + Date.now();
-    const ts = Date.now();
-    const safeName = file.name.replace(/[^A-Za-z0-9._\-]/g, '_');
-    const dropboxPath = tokenData.jobFolder + '/' + newId + '_' + ts + '_' + safeName;
-
-    updateUploadToast(toast, 5, 'Uploading...');
-    await uploadToDropbox(file, dropboxPath, tokenData.accessToken, (pct) => {
-      updateUploadToast(toast, 5 + Math.round(pct * 0.85), 'Uploading...');
+    updateUploadToast(toast, 5, 'Uploading to S3...');
+    // v3.28b.23: direct S3 upload via Worker-presigned URL (Dropbox blocked on Windows IT)
+    const directUrl = await uploadToS3(file, kind, (pct) => {
+      updateUploadToast(toast, 5 + Math.round(pct * 90), 'Uploading...');
     });
-
-    updateUploadToast(toast, 92, 'Creating share link...');
-    const directUrl = await createDropboxShareLink(dropboxPath, tokenData.accessToken);
-
     updateUploadToast(toast, 100, 'Done!', 'done');
     setTimeout(() => removeUploadToast(toast), 1500);
     return directUrl;
@@ -6347,27 +6331,13 @@ async function handleBulkFileUpload(fileList, kind) {
 async function uploadOneFile(file, kind, labelPrefix) {
   const toast = showUploadToast(labelPrefix || file.name);
   try {
-    updateUploadToast(toast, 0, 'Preparing upload...');
-    const tokenRes = await fetch(UPLOAD_TOKEN_URL + '?job_id=' + encodeURIComponent(JOB_ID));
-    if (!tokenRes.ok) throw new Error('Failed to get upload token: ' + tokenRes.status);
-    let tokenData = await tokenRes.json();
-    if (Array.isArray(tokenData)) tokenData = tokenData[0] || {};
-    if (tokenData.error) throw new Error(tokenData.error + (tokenData.details ? ': ' + tokenData.details : ''));
-    if (!tokenData.accessToken) throw new Error('No access token in response');
-
-    const newId = (kind === 'video' ? 'video_' : 'audio_') + Date.now();
-    const ts = Date.now();
-    const safeName = file.name.replace(/[^A-Za-z0-9._\-]/g, '_');
-    const dropboxPath = tokenData.jobFolder + '/' + newId + '_' + ts + '_' + safeName;
-
-    updateUploadToast(toast, 5, 'Uploading...');
-    await uploadToDropbox(file, dropboxPath, tokenData.accessToken, (pct) => {
-      updateUploadToast(toast, 5 + Math.round(pct * 0.85), 'Uploading...');
+    updateUploadToast(toast, 5, 'Uploading to S3...');
+    // v3.28b.23: direct S3 upload via Worker-presigned URL
+    const directUrl = await uploadToS3(file, kind, (pct) => {
+      updateUploadToast(toast, 5 + Math.round(pct * 90), 'Uploading...');
     });
 
-    updateUploadToast(toast, 92, 'Creating share link...');
-    const directUrl = await createDropboxShareLink(dropboxPath, tokenData.accessToken);
-
+    const newId = (kind === 'video' ? 'video_' : 'audio_') + Date.now();
     const newAsset = { id: newId, filename: file.name, url: directUrl };
     if (kind === 'video') state.videos.push(newAsset);
     else state.audios.push(newAsset);
@@ -6488,32 +6458,14 @@ async function handleFileUpload(file, kind) {
   const toast = showUploadToast(file.name);
 
   try {
-    // 1. Get short-lived Dropbox token from Worker
-    updateUploadToast(toast, 0, 'Preparing upload...');
-    const tokenRes = await fetch(UPLOAD_TOKEN_URL + '?job_id=' + encodeURIComponent(JOB_ID));
-    if (!tokenRes.ok) throw new Error('Failed to get upload token: ' + tokenRes.status);
-    let tokenData = await tokenRes.json();
-    if (Array.isArray(tokenData)) tokenData = tokenData[0] || {};
-    if (tokenData.error) throw new Error(tokenData.error + (tokenData.details ? ': ' + tokenData.details : ''));
-    if (!tokenData.accessToken) throw new Error('No access token in response');
-
-    // 2. Build the upload path
-    const newId = (kind === 'video' ? 'video_' : 'audio_') + Date.now();
-    const ts = Date.now();
-    const safeName = file.name.replace(/[^A-Za-z0-9._\-]/g, '_');
-    const dropboxPath = tokenData.jobFolder + '/' + newId + '_' + ts + '_' + safeName;
-
-    // 3. Upload to Dropbox with progress
-    updateUploadToast(toast, 5, 'Uploading...');
-    const dropboxUrl = await uploadToDropbox(file, dropboxPath, tokenData.accessToken, (pct) => {
-      updateUploadToast(toast, 5 + Math.round(pct * 0.85), 'Uploading...');
+    // v3.28b.23: direct S3 upload via Worker-presigned URL (was Dropbox flow)
+    updateUploadToast(toast, 5, 'Uploading to S3...');
+    const directUrl = await uploadToS3(file, kind, (pct) => {
+      updateUploadToast(toast, 5 + Math.round(pct * 90), 'Uploading...');
     });
 
-    // 4. Create share link
-    updateUploadToast(toast, 92, 'Creating share link...');
-    const directUrl = await createDropboxShareLink(dropboxPath, tokenData.accessToken);
-
-    // 5. Append to state
+    // Append to state
+    const newId = (kind === 'video' ? 'video_' : 'audio_') + Date.now();
     const newAsset = { id: newId, filename: file.name, url: directUrl };
     if (kind === 'video') {
       state.videos.push(newAsset);
@@ -6523,7 +6475,6 @@ async function handleFileUpload(file, kind) {
       // if the user has already interacted with the page.
       setupAudioElements();
       if (_audioUnlocked) {
-        // safe to call; the unlock is per-element and only acts on locked ones
         try { unlockAudioElements(); } catch (e) {}
       }
     }
