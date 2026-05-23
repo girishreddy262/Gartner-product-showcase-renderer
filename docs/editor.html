@@ -3758,8 +3758,7 @@ function renderSegmentPanel(panel) {
     // v3.28b.20: when source audio is on, allow per-segment volume 0-200%
     '<div class="form-row" id="seg-volume-row" style="' + (seg.muteSourceAudio === false ? '' : 'display:none;') + '">' +
       '<label>Volume <span id="seg-volume-val">' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '%</span></label>' +
-      '<input type="range" id="seg-volume" min="0" max="200" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
-      '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">100% = original. Above 100% boosts via WebAudio.</div>' +
+      '<input type="range" id="seg-volume" min="0" max="100" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
     '</div>' +
     '<div class="form-row">' +
       '<label class="checkbox-label">' +
@@ -5130,37 +5129,19 @@ function renderSegmentToCanvas(seg) {
       wrap.style.background = '#002B54';
       const v = document.createElement('video');
       v.src = video.url;
-      // v3.28b.20: respect per-segment audio settings.
-      // v3.28b.21: support >100% volume via WebAudio GainNode for amplification.
+      // v3.28b.24: video source audio — use native HTMLMediaElement.volume only.
+      // (WebAudio amplification was causing too many race conditions on Mac/Windows.
+      // Renderer still does true amplification via Remotion's <Video volume>.)
       if (seg.muteSourceAudio !== false) {
         v.muted = true;
       } else {
         v.muted = false;
         const vol = (seg.audioVolume != null) ? seg.audioVolume : 1.0;
-        if (vol <= 1.0) {
-          // 0-100% — use native HTMLMediaElement.volume (simple, no glitches)
-          v.volume = Math.max(0, vol);
-        } else {
-          // 100-200% — route through WebAudio with GainNode for true amplification.
-          // Native volume capped at 1.0; gain node multiplies the signal.
-          v.volume = 1.0;
-          v.addEventListener('canplay', () => {
-            try {
-              const ctx = window._wa_ctx || (window._wa_ctx = new (window.AudioContext || window.webkitAudioContext)());
-              if (v._waSource) return; // already wired
-              const source = ctx.createMediaElementSource(v);
-              const gain = ctx.createGain();
-              gain.gain.value = vol;  // 1.0..2.0
-              source.connect(gain).connect(ctx.destination);
-              v._waSource = source;
-              v._waGain = gain;
-              if (ctx.state === 'suspended') ctx.resume();
-            } catch (e) { /* WebAudio may fail in some embed contexts; fall back silently */ }
-          }, { once: true });
-        }
+        // Clamp to [0, 1] for native volume. >100% only applies in final render.
+        v.volume = Math.max(0, Math.min(1, vol));
       }
       v.playsInline = true;
-      v.preload = 'metadata';
+      v.preload = 'auto';  // v3.28b.24: was 'metadata'; force full preload to reduce play() delays
       // v3.28b.18: no crossOrigin — fixes Windows preview failures
       // v3.28b.5: apply per-video scale (default 1.0)
       const _vScale = (seg.videoScale != null && seg.videoScale > 0) ? seg.videoScale : 1.0;
@@ -5185,7 +5166,20 @@ function renderSegmentToCanvas(seg) {
         try { v.currentTime = clamp(sourceT, 0, v.duration || 0); } catch(e) {}
         // Reapply playbackRate after metadata load (some browsers reset it)
         v.playbackRate = speed;
-        if (view.isPlaying) v.play().catch(() => {});
+        if (view.isPlaying) {
+          v.play().catch((err) => {
+            // v3.28b.24: same fallback strategy as tick loop
+            if (!v._loggedPlayError) {
+              console.warn('Video play() rejected on loadeddata:', err.name, '—', err.message);
+              if (err.name === 'NotAllowedError' && !v.muted) {
+                console.warn('  Falling back to muted playback. Click Play after first interaction to enable audio.');
+                v.muted = true;
+                v.play().catch(() => {});
+              }
+              v._loggedPlayError = true;
+            }
+          });
+        }
       });
       v.addEventListener('error', () => {
         console.warn('Video failed to load:', video.url);
@@ -5439,7 +5433,20 @@ function tick() {
   } else if (active) {
     // Same segment: just sync video time (if any) and check overlays
     if (_activeVideoElement && _activeVideoElement.paused && view.isPlaying) {
-      _activeVideoElement.play().catch(() => {});
+      // v3.28b.24: surface play errors once. If the video has audio and the
+      // browser refuses to autoplay-unmuted, this is the first place we'll see it.
+      _activeVideoElement.play().catch((err) => {
+        if (!_activeVideoElement._loggedPlayError) {
+          console.warn('Video play() rejected:', err.name, '—', err.message);
+          if (err.name === 'NotAllowedError' && !_activeVideoElement.muted) {
+            console.warn('  Likely cause: browser blocks unmuted autoplay. Click Play again to retry.');
+            // Try to fall back to muted playback so the visual at least plays
+            _activeVideoElement.muted = true;
+            _activeVideoElement.play().catch(() => {});
+          }
+          _activeVideoElement._loggedPlayError = true;
+        }
+      });
     }
     // Update callouts/spotlights/zooms by lightweight overlay refresh
     // (does NOT recreate video element, avoiding flicker during zoom)
@@ -8101,6 +8108,16 @@ function syncAudioPlayback() {
     const endMs = startMs + (ap.durationMs || 0);
     const shouldPlay = view.isPlaying && view.curTimeMs >= startMs && view.curTimeMs < endMs;
     if (shouldPlay) {
+      // v3.28b.24: if audio isn't ready yet (still loading), skip this tick.
+      // readyState < 2 means HAVE_METADATA hasn't fired; play() would throw or
+      // fire 'waiting' indefinitely. Trying to load again is harmless.
+      if (el.readyState < 2) {
+        if (!el._kickstartedLoad) {
+          try { el.load(); } catch(e) {}
+          el._kickstartedLoad = true;
+        }
+        continue;
+      }
       const localT = (view.curTimeMs - startMs) / 1000;
       // Sync if drifted more than 0.25s
       if (Math.abs(el.currentTime - localT) > 0.25) {
@@ -8108,11 +8125,9 @@ function syncAudioPlayback() {
       }
       el.volume = Math.min(1, Math.max(0, ap.volume != null ? ap.volume : 1));
       if (el.paused) {
-        // v3.28b.22: detailed error logging so we can debug Windows issues.
         const p = el.play();
         if (p && typeof p.catch === 'function') {
           p.catch((err) => {
-            // First failure: log loudly with the error name AND likely cause
             if (!el._loggedPlayError) {
               console.warn('Audio play() rejected for ' + ap.audioId + ': ' + err.name + ' — ' + err.message);
               if (err.name === 'NotAllowedError') {
@@ -8124,10 +8139,7 @@ function syncAudioPlayback() {
               }
               el._loggedPlayError = true;
             }
-            // For NotAllowedError: try to unlock again on next tick (in case
-            // a user gesture has happened in between)
             if (err.name === 'NotAllowedError' && !el._unlocked) {
-              // Mark for retry; next user gesture will re-attempt
               el._needsUnlock = true;
             }
           });
