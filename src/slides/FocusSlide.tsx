@@ -108,19 +108,17 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
   const { fps } = useVideoConfig();
   const cols = columns.slice(0, 6);
   const n = cols.length;
-  // v3.28b.46: center-align each column's icon + heading + body around its center
-  // point. Group is centered on the slide. Pitch tightened for cleaner layout.
+  // v3.28b.47: text + icons stay LEFT-aligned per column (original design).
+  // Only the GROUP of columns is centered on the slide. Pitch scales with n.
   const innerWidth = n <= 3 ? 1100 : n === 4 ? 1400 : n === 5 ? 1600 : 1700;
   const COL_PITCH = n > 0 ? innerWidth / n : 0;
-  const firstCx = tokens.canvasW / 2 - innerWidth / 2 + COL_PITCH / 2;
-  const headingSize = n <= 4 ? 30 : (n === 5 ? 26 : 22);
+  const firstX = Math.round(tokens.canvasW / 2 - innerWidth / 2 + COL_PITCH / 2 - 40);
+  const headingSize = n <= 4 ? 32 : (n === 5 ? 26 : 22);
   const bodySize = n <= 4 ? 22 : (n === 5 ? 18 : 16);
-  const headingLineH = n <= 4 ? 38 : (n === 5 ? 32 : 28);
-  const bodyLineH = n <= 4 ? 35 : (n === 5 ? 28 : 24);
   return (
     <g>
       {cols.map((col, i) => {
-        const cx = Math.round(firstCx + i * COL_PITCH);
+        const xLeft = Math.round(firstX + i * COL_PITCH);
         const colStart = (0.4 + i * 0.15) * fps;
         const colEnd = colStart + 0.4 * fps;
         const opacity = animOn
@@ -135,7 +133,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
           <g key={col.id} opacity={opacity} transform={`translate(0, ${ty})`}>
             {getFocusIconUrl(col.iconId) && (
               <image
-                x={cx - 40} y={386} width={80} height={80}
+                x={xLeft} y={386} width={80} height={80}
                 href={getFocusIconUrl(col.iconId)!}
                 preserveAspectRatio="xMidYMid meet"
               />
@@ -143,8 +141,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
             {headingLines.map((line, idx) => (
               <text
                 key={idx}
-                x={cx} y={540 + idx * headingLineH}
-                textAnchor="middle"
+                x={xLeft} y={540 + idx * 40}
                 fill="white"
                 fontFamily="Satoshi, system-ui, sans-serif"
                 fontSize={headingSize} fontWeight={700}
@@ -155,8 +152,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
             {bulletLines.map((line, idx) => (
               <text
                 key={idx}
-                x={cx} y={640 + idx * bodyLineH}
-                textAnchor="middle"
+                x={xLeft} y={635 + idx * 35}
                 fill={tokens.cyan}
                 fontFamily="Satoshi, system-ui, sans-serif"
                 fontSize={bodySize} fontWeight={500}
@@ -178,12 +174,12 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
   const { fps } = useVideoConfig();
   const cols = columns.slice(0, 6);
   const n = cols.length;
-  // v3.28b.46: tighter centered pitch
+  // v3.28b.47: V2 — text is center-aligned per column (original V2 design).
+  // Group is centered on the slide.
   const innerWidth = n <= 3 ? 1100 : n === 4 ? 1400 : n === 5 ? 1600 : 1700;
   const COL_PITCH = n > 0 ? innerWidth / n : 0;
   const firstCx = tokens.canvasW / 2 - innerWidth / 2 + COL_PITCH / 2;
   const headingSize = n <= 4 ? 28 : (n === 5 ? 22 : 18);
-  const headingLineH = n <= 4 ? 35 : (n === 5 ? 28 : 24);
   return (
     <g>
       {cols.map((col, i) => {
@@ -212,7 +208,7 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
               <text
                 key={idx}
                 x={cx}
-                y={555 + idx * headingLineH}
+                y={555 + idx * 35}
                 textAnchor="middle"
                 fill="white"
                 fontFamily="Satoshi, system-ui, sans-serif"

@@ -2476,48 +2476,43 @@ function renderFocusSVG(seg) {
   const titleSize = variation === 1 ? 52 : 56;
   svg += '<text x="960" y="265" text-anchor="middle" fill="white" font-family="Satoshi" font-size="' + titleSize + '" font-weight="700">' + svgEsc(seg.title || '') + '</text>';
 
-  // Columns - v3.28b.46: center-align each column's content (icon + heading + body)
-  // around its column center point. Group is centered on the slide. Pitch is
-  // tight enough that 3-6 columns all look balanced.
+  // Columns - v3.28b.47: text + icons stay LEFT-aligned within each column
+  // (like the original design). What I'm fixing is just the GROUP centering —
+  // the whole cluster of columns sits balanced around x=960 (canvas midpoint).
   const cols = (seg.columns || []).slice(0, 6);
   const nCols = cols.length;
   if (variation === 1) {
-    // v3.28b.46: tighter pitch that scales with column count. For n columns we
-    // use a usable inner width that grows slightly with n but stays inside the
-    // 1900px card. Pitch = inner_width / n so each column gets equal share.
-    // Group is centered around x=960 (canvas midpoint).
+    // Pitch scales with column count. Group width is centered on the slide.
     const innerWidth = nCols <= 3 ? 1100 : nCols === 4 ? 1400 : nCols === 5 ? 1600 : 1700;
     const COL_PITCH = nCols > 0 ? innerWidth / nCols : 0;
-    const firstCx = 960 - innerWidth / 2 + COL_PITCH / 2;  // center of first column
-    const headingSize = nCols <= 4 ? 30 : (nCols === 5 ? 26 : 22);
+    // firstX is the LEFT edge of the first column (where text starts)
+    const firstX = Math.round(960 - innerWidth / 2 + COL_PITCH / 2 - 40);
+    const headingSize = nCols <= 4 ? 32 : (nCols === 5 ? 26 : 22);
     const bodySize = nCols <= 4 ? 22 : (nCols === 5 ? 18 : 16);
-    const bodyLineH = nCols <= 4 ? 35 : (nCols === 5 ? 28 : 24);
-    const headingLineH = nCols <= 4 ? 38 : (nCols === 5 ? 32 : 28);
     cols.forEach((col, i) => {
-      const cx = Math.round(firstCx + i * COL_PITCH);
+      const xLeft = Math.round(firstX + i * COL_PITCH);
       const iconUrl = getFocusIconUrl(col.iconId);
-      if (iconUrl) svg += '<image x="' + (cx - 40) + '" y="386" width="80" height="80" href="' + svgEsc(iconUrl) + '" preserveAspectRatio="xMidYMid meet"/>';
+      if (iconUrl) svg += '<image x="' + xLeft + '" y="386" width="80" height="80" href="' + svgEsc(iconUrl) + '" preserveAspectRatio="xMidYMid meet"/>';
       (col.heading || '').split('\n').forEach((line, ix) => {
-        svg += '<text x="' + cx + '" y="' + (540 + ix * headingLineH) + '" text-anchor="middle" fill="white" font-family="Satoshi" font-size="' + headingSize + '" font-weight="700">' + svgEsc(line) + '</text>';
+        svg += '<text x="' + xLeft + '" y="' + (540 + ix * 40) + '" fill="white" font-family="Satoshi" font-size="' + headingSize + '" font-weight="700">' + svgEsc(line) + '</text>';
       });
       (col.body || '').split('\n').filter(s => s).forEach((line, ix) => {
-        svg += '<text x="' + cx + '" y="' + (640 + ix * bodyLineH) + '" text-anchor="middle" fill="#7ABEFF" font-family="Satoshi" font-size="' + bodySize + '" font-weight="500">' + svgEsc(line) + '</text>';
+        svg += '<text x="' + xLeft + '" y="' + (635 + ix * 35) + '" fill="#7ABEFF" font-family="Satoshi" font-size="' + bodySize + '" font-weight="500">' + svgEsc(line) + '</text>';
       });
     });
   } else {
-    // v3.28b.46: V2 — same approach. Columns centered around 960.
+    // V2: this layout was already center-anchored per column. Just retune pitch + group centering.
     const innerWidth = nCols <= 3 ? 1100 : nCols === 4 ? 1400 : nCols === 5 ? 1600 : 1700;
     const COL_PITCH = nCols > 0 ? innerWidth / nCols : 0;
     const firstCx = 960 - innerWidth / 2 + COL_PITCH / 2;
     const headingSize = nCols <= 4 ? 28 : (nCols === 5 ? 22 : 18);
-    const headingLineH = nCols <= 4 ? 35 : (nCols === 5 ? 28 : 24);
     cols.forEach((col, i) => {
       const cx = Math.round(firstCx + i * COL_PITCH);
       const iconX = cx - 50;
       const iconUrl = getFocusIconUrl(col.iconId);
       if (iconUrl) svg += '<image x="' + iconX + '" y="395" width="100" height="100" href="' + svgEsc(iconUrl) + '" preserveAspectRatio="xMidYMid meet"/>';
       (col.heading || '').split('\n').forEach((line, lx) => {
-        svg += '<text x="' + cx + '" y="' + (555 + lx * headingLineH) + '" text-anchor="middle" fill="white" font-family="Satoshi" font-size="' + headingSize + '" font-weight="700">' + svgEsc(line) + '</text>';
+        svg += '<text x="' + cx + '" y="' + (555 + lx * 35) + '" text-anchor="middle" fill="white" font-family="Satoshi" font-size="' + headingSize + '" font-weight="700">' + svgEsc(line) + '</text>';
       });
     });
   }
