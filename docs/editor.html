@@ -5389,19 +5389,31 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
       seg.crop.top    = Math.min(0.95, Math.max(0, y1 / H));
       seg.crop.right  = Math.min(0.95, Math.max(0, (W - x2) / W));
       seg.crop.bottom = Math.min(0.95, Math.max(0, (H - y2) / H));
-      console.log('[CROP] Applied — pixels:', {x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1)});
-      console.log('[CROP] Ratios:', seg.crop);
+      // Log ratios as numbers, not Object
+      console.log('[CROP] Pixels — x1:', x1.toFixed(1), 'y1:', y1.toFixed(1), 'x2:', x2.toFixed(1), 'y2:', y2.toFixed(1));
+      console.log('[CROP] Ratios — top:', seg.crop.top.toFixed(3), 'right:', seg.crop.right.toFixed(3),
+                  'bottom:', seg.crop.bottom.toFixed(3), 'left:', seg.crop.left.toFixed(3));
       console.log('[CROP] seg.x/y/w/h:', seg.x, seg.y, seg.width, seg.height);
+      // v3.28b.40: warn if segment is offset from canvas origin — that's a separate
+      // problem from crop, but it makes crop LOOK like the video moves.
+      if (seg.x !== 0 || seg.y !== 0) {
+        console.warn('[CROP] ⚠️ This segment is positioned at (' + seg.x + ', ' + seg.y +
+                     '), not (0, 0). The crop is correct, but the segment itself is offset.');
+        console.warn('[CROP] To fix: click the "Fill canvas (1920×1080)" button in the right edit panel.');
+      }
+      // v3.28b.40: apply clip-path IMMEDIATELY to the existing video element
+      // (no rebuild needed). This avoids any rebuild-path issues.
+      const c = seg.crop;
+      const clipStr = 'inset(' + (c.top*100).toFixed(2) + '% ' + (c.right*100).toFixed(2) + '% ' +
+                      (c.bottom*100).toFixed(2) + '% ' + (c.left*100).toFixed(2) + '%)';
+      if (videoEl) {
+        videoEl.style.clipPath = clipStr;
+        videoEl.style.WebkitClipPath = clipStr;
+      }
+      console.log('[CROP] Applied clipPath directly to existing video element:', clipStr);
       draftEl.remove();
       cancelCropDrawMode();
-      rebuildCanvas();
-      renderEditPanel();
-      // After rebuild, log the resulting clip-path
-      setTimeout(() => {
-        const v = wrap.querySelector('video');
-        console.log('[CROP] After rebuild — video clipPath:', v?.style.clipPath);
-        console.log('[CROP] After rebuild — wrap rect:', wrap.getBoundingClientRect());
-      }, 50);
+      renderEditPanel();  // refresh edit panel state (but NOT rebuildCanvas — avoid flicker)
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
