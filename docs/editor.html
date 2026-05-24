@@ -7226,17 +7226,54 @@ function setupEffectPlacement() {
 
 function setupRuler() {
   const ruler = $('tlRuler');
+  // v3.28b.43: smooth scrubbing — during drag, don't rebuild canvas.
+  // Just update playhead position + seek the active video element directly.
+  // The full rebuild runs on mouseup so all overlays/effects re-render correctly.
   const onRulerDown = (e) => {
     const ms = timelineMsAtClientX(e.clientX);
     view.curTimeMs = ms;
-    updatePlayhead(); rebuildCanvas();
+    // Initial state: full rebuild so the right segment is showing
+    updatePlayhead();
+    rebuildCanvas();
+    // Cache the segment that's currently active — if scrubbing stays inside it,
+    // we can just seek the video instead of rebuilding.
+    let lastActiveSeg = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
+    let pendingRAF = false;
+    let pendingClientX = e.clientX;
+    const scrub = () => {
+      pendingRAF = false;
+      const newMs = Math.max(0, timelineMsAtClientX(pendingClientX));
+      view.curTimeMs = newMs;
+      updatePlayhead();
+      const activeSeg = state.segments.find(s => newMs >= s.startMs && newMs < s.startMs + s.durationMs);
+      // If we moved to a different segment OR no segment is now active, do a full rebuild
+      if (!activeSeg || !lastActiveSeg || activeSeg.id !== lastActiveSeg.id) {
+        rebuildCanvas();
+        lastActiveSeg = activeSeg;
+        return;
+      }
+      // Same segment — just seek the video element directly (cheap)
+      if (_activeVideoElement && activeSeg.kind === 'recording') {
+        const speed = activeSeg.speed || 1.0;
+        const sourceStartSec = (activeSeg.sourceStartMs || 0) / 1000;
+        const localSec = (newMs - activeSeg.startMs) / 1000;
+        const sourceT = sourceStartSec + (localSec * speed);
+        try {
+          _activeVideoElement.currentTime = Math.max(0, Math.min(sourceT, _activeVideoElement.duration || 0));
+        } catch(err) {}
+      }
+    };
     const onMove = (ev) => {
-      view.curTimeMs = Math.max(0, timelineMsAtClientX(ev.clientX));
-      updatePlayhead(); rebuildCanvas();
+      pendingClientX = ev.clientX;
+      if (pendingRAF) return;
+      pendingRAF = true;
+      requestAnimationFrame(scrub);
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      // Final rebuild on release so any overlays/effects/callouts settle correctly
+      rebuildCanvas();
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
