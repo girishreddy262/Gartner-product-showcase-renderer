@@ -57,6 +57,11 @@ const RecordingComp: React.FC<{
         height: seg.height || tokens.canvasH,
         overflow: 'hidden',
         background: '#002B54',
+        // v3.28b.41: crop = mask on the segment wrap, not the video element.
+        // The visible area is exactly what the user drew, independent of where
+        // the wrap is positioned or what's inside it.
+        clipPath: cropClipPath,
+        WebkitClipPath: cropClipPath,
       }}>
         <Video
           src={video.url}
@@ -69,8 +74,6 @@ const RecordingComp: React.FC<{
             width: '100%', height: '100%', objectFit: 'contain',
             transform: videoScale !== 1.0 ? `scale(${videoScale})` : 'none',
             transformOrigin: 'center center',
-            clipPath: cropClipPath,
-            WebkitClipPath: cropClipPath,
           }}
         />
       </div>

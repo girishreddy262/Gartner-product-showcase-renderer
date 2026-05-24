@@ -5373,9 +5373,6 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
     const W = wrapRect.width, H = wrapRect.height;
     const startXpx = e.clientX - wrapRect.left;
     const startYpx = e.clientY - wrapRect.top;
-    console.log('[CROP] Start drag — wrap dims:', W.toFixed(1), 'x', H.toFixed(1),
-                '| start:', startXpx.toFixed(1), ',', startYpx.toFixed(1),
-                '| trigger:', viaShift ? 'SHIFT+drag' : 'button');
     const draftEl = document.createElement('div');
     draftEl.className = 'crop-draft-rect';
     draftEl.style.position = 'absolute';
@@ -5410,7 +5407,6 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
       const x2 = Math.min(W, Math.max(startXpx, xPx));
       const y2 = Math.min(H, Math.max(startYpx, yPx));
       if ((x2 - x1) < 10 || (y2 - y1) < 10) {
-        console.log('[CROP] Rect too small, cancelling');
         draftEl.remove();
         cancelCropDrawMode();
         return;
@@ -5421,31 +5417,14 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
       seg.crop.top    = Math.min(0.95, Math.max(0, y1 / H));
       seg.crop.right  = Math.min(0.95, Math.max(0, (W - x2) / W));
       seg.crop.bottom = Math.min(0.95, Math.max(0, (H - y2) / H));
-      // Log ratios as numbers, not Object
-      console.log('[CROP] Pixels — x1:', x1.toFixed(1), 'y1:', y1.toFixed(1), 'x2:', x2.toFixed(1), 'y2:', y2.toFixed(1));
-      console.log('[CROP] Ratios — top:', seg.crop.top.toFixed(3), 'right:', seg.crop.right.toFixed(3),
-                  'bottom:', seg.crop.bottom.toFixed(3), 'left:', seg.crop.left.toFixed(3));
-      console.log('[CROP] seg.x/y/w/h:', seg.x, seg.y, seg.width, seg.height);
-      // v3.28b.40: warn if segment is offset from canvas origin — that's a separate
-      // problem from crop, but it makes crop LOOK like the video moves.
-      if (seg.x !== 0 || seg.y !== 0) {
-        console.warn('[CROP] ⚠️ This segment is positioned at (' + seg.x + ', ' + seg.y +
-                     '), not (0, 0). The crop is correct, but the segment itself is offset.');
-        console.warn('[CROP] To fix: click the "Fill canvas (1920×1080)" button in the right edit panel.');
-      }
-      // v3.28b.40: apply clip-path IMMEDIATELY to the existing video element
-      // (no rebuild needed). This avoids any rebuild-path issues.
-      const c = seg.crop;
-      const clipStr = 'inset(' + (c.top*100).toFixed(2) + '% ' + (c.right*100).toFixed(2) + '% ' +
-                      (c.bottom*100).toFixed(2) + '% ' + (c.left*100).toFixed(2) + '%)';
-      if (videoEl) {
-        videoEl.style.clipPath = clipStr;
-        videoEl.style.WebkitClipPath = clipStr;
-      }
-      console.log('[CROP] Applied clipPath directly to existing video element:', clipStr);
+      // v3.28b.41: crop is applied as a clip-path mask on the SEGMENT WRAP
+      // (not the video). rebuildCanvas will re-render with the new mask.
+      // The wrap mask is independent of segment position, video size, or any
+      // internal transforms — the visible area is exactly what the user drew.
       draftEl.remove();
       cancelCropDrawMode();
-      renderEditPanel();  // refresh edit panel state (but NOT rebuildCanvas — avoid flicker)
+      rebuildCanvas();
+      renderEditPanel();
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -5479,6 +5458,22 @@ function renderSegmentToCanvas(seg) {
   wrap.style.width = (seg.width||CANVAS_W) + 'px';
   wrap.style.height = (seg.height||CANVAS_H) + 'px';
   wrap.dataset.id = seg.id;
+  // v3.28b.41: crop = mask applied to the segment wrap itself, not the video.
+  // The mask is defined as inset() of the wrap's box, so the visible area is
+  // exactly what the user drew, no matter where the segment is positioned,
+  // what video size is inside, or any internal transforms.
+  if (isRecordingSegment(seg)) {
+    const c = seg.crop;
+    if (c && ((c.top||0) + (c.right||0) + (c.bottom||0) + (c.left||0) > 0)) {
+      const ct = Math.max(0, Math.min(0.95, c.top || 0));
+      const cr = Math.max(0, Math.min(0.95, c.right || 0));
+      const cb = Math.max(0, Math.min(0.95, c.bottom || 0));
+      const cl = Math.max(0, Math.min(0.95, c.left || 0));
+      const clipStr = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
+      wrap.style.clipPath = clipStr;
+      wrap.style.WebkitClipPath = clipStr;
+    }
+  }
   if (isRecordingSegment(seg)) {
     const video = state.videos.find(v => v.id === seg.videoId);
     if (video) {
@@ -5553,20 +5548,8 @@ function renderSegmentToCanvas(seg) {
       // v3.28b.25: capture source dimensions so the crop UI can show real pixels
       v.addEventListener('loadedmetadata', () => {
         if (v.videoWidth && v.videoHeight) {
-          // Stash on the seg AND on the asset for future segments using same video
           seg._srcW = v.videoWidth;
           seg._srcH = v.videoHeight;
-          // If user has the edit panel open for THIS seg, refresh it so inputs show real pixels
-          if (view.selectedId === seg.id) {
-            const dims = document.getElementById('seg-crop-srcdims');
-            if (dims) dims.textContent = v.videoWidth + '×' + v.videoHeight;
-          }
-          // v3.28b.31: if crop is active and we just learned source dims,
-          // rebuild so the clipper div gets sized correctly.
-          const c = seg.crop || {};
-          if ((c.top||0) + (c.right||0) + (c.bottom||0) + (c.left||0) > 0) {
-            rebuildCanvas();
-          }
         }
       });
       v.addEventListener('loadeddata', () => {
@@ -5598,12 +5581,8 @@ function renderSegmentToCanvas(seg) {
         console.warn('Video failed to load:', video.url);
         wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#fff;font-size:48px;text-align:center;padding:40px;">Could not load video<br><span style="font-size:24px;color:#888;margin-top:20px;display:block;">' + (video.filename || video.id) + '</span></div>';
       });
-      // v3.28b.38: SIMPLE crop. Just clip-path on the video element. No
-      // clipper div, no letterbox math, no source-dim tracking. The visible
-      // part stays where it was; the outside is cut. That's the whole feature.
-      if (hasCrop) {
-        v.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
-      }
+      // v3.28b.41: crop is applied to the segment wrap (above), not the video.
+      // The video element just plays — the wrap's clip-path masks it.
       wrap.appendChild(v);
       // v3.28b.28: attach the draw-crop mousedown handler. The handler only
       // ACTS when view.pendingCropSegId matches this seg's id (set by the
