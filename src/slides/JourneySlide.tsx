@@ -66,6 +66,9 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
   // ignored — old projects that had it set to false will now zoom (intentional, since
   // every Journey slide now has the standard zoom-in motion).
   const cameraEnabled = true;
+  // v3.28b.40: optional flag — start already zoomed in (no zoom-in animation).
+  // Useful when the user wants to skip the camera move and just have tick marks animate.
+  const startZoomedIn = !!seg.journeyZoom?.startZoomedIn;
 
   const HIGHLIGHT_N = Math.max(0, Math.min(seg.highlightUpToRow || 0, N));
   const glowStates: Array<'inactive' | 'glow-static' | 'glow-animate'> = rows.map((row, i) => {
@@ -93,7 +96,9 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
     if (state === 'inactive') return 0;
     if (state === 'glow-static') return 1;
     if (cameraEnabled) {
-      const activeAt = PRE_ROLL_MS + animateOrdinal * ROW_HOLD_MS;
+      // v3.28b.40: when startZoomedIn, skip PRE_ROLL entirely — rows animate from t=0
+      const preRoll = startZoomedIn ? 0 : PRE_ROLL_MS;
+      const activeAt = preRoll + animateOrdinal * ROW_HOLD_MS;
       animateOrdinal++;
       if (t < activeAt) return 0;
       if (t > activeAt + GLOW_IN_MS) return 1;
@@ -106,11 +111,18 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment }> = ({ seg }) => {
   let headerOpacity = 1, slideOpacity = 1;
 
   if (cameraEnabled) {
-    // v3.23: zoom-in starts at PRE_ROLL_MS (so the slide sits at scale 1 for 1.0s first)
+    // v3.28b.40: when startZoomedIn, zoom is at 1 from frame 0 — no animation.
+    // Otherwise, the existing PRE_ROLL → ZOOM_RAMP → settled flow.
     let zoomProgress: number;
-    if (t < PRE_ROLL_MS) zoomProgress = 0;
-    else if (t < PRE_ROLL_MS + ZOOM_RAMP_MS) zoomProgress = smoothstep((t - PRE_ROLL_MS) / ZOOM_RAMP_MS);
-    else zoomProgress = 1;
+    if (startZoomedIn) {
+      zoomProgress = 1;
+    } else if (t < PRE_ROLL_MS) {
+      zoomProgress = 0;
+    } else if (t < PRE_ROLL_MS + ZOOM_RAMP_MS) {
+      zoomProgress = smoothstep((t - PRE_ROLL_MS) / ZOOM_RAMP_MS);
+    } else {
+      zoomProgress = 1;
+    }
     headerOpacity = 1 - zoomProgress;
 
     if (t > seg.durationMs - FADE_OUT_MS) {

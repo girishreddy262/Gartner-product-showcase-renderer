@@ -2189,6 +2189,8 @@ function renderJourneySVG(seg) {
   const Nrows = rows.length;
   // v3.28a.2: zoom is always on (matches renderer behavior). No more user toggle.
   const cameraEnabled = true;
+  // v3.28b.40: optional flag — start already zoomed in
+  const startZoomedIn = !!(seg.journeyZoom && seg.journeyZoom.startZoomedIn);
 
   // Resolve glow state per row (back-compat with seg.highlightUpToRow)
   const HIGHLIGHT_N = Math.max(0, Math.min(seg.highlightUpToRow || 0, Nrows));
@@ -2213,7 +2215,9 @@ function renderJourneySVG(seg) {
     if (st === 'inactive') return 0;
     if (st === 'glow-static') return 1;
     if (cameraEnabled) {
-      const activeAt = PRE_ROLL_MS + _editAnimOrd * ROW_HOLD_MS;
+      // v3.28b.40: rows start firing immediately when startZoomedIn
+      const preRoll = startZoomedIn ? 0 : PRE_ROLL_MS;
+      const activeAt = preRoll + _editAnimOrd * ROW_HOLD_MS;
       _editAnimOrd++;
       if (t < activeAt) return 0;
       if (t > activeAt + GLOW_IN_MS) return 1;
@@ -2228,10 +2232,17 @@ function renderJourneySVG(seg) {
   let scale = 1, txCam = 0, tyCam = 0;
   let headerOpacity = 1, slideOpacity = 1;
   if (cameraEnabled && (view.isPlaying || _previewZoomActive)) {
+    // v3.28b.40: when startZoomedIn, zoom is at 1 from frame 0
     let zoomProgress = 0;
-    if (t < PRE_ROLL_MS) zoomProgress = 0;
-    else if (t < PRE_ROLL_MS + ZOOM_RAMP_MS) zoomProgress = smooth((t - PRE_ROLL_MS) / ZOOM_RAMP_MS);
-    else zoomProgress = 1;
+    if (startZoomedIn) {
+      zoomProgress = 1;
+    } else if (t < PRE_ROLL_MS) {
+      zoomProgress = 0;
+    } else if (t < PRE_ROLL_MS + ZOOM_RAMP_MS) {
+      zoomProgress = smooth((t - PRE_ROLL_MS) / ZOOM_RAMP_MS);
+    } else {
+      zoomProgress = 1;
+    }
     headerOpacity = 1 - zoomProgress;
     if (t > seg.durationMs - FADE_OUT_MS) {
       slideOpacity = Math.max(0, (seg.durationMs - t) / FADE_OUT_MS);
@@ -3656,6 +3667,17 @@ function renderJourneyEditUI(seg) {
   html += '<button class="repeater-add" id="journey-add-row"' + (canAdd ? '' : ' disabled') + '>+ Add row' + (canAdd ? '' : ' (max ' + maxRows + ')') + '</button>';
   html += '</div>';
 
+  // v3.28b.40: "Start already zoomed in" toggle.
+  // Default OFF: standard behavior (slide loads at scale 1, zooms in over PRE_ROLL+RAMP).
+  // ON: slide loads at final zoom from frame 0, only tick marks animate.
+  const startZoomedIn = !!(seg.journeyZoom && seg.journeyZoom.startZoomedIn);
+  html += '<div class="form-row" style="margin-top:14px;">' +
+    '<label class="checkbox-label">' +
+      '<input type="checkbox" id="seg-journey-already-zoomed"' + (startZoomedIn ? ' checked' : '') + '>' +
+      ' Start already zoomed in (skip zoom-in animation)</label>' +
+    '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">When on, the slide loads at full zoom and only the tick marks animate. Saves about 1 second.</div>' +
+  '</div>';
+
   // v3.28a.2: Camera Zoom toggle removed. Zoom is now always on for every Journey slide.
   // The renderer ignores seg.journeyZoom.enabled — the field stays in the data model
   // for back-compat but is never read or written from the editor UI.
@@ -4158,6 +4180,16 @@ function wireJourneyEditUI(seg) {
   const ejEl = $('seg-end-journey');
   if (ejEl) {
     ejEl.addEventListener('change', (e) => { pushHistory(); seg.endJourney = e.target.checked; rebuildCanvas(); });
+  }
+  // v3.28b.40: "Start already zoomed in" toggle
+  const azEl = $('seg-journey-already-zoomed');
+  if (azEl) {
+    azEl.addEventListener('change', (e) => {
+      pushHistory();
+      if (!seg.journeyZoom) seg.journeyZoom = { enabled: true };
+      seg.journeyZoom.startZoomedIn = e.target.checked;
+      rebuildCanvas();
+    });
   }
   const feEl = $('seg-footer-enabled');
   if (feEl) {

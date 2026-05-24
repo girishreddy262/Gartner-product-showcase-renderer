@@ -109,6 +109,9 @@ export interface JourneyNativeZoom {
   focalX: number;   // canvas x (default 1260 — over the ticks column)
   focalY: number;   // canvas y (default 543 — middle row)
   scale: number;    // 1.0 – 2.0 (default 1.4)
+  // v3.28b.40: when true, start at full zoom from frame 0 (no zoom-in animation).
+  // Tick marks still animate normally — they just start firing immediately.
+  startZoomedIn?: boolean;
 }
 
 export interface JourneySegment extends BaseSegment {
