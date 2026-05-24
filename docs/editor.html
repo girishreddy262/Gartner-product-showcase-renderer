@@ -218,8 +218,9 @@
     width: 100%;
     max-height: 100%;
     /* v3.28b.34: use the timeline-height CSS var so the canvas auto-grows
-       when the user drags the timeline shorter (via the resize handle). */
-    max-width: calc((100vh - 56px - var(--layout-timeline-h, 280px) - 80px - 8px) * 16 / 9);
+       when the user drags the timeline shorter (via the resize handle).
+       v3.28b.44: tightened the 80px reserve to 56px since tl-controls is now 22px (was ~32px) and timeline-zone padding is tighter. */
+    max-width: calc((100vh - 56px - var(--layout-timeline-h, 280px) - 56px - 8px) * 16 / 9);
     margin: 0 auto;
     overflow:hidden; position:relative;
     border-radius:4px; background:#000;
@@ -278,7 +279,7 @@
   .edit-empty .icon { font-size:36px; margin-bottom:12px; opacity:0.4; }
   .edit-empty .label { font-size:13px; line-height:1.5; }
 
-  .timeline-zone { padding:14px 20px; display:flex; flex-direction:column; gap:8px; }
+  .timeline-zone { padding:8px 20px 10px; display:flex; flex-direction:column; gap:4px; }
   .tl-summary { display:flex; align-items:center; gap:16px; font-size:12px; color:var(--text-dim); }
   .tl-summary .total-length {
     font-family:ui-monospace,Menlo,monospace;
@@ -289,10 +290,11 @@
     background:var(--panel-2); border:1px solid var(--line);
     border-radius:12px; padding:3px 10px; font-size:11px; color:var(--text-dim);
   }
-  .tl-controls { display:flex; align-items:center; gap:12px; margin-top:2px; }
+  /* v3.28b.44: compact controls row — frees vertical space for the video canvas */
+  .tl-controls { display:flex; align-items:center; gap:10px; margin-top:0; height:22px; }
   .tl-time {
     font-family:ui-monospace,Menlo,monospace;
-    font-size:13px; color:var(--text-dim); width:110px;
+    font-size:11px; color:var(--text-dim); width:96px;
   }
   .tl-time strong { color:#fff; font-weight:700; }
   .tl-shortcut-hint { font-size:11px; color:var(--text-dim); }
@@ -302,22 +304,33 @@
     font-family:ui-monospace,Menlo,monospace; color:var(--text-dim);
   }
   .tl-zoom-controls {
-    display:flex; align-items:center; gap:4px;
+    display:flex; align-items:center; gap:3px;
     background:var(--panel-2); border:1px solid var(--line);
-    border-radius:4px; padding:2px; margin-left:auto;
+    border-radius:4px; padding:1px; margin-left:auto;
   }
   .tl-zoom-controls button {
     background:transparent; border:none; color:#fff;
-    width:24px; height:22px; border-radius:3px;
-    cursor:pointer; font-size:13px; font-weight:700;
+    width:20px; height:18px; border-radius:3px;
+    cursor:pointer; font-size:12px; font-weight:700;
     display:flex; align-items:center; justify-content:center; line-height:1;
   }
   .tl-zoom-controls button:hover { background:var(--line-hover); }
   .tl-zoom-controls .zoom-display {
     font-family:ui-monospace,Menlo,monospace; font-size:10px; color:var(--text-dim);
-    padding:0 6px; min-width:36px; text-align:center;
+    padding:0 5px; min-width:32px; text-align:center;
   }
-  .tl-zoom-controls .fit-btn { font-size:10px; padding:0 8px; width:auto; }
+  .tl-zoom-controls .fit-btn { font-size:10px; padding:0 6px; width:auto; }
+  /* v3.28b.44: Snap button */
+  .tl-snap-btn {
+    background:var(--panel-2); border:1px solid var(--line);
+    color:#fff; border-radius:4px;
+    padding:2px 10px; height:20px; font-size:11px; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; gap:6px;
+    transition:background 0.15s, border-color 0.15s, opacity 0.15s;
+  }
+  .tl-snap-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .tl-snap-btn:not(:disabled):hover { background:#0183FF; border-color:#0183FF; }
+  .tl-snap-btn .snap-icon { font-size:13px; line-height:1; }
   .tl-grid {
     display:grid; grid-template-columns:70px 1fr;
     background:var(--panel-2); border-radius:6px;
@@ -1455,6 +1468,11 @@
       <div class="tl-time">
         <strong id="curTime">0:00</strong> / <span id="totalTime">0:00</span>
       </div>
+      <!-- v3.28b.44: Snap button — closes gaps between selected clips.
+           Disabled until 2+ items are selected (via Shift-click on timeline). -->
+      <button id="btnSnap" class="tl-snap-btn" title="Select 2+ clips with Shift-click, then Snap to close gaps between them" disabled>
+        <span class="snap-icon">⇉</span> Snap <span id="btnSnapCount" style="opacity:0.7;"></span>
+      </button>
       <!-- v3.28b.20: shortcut hint removed for cleaner timeline -->
       <div class="tl-zoom-controls" title="Cmd+scroll on timeline to zoom">
         <button id="tlZoomOut" title="Zoom out timeline">−</button>
@@ -3322,6 +3340,79 @@ function deleteSelected() {
   view.selectedId = null; view.selectedKind = null; rebuildAll();
 }
 
+// v3.28b.44: Snap — close gaps between selected clips by ripple-shifting them
+// together. Works on items in the multi-select set (Shift-click 2+ items, then
+// click Snap or press 'S'). Items are sorted by their startMs, then each one
+// after the first is moved up to butt against the previous one's end.
+// Each track is handled independently — selecting items from different tracks
+// doesn't mix them. Untouched items elsewhere on the timeline don't move.
+function snapSelected() {
+  if (!view.multiSelect || view.multiSelect.length < 2) {
+    showToast('Select 2+ clips with Shift-click first', 'warning');
+    return;
+  }
+  // Resolve each selection ref to the actual object + its container array
+  const resolved = [];
+  for (const sel of view.multiSelect) {
+    let item, arr;
+    if (sel.kind === 'segment') {
+      item = state.segments.find(s => s.id === sel.id);
+      arr = state.segments;
+    } else if (sel.kind === 'callout') {
+      item = state.callouts.find(c => c.id === sel.id);
+      arr = state.callouts;
+    } else if (sel.kind === 'audio') {
+      item = (state.audioPlacements || []).find(a => a.id === sel.id);
+      arr = state.audioPlacements;
+    } else if (sel.kind === 'effect') {
+      item = (state.effects || []).find(e => e.id === sel.id);
+      arr = state.effects;
+    } else if (sel.kind === 'textOverlay') {
+      item = (state.textOverlays || []).find(t => t.id === sel.id);
+      arr = state.textOverlays;
+    } else if (sel.kind === 'customerCard') {
+      item = (state.customerCards || []).find(c => c.id === sel.id);
+      arr = state.customerCards;
+    }
+    if (item && arr) resolved.push({ item, kind: sel.kind });
+  }
+  if (resolved.length < 2) {
+    showToast('Snap needs at least 2 items selected', 'warning');
+    return;
+  }
+  // Group by kind so each track stays independent
+  const groups = {};
+  for (const r of resolved) {
+    if (!groups[r.kind]) groups[r.kind] = [];
+    groups[r.kind].push(r.item);
+  }
+  pushHistory();
+  let totalClosed = 0;
+  for (const kind of Object.keys(groups)) {
+    const items = groups[kind].slice().sort((a, b) => a.startMs - b.startMs);
+    if (items.length < 2) continue;
+    // First item stays put. Each subsequent item snaps to the previous one's end.
+    for (let i = 1; i < items.length; i++) {
+      const prev = items[i - 1];
+      const cur = items[i];
+      const prevEnd = prev.startMs + (prev.durationMs || 0);
+      const gap = cur.startMs - prevEnd;
+      if (gap > 0) {
+        cur.startMs = prevEnd;
+        totalClosed += gap;
+      }
+    }
+  }
+  rebuildAll();
+  renderEditPanel();
+  if (totalClosed > 0) {
+    const sec = (totalClosed / 1000).toFixed(1);
+    showToast('Closed ' + sec + 's of gaps across ' + resolved.length + ' clips', 'success');
+  } else {
+    showToast('No gaps to close — clips already adjacent', 'info');
+  }
+}
+
 // v3.28b.16: Select all items in timeline (Cmd/Ctrl+A while focus is on
 // timeline area). Sets up view.multiSelect so the next delete clears them all.
 function selectAllInTimeline() {
@@ -4884,6 +4975,14 @@ function rebuildTimeline() {
   const tl = $('totalLength');
   if (tl) tl.textContent = fmtTime(totalMs);
   $('totalTime').textContent = fmtTime(totalMs);
+  // v3.28b.44: Snap button reflects current multi-selection
+  const snapBtn = $('btnSnap');
+  const snapCount = $('btnSnapCount');
+  if (snapBtn) {
+    const n = (view.multiSelect || []).length;
+    snapBtn.disabled = n < 2;
+    if (snapCount) snapCount.textContent = n >= 2 ? '(' + n + ')' : '';
+  }
   // v3.28b.20: count pills removed from UI
 }
 
@@ -8389,6 +8488,8 @@ function setupHeader() {
   $('tlZoomIn').addEventListener('click', () => setTimelineZoom(view.tlZoom * 1.25));
   $('tlZoomOut').addEventListener('click', () => setTimelineZoom(view.tlZoom / 1.25));
   $('tlZoomFit').addEventListener('click', fitTimelineToTotalLength);
+  // v3.28b.44: Snap button — closes gaps between selected clips
+  $('btnSnap').addEventListener('click', snapSelected);
   $('addTextOverlayBtn').addEventListener('click', () => addTextOverlay());
   $('addZoomBtn').addEventListener('click', () => startPendingEffect('zoom'));
   $('addSpotlightBtn').addEventListener('click', () => startPendingEffect('spotlight'));
