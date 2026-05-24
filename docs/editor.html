@@ -3891,7 +3891,7 @@ function renderSegmentPanel(panel) {
         '<input type="checkbox" id="seg-frame" ' + (seg.showFrame ? 'checked' : '') + '>' +
         ' Show navy frame around video</label>' +
     '</div>' +
-    // v3.28b.28: crop — click "Crop area" then drag a rectangle on the video.
+    // v3.28b.39: crop — Shift+drag on video, or click "Crop area" button.
     (function() {
       const c = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
       const cropped = (c.top||0) + (c.right||0) + (c.bottom||0) + (c.left||0) > 0;
@@ -3900,7 +3900,7 @@ function renderSegmentPanel(panel) {
         '<div class="align-label">Crop' +
           (drawing ? ' <span style="color:#0183FF;font-weight:400;font-size:11px;">— drag on video</span>'
            : cropped ? ' <span style="color:var(--text-dim);font-weight:400;font-size:11px;">— area set</span>'
-           : '') +
+           : ' <span style="color:var(--text-dim);font-weight:400;font-size:11px;">— hold Shift + drag</span>') +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">' +
           '<button id="seg-crop-draw" style="background:' + (drawing ? '#0183FF' : '#2A2D34') + ';border:1px solid var(--line-hover);color:#fff;padding:8px 12px;border-radius:4px;font-size:12px;cursor:pointer;">' +
@@ -5325,11 +5325,15 @@ function cancelCropDrawMode() {
   if (d) d.remove();
 }
 
-// v3.28b.38: SIMPLE drag-to-crop. Drag a rectangle on the wrap. Crop ratios
-// stored as fractions of the wrap. clip-path uses same fractions. Done.
+// v3.28b.39: SHIFT+DRAG to crop. Hold Shift, drag a rectangle on any selected
+// recording segment. On release: clip-path applied to the video. Console logs
+// every step so we can see exactly what's happening.
 function attachCropDrawHandler(wrap, seg, videoEl) {
   wrap.addEventListener('mousedown', (e) => {
-    if (view.pendingCropSegId !== seg.id) return;
+    // Two ways to trigger: (a) Shift+drag, or (b) the "Crop area" button was clicked
+    const viaShift = e.shiftKey && view.selectedId === seg.id;
+    const viaButton = view.pendingCropSegId === seg.id;
+    if (!viaShift && !viaButton) return;
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -5337,6 +5341,9 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
     const W = wrapRect.width, H = wrapRect.height;
     const startXpx = e.clientX - wrapRect.left;
     const startYpx = e.clientY - wrapRect.top;
+    console.log('[CROP] Start drag — wrap dims:', W.toFixed(1), 'x', H.toFixed(1),
+                '| start:', startXpx.toFixed(1), ',', startYpx.toFixed(1),
+                '| trigger:', viaShift ? 'SHIFT+drag' : 'button');
     const draftEl = document.createElement('div');
     draftEl.className = 'crop-draft-rect';
     draftEl.style.position = 'absolute';
@@ -5371,6 +5378,7 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
       const x2 = Math.min(W, Math.max(startXpx, xPx));
       const y2 = Math.min(H, Math.max(startYpx, yPx));
       if ((x2 - x1) < 10 || (y2 - y1) < 10) {
+        console.log('[CROP] Rect too small, cancelling');
         draftEl.remove();
         cancelCropDrawMode();
         return;
@@ -5381,10 +5389,19 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
       seg.crop.top    = Math.min(0.95, Math.max(0, y1 / H));
       seg.crop.right  = Math.min(0.95, Math.max(0, (W - x2) / W));
       seg.crop.bottom = Math.min(0.95, Math.max(0, (H - y2) / H));
+      console.log('[CROP] Applied — pixels:', {x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1)});
+      console.log('[CROP] Ratios:', seg.crop);
+      console.log('[CROP] seg.x/y/w/h:', seg.x, seg.y, seg.width, seg.height);
       draftEl.remove();
       cancelCropDrawMode();
       rebuildCanvas();
       renderEditPanel();
+      // After rebuild, log the resulting clip-path
+      setTimeout(() => {
+        const v = wrap.querySelector('video');
+        console.log('[CROP] After rebuild — video clipPath:', v?.style.clipPath);
+        console.log('[CROP] After rebuild — wrap rect:', wrap.getBoundingClientRect());
+      }, 50);
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
