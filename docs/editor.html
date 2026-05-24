@@ -3882,9 +3882,9 @@ function renderSegmentPanel(panel) {
     '</div>' +
     // v3.28b.20: when source audio is on, allow per-segment volume 0-200%
     '<div class="form-row" id="seg-volume-row" style="' + (seg.muteSourceAudio === false ? '' : 'display:none;') + '">' +
-      '<label>Volume <span id="seg-volume-val">' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '%</span></label>' +
+      '<label>Source video audio <span id="seg-volume-val">' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '%</span></label>' +
       '<input type="range" id="seg-volume" min="0" max="200" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
-      '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">100% = original. Above 100% boosts the rendered audio.</div>' +
+      '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Controls only this video\'s built-in audio. Audio track clips have their own volume sliders.</div>' +
     '</div>' +
     '<div class="form-row">' +
       '<label class="checkbox-label">' +
@@ -4432,14 +4432,22 @@ function wireSegmentPanel(seg) {
     const _vol = document.getElementById('seg-volume');
     const _volLbl = document.getElementById('seg-volume-val');
     if (_vol) {
+      // v3.28b.36: apply volume live on input (not just change), AND apply
+      // directly to the current video element so the change is audible without
+      // a full canvas rebuild (which would interrupt playback).
       _vol.addEventListener('input', (e) => {
-        // live update label
-        if (_volLbl) _volLbl.textContent = e.target.value + '%';
+        const pct = parseInt(e.target.value, 10) || 0;
+        if (_volLbl) _volLbl.textContent = pct + '%';
+        seg.audioVolume = pct / 100;
+        // If this seg is the active one in playback, apply directly to its
+        // <video> element so the change is audible without a canvas rebuild.
+        const currentActive = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
+        if (_activeVideoElement && currentActive && currentActive.id === seg.id && seg.muteSourceAudio === false) {
+          _activeVideoElement.volume = Math.max(0, Math.min(1, seg.audioVolume));
+        }
       });
       _vol.addEventListener('change', (e) => {
-        pushHistory();
-        seg.audioVolume = (parseInt(e.target.value, 10) || 100) / 100;
-        rebuildCanvas();
+        pushHistory();  // checkpoint only on release
       });
     }
     $('seg-frame').addEventListener('change', (e) => { pushHistory(); seg.showFrame = e.target.checked; rebuildCanvas(); });
