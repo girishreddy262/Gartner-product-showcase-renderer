@@ -99,6 +99,16 @@
   }
   .asset-card:hover { border-color:var(--line-hover); background:#1F2532; }
   .asset-card:active { cursor:grabbing; }
+  /* v3.28b.33: per-asset delete button */
+  .asset-card .ac-delete {
+    margin-left:auto; flex-shrink:0;
+    width:24px; height:24px; border-radius:4px;
+    background:transparent; border:1px solid transparent;
+    color:#888; font-size:18px; line-height:1; padding:0;
+    cursor:pointer; opacity:0; transition:opacity 0.15s, color 0.15s, background 0.15s;
+  }
+  .asset-card:hover .ac-delete { opacity:1; }
+  .asset-card .ac-delete:hover { color:#ff6b6b; background:rgba(255,107,107,0.1); border-color:rgba(255,107,107,0.3); }
   .asset-card .ac-icon {
     width:32px; height:24px; border-radius:4px; flex-shrink:0;
     background:linear-gradient(143deg, var(--navy-900), var(--accent));
@@ -2403,40 +2413,41 @@ function renderFocusSVG(seg) {
   const titleSize = variation === 1 ? 52 : 56;
   svg += '<text x="960" y="265" text-anchor="middle" fill="white" font-family="Satoshi" font-size="' + titleSize + '" font-weight="700">' + svgEsc(seg.title || '') + '</text>';
 
-  // Columns
-  const cols = (seg.columns || []).slice(0, 4);
+  // Columns - v3.28b.33: support up to 6 columns with dynamic pitch sizing
+  const cols = (seg.columns || []).slice(0, 6);
+  const nCols = cols.length;
   if (variation === 1) {
-    // v3.28b.8: auto-center the column group; text stays left-aligned per column
-    const COL_PITCH = 400;
-    const n = cols.length;
-    const groupWidth = n > 0 ? (n - 1) * COL_PITCH : 0;
+    // v3.28b.33: dynamic pitch — keep group inside 1700px usable width
+    const COL_PITCH = nCols <= 4 ? 400 : Math.floor(1700 / Math.max(1, nCols - 1));
+    const groupWidth = nCols > 0 ? (nCols - 1) * COL_PITCH : 0;
     const firstX = Math.round((1920 - groupWidth) / 2) - 40;
+    // v3.28b.33: scale text size down when 5+ columns to avoid overflow
+    const headingSize = nCols <= 4 ? 32 : (nCols === 5 ? 26 : 22);
+    const bodySize = nCols <= 4 ? 22 : (nCols === 5 ? 18 : 16);
     cols.forEach((col, i) => {
       const xLeft = firstX + i * COL_PITCH;
-      // v3.28b.8: icon background rect removed
       const iconUrl = getFocusIconUrl(col.iconId);
       if (iconUrl) svg += '<image x="' + xLeft + '" y="386" width="80" height="80" href="' + svgEsc(iconUrl) + '" preserveAspectRatio="xMidYMid meet"/>';
       (col.heading || '').split('\n').forEach((line, ix) => {
-        svg += '<text x="' + xLeft + '" y="' + (540 + ix * 40) + '" fill="white" font-family="Satoshi" font-size="32" font-weight="700">' + svgEsc(line) + '</text>';
+        svg += '<text x="' + xLeft + '" y="' + (540 + ix * 40) + '" fill="white" font-family="Satoshi" font-size="' + headingSize + '" font-weight="700">' + svgEsc(line) + '</text>';
       });
       (col.body || '').split('\n').filter(s => s).forEach((line, ix) => {
-        svg += '<text x="' + xLeft + '" y="' + (635 + ix * 35) + '" fill="#7ABEFF" font-family="Satoshi" font-size="22" font-weight="500">' + svgEsc(line) + '</text>';
+        svg += '<text x="' + xLeft + '" y="' + (635 + ix * 35) + '" fill="#7ABEFF" font-family="Satoshi" font-size="' + bodySize + '" font-weight="500">' + svgEsc(line) + '</text>';
       });
     });
   } else {
-    // v3.28b.8: auto-center the column group; text stays center-aligned per column
-    const COL_PITCH = 384;
-    const n = cols.length;
-    const groupWidth = n > 0 ? (n - 1) * COL_PITCH : 0;
+    // v3.28b.33: same dynamic pitch for variation 2
+    const COL_PITCH = nCols <= 4 ? 384 : Math.floor(1700 / Math.max(1, nCols - 1));
+    const groupWidth = nCols > 0 ? (nCols - 1) * COL_PITCH : 0;
     const firstCenter = Math.round((1920 - groupWidth) / 2);
+    const headingSize = nCols <= 4 ? 28 : (nCols === 5 ? 22 : 18);
     cols.forEach((col, i) => {
       const cx = firstCenter + i * COL_PITCH;
       const iconX = cx - 50;
-      // v3.28b.8: icon background rect removed
       const iconUrl = getFocusIconUrl(col.iconId);
       if (iconUrl) svg += '<image x="' + iconX + '" y="395" width="100" height="100" href="' + svgEsc(iconUrl) + '" preserveAspectRatio="xMidYMid meet"/>';
       (col.heading || '').split('\n').forEach((line, lx) => {
-        svg += '<text x="' + cx + '" y="' + (555 + lx * 35) + '" text-anchor="middle" fill="white" font-family="Satoshi" font-size="28" font-weight="700">' + svgEsc(line) + '</text>';
+        svg += '<text x="' + cx + '" y="' + (555 + lx * 35) + '" text-anchor="middle" fill="white" font-family="Satoshi" font-size="' + headingSize + '" font-weight="700">' + svgEsc(line) + '</text>';
       });
     });
   }
@@ -2739,7 +2750,10 @@ function renderLeftRail() {
           '<div class="ac-label">' + escapeHtml(v.id) + '</div>' +
           '<div class="ac-desc">' + escapeHtml(v.filename || '') + '</div>' +
           '<div class="ac-duration">' + durStr + '</div>' +
-        '</div></div>';
+        '</div>' +
+        // v3.28b.33: delete button per asset
+        '<button class="ac-delete" data-delete-video="' + v.id + '" title="Delete this video" aria-label="Delete">×</button>' +
+        '</div>';
     }).join('');
   }
   const audiosList = $('audiosList');
@@ -2755,11 +2769,53 @@ function renderLeftRail() {
           '<div class="ac-label">' + escapeHtml(a.id) + '</div>' +
           '<div class="ac-desc">' + escapeHtml(a.filename || '') + '</div>' +
           '<div class="ac-duration">' + durStr + '</div>' +
-        '</div></div>';
+        '</div>' +
+        '<button class="ac-delete" data-delete-audio="' + a.id + '" title="Delete this audio" aria-label="Delete">×</button>' +
+        '</div>';
     }).join('');
   }
   document.querySelectorAll('.asset-card[draggable]').forEach(card => {
     card.addEventListener('dragstart', onAssetDragStart);
+  });
+  // v3.28b.33: wire delete buttons. Confirmation required since this also
+  // removes any timeline segments/placements referencing the asset.
+  document.querySelectorAll('.ac-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const vid = btn.dataset.deleteVideo;
+      const aid = btn.dataset.deleteAudio;
+      if (vid) {
+        const refCount = state.segments.filter(s => s.kind === 'recording' && s.videoId === vid).length;
+        const asset = state.videos.find(v => v.id === vid);
+        const msg = refCount > 0
+          ? 'Delete "' + (asset?.filename || vid) + '"? This will also remove ' + refCount + ' segment(s) using it from the timeline.'
+          : 'Delete "' + (asset?.filename || vid) + '"?';
+        if (!confirm(msg)) return;
+        pushHistory();
+        state.videos = state.videos.filter(v => v.id !== vid);
+        state.segments = state.segments.filter(s => !(s.kind === 'recording' && s.videoId === vid));
+        renderLeftRail(); rebuildAll(); renderEditPanel();
+        showToast('Video deleted', 'success');
+      } else if (aid) {
+        const refCount = (state.audioPlacements || []).filter(ap => ap.audioId === aid).length;
+        const asset = state.audios.find(a => a.id === aid);
+        const msg = refCount > 0
+          ? 'Delete "' + (asset?.filename || aid) + '"? This will also remove ' + refCount + ' placement(s) on the timeline.'
+          : 'Delete "' + (asset?.filename || aid) + '"?';
+        if (!confirm(msg)) return;
+        pushHistory();
+        state.audios = state.audios.filter(a => a.id !== aid);
+        state.audioPlacements = (state.audioPlacements || []).filter(ap => ap.audioId !== aid);
+        // Also remove the <audio> element from the DOM
+        if (_audioElements[aid]) {
+          try { _audioElements[aid].pause(); _audioElements[aid].remove(); } catch(e) {}
+          delete _audioElements[aid];
+        }
+        renderLeftRail(); rebuildAll(); renderEditPanel();
+        showToast('Audio deleted', 'success');
+      }
+    });
   });
 }
 
@@ -3768,7 +3824,8 @@ function renderSegmentPanel(panel) {
     // v3.28b.20: when source audio is on, allow per-segment volume 0-200%
     '<div class="form-row" id="seg-volume-row" style="' + (seg.muteSourceAudio === false ? '' : 'display:none;') + '">' +
       '<label>Volume <span id="seg-volume-val">' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '%</span></label>' +
-      '<input type="range" id="seg-volume" min="0" max="100" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
+      '<input type="range" id="seg-volume" min="0" max="200" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
+      '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">100% = original. Above 100% boosts the rendered audio.</div>' +
     '</div>' +
     '<div class="form-row">' +
       '<label class="checkbox-label">' +
@@ -3800,8 +3857,8 @@ function renderSegmentPanel(panel) {
     '</div>' +
     '<div class="align-section">' +
       '<div class="align-label">Playback speed</div>' +
-      '<div class="speed-buttons" id="seg-speed-group">' +
-        ['1.0','1.2','1.5','1.7','2.0'].map(function(s){ var a = Math.abs((seg.speed||1.0) - parseFloat(s)) < 0.001; return '<button class="speed-btn' + (a?' active':'') + '" data-speed="' + s + '">' + s + 'x</button>'; }).join('') +
+      '<div class="speed-buttons" id="seg-speed-group" style="grid-template-columns:repeat(7,1fr);">' +
+        ['0.5','0.75','1.0','1.25','1.5','1.75','2.0'].map(function(s){ var a = Math.abs((seg.speed||1.0) - parseFloat(s)) < 0.001; return '<button class="speed-btn' + (a?' active':'') + '" data-speed="' + s + '">' + s + 'x</button>'; }).join('') +
       '</div>' +
     '</div>';
   } else {

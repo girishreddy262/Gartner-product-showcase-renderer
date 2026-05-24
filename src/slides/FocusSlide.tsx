@@ -106,13 +106,14 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
 const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const cols = columns.slice(0, 4);
+  const cols = columns.slice(0, 6);
   const n = cols.length;
-  // v3.28b.8: auto-center the column group. Each column reserves 400px (300 content + 100 gap).
-  // Whole group is then centered on the 1920 canvas.
-  const COL_PITCH = 400;
+  // v3.28b.33: dynamic column pitch — support up to 6 columns without overflow
+  const COL_PITCH = n <= 4 ? 400 : Math.floor(1700 / Math.max(1, n - 1));
   const groupWidth = n > 0 ? (n - 1) * COL_PITCH : 0;
-  const firstX = Math.round((tokens.canvasW - groupWidth) / 2) - 40; // -40 = icon offset so text left edge starts at center-ish
+  const firstX = Math.round((tokens.canvasW - groupWidth) / 2) - 40;
+  const headingSize = n <= 4 ? 32 : (n === 5 ? 26 : 22);
+  const bodySize = n <= 4 ? 22 : (n === 5 ? 18 : 16);
   return (
     <g>
       {cols.map((col, i) => {
@@ -143,7 +144,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
                 x={xLeft} y={540 + idx * 40}
                 fill="white"
                 fontFamily="Satoshi, system-ui, sans-serif"
-                fontSize={32} fontWeight={700}
+                fontSize={headingSize} fontWeight={700}
               >
                 {line}
               </text>
@@ -154,7 +155,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
                 x={xLeft} y={635 + idx * 35}
                 fill={tokens.cyan}
                 fontFamily="Satoshi, system-ui, sans-serif"
-                fontSize={22} fontWeight={500}
+                fontSize={bodySize} fontWeight={500}
               >
                 {line}
               </text>
@@ -171,13 +172,13 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
 const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const cols = columns.slice(0, 4);
+  const cols = columns.slice(0, 6);
   const n = cols.length;
-  // v3.28b.8: auto-center the column group. Preserves the existing 384px spacing between
-  // column centers (which equals 1920/5 → original layout for 4 columns).
-  const COL_PITCH = 384;
+  // v3.28b.33: dynamic pitch — up to 6 columns
+  const COL_PITCH = n <= 4 ? 384 : Math.floor(1700 / Math.max(1, n - 1));
   const groupWidth = n > 0 ? (n - 1) * COL_PITCH : 0;
   const firstCenter = Math.round((tokens.canvasW - groupWidth) / 2);
+  const headingSize = n <= 4 ? 28 : (n === 5 ? 22 : 18);
   return (
     <g>
       {cols.map((col, i) => {
@@ -210,7 +211,7 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
                 textAnchor="middle"
                 fill="white"
                 fontFamily="Satoshi, system-ui, sans-serif"
-                fontSize={28} fontWeight={700}
+                fontSize={headingSize} fontWeight={700}
               >
                 {line}
               </text>
