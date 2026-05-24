@@ -173,26 +173,7 @@
     margin-bottom:8px; font-size:11px; color:var(--text-dim); gap:8px;
   }
   .stage-meta strong { color:#fff; font-weight:600; }
-  /* v3.28b.35: preview zoom (visually scales the video panel only) */
-  .preview-zoom {
-    display:flex; align-items:center; gap:4px;
-    background:#1a1d24; border:1px solid var(--line);
-    border-radius:5px; padding:3px 4px;
-  }
-  .preview-zoom button {
-    background:transparent; border:none; color:#aab;
-    width:22px; height:22px; padding:0; border-radius:3px;
-    font-size:14px; font-weight:600; line-height:1; cursor:pointer;
-    transition:background 0.1s, color 0.1s;
-  }
-  .preview-zoom button:hover { background:#2A2D34; color:#fff; }
-  .preview-zoom #previewZoomVal {
-    color:#fff; font-size:11px; font-weight:600;
-    min-width:36px; text-align:center;
-  }
-  .preview-zoom #previewZoomFit {
-    font-size:10px; width:auto; padding:0 6px;
-  }
+  /* v3.28b.45: preview zoom CSS removed */
   .stage-zoom-controls {
     display:flex; align-items:center; gap:4px;
     background:rgba(0,0,0,0.3); border-radius:4px; padding:2px;
@@ -1429,13 +1410,7 @@
       <div class="stage-meta">
         <span>Canvas: <strong>1920×1080</strong></span>
         <span id="canvas-info" style="flex:1; text-align:center; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">No segment active</span>
-        <!-- v3.28b.35: preview zoom (scales the displayed video panel only) -->
-        <div class="preview-zoom" title="Preview zoom (scales the video display)">
-          <button id="previewZoomOut" aria-label="Zoom out">−</button>
-          <span id="previewZoomVal">100%</span>
-          <button id="previewZoomIn" aria-label="Zoom in">+</button>
-          <button id="previewZoomFit" title="Fit to layout">Fit</button>
-        </div>
+        <!-- v3.28b.45: preview zoom controls removed -->
       </div>
       <div class="stage-viewport" id="stageViewport">
         <div class="stage" id="stage">
@@ -7524,49 +7499,19 @@ function setupResizeHandles() {
     (start, dy) => Math.max(140, Math.min(window.innerHeight - 250, start - dy)));
 }
 
-// v3.28b.35: preview zoom — visually scales the video panel up/down via CSS transform.
-// Independent of layout sizing. Doesn't affect the underlying 1920×1080 canvas,
-// drag math, or the rendered output — purely a viewing scale for the user.
-let _previewZoom = 1.0;
-function setupPreviewZoom() {
-  const btnOut = document.getElementById('previewZoomOut');
-  const btnIn = document.getElementById('previewZoomIn');
-  const btnFit = document.getElementById('previewZoomFit');
-  const valEl = document.getElementById('previewZoomVal');
-  // Restore persisted value
+// v3.28b.45: preview zoom feature removed (was disturbing the video display).
+// Clear any persisted value that might still be in localStorage so reloads
+// don't keep a stale scale transform on stageViewport.
+(function cleanupOldPreviewZoom() {
+  try { localStorage.removeItem('previewZoom'); } catch (e) {}
   try {
-    const saved = parseFloat(localStorage.getItem('previewZoom') || '1');
-    if (saved > 0.25 && saved < 4) _previewZoom = saved;
+    const vp = document.getElementById('stageViewport');
+    if (vp) {
+      vp.style.transform = '';
+      vp.style.transformOrigin = '';
+    }
   } catch (e) {}
-  applyPreviewZoom();
-  function setZoom(z) {
-    _previewZoom = Math.max(0.5, Math.min(2.5, z));
-    applyPreviewZoom();
-    try { localStorage.setItem('previewZoom', String(_previewZoom)); } catch (e) {}
-  }
-  if (btnIn) btnIn.addEventListener('click', () => setZoom(_previewZoom * 1.15));
-  if (btnOut) btnOut.addEventListener('click', () => setZoom(_previewZoom / 1.15));
-  if (btnFit) btnFit.addEventListener('click', () => setZoom(1.0));
-  function update() {
-    if (valEl) valEl.textContent = Math.round(_previewZoom * 100) + '%';
-  }
-  update();
-  // expose for applyPreviewZoom
-  setupPreviewZoom._update = update;
-}
-
-function applyPreviewZoom() {
-  const vp = document.getElementById('stageViewport');
-  if (!vp) return;
-  if (_previewZoom !== 1.0) {
-    vp.style.transform = 'scale(' + _previewZoom + ')';
-    vp.style.transformOrigin = 'top center';
-  } else {
-    vp.style.transform = '';
-    vp.style.transformOrigin = '';
-  }
-  if (setupPreviewZoom._update) setupPreviewZoom._update();
-}
+})();
 
 function setupTimelineWheelZoom() {
   const tlContent = $('tlContent');
@@ -8727,8 +8672,7 @@ async function init() {
   setupAudioElements();
   // v3.28b.34: resizable layout zones (drag borders to resize)
   setupResizeHandles();
-  // v3.28b.35: preview zoom controls (scales video panel only)
-  setupPreviewZoom();
+  // v3.28b.45: preview zoom controls retired (cleanup runs at script load)
   // v3.28b.20: rail collapse buttons
   const app = document.querySelector('.app');
   const btnCollapse = document.getElementById('btnRailCollapse');
