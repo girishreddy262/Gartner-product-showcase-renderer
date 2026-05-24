@@ -5325,8 +5325,8 @@ function cancelCropDrawMode() {
   if (d) d.remove();
 }
 
-// Wire mousedown/move/up on a recording-segment wrap for draw-crop. Called
-// from renderSegmentToCanvas when seg is selected.
+// v3.28b.38: SIMPLE drag-to-crop. Drag a rectangle on the wrap. Crop ratios
+// stored as fractions of the wrap. clip-path uses same fractions. Done.
 function attachCropDrawHandler(wrap, seg, videoEl) {
   wrap.addEventListener('mousedown', (e) => {
     if (view.pendingCropSegId !== seg.id) return;
@@ -5334,29 +5334,7 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
     e.preventDefault();
     e.stopPropagation();
     const wrapRect = wrap.getBoundingClientRect();
-    // v3.28b.31: Compute the VISIBLE video region inside the wrap using stashed
-    // source dims. videoEl.videoWidth is 0 on a freshly-created element.
     const W = wrapRect.width, H = wrapRect.height;
-    const knownSrcW = seg._srcW || (videoEl.videoWidth > 0 ? videoEl.videoWidth : 0);
-    const knownSrcH = seg._srcH || (videoEl.videoHeight > 0 ? videoEl.videoHeight : 0);
-    let visX = 0, visY = 0, visW = W, visH = H;
-    if (knownSrcW > 0 && knownSrcH > 0) {
-      const srcAspect = knownSrcW / knownSrcH;
-      const wrapAspect = W / H;
-      if (srcAspect > wrapAspect) {
-        // Video wider than wrap → letterbox top/bottom
-        visW = W;
-        visH = W / srcAspect;
-        visX = 0;
-        visY = (H - visH) / 2;
-      } else {
-        // Video taller than wrap → letterbox left/right
-        visH = H;
-        visW = H * srcAspect;
-        visY = 0;
-        visX = (W - visW) / 2;
-      }
-    }
     const startXpx = e.clientX - wrapRect.left;
     const startYpx = e.clientY - wrapRect.top;
     const draftEl = document.createElement('div');
@@ -5388,32 +5366,25 @@ function attachCropDrawHandler(wrap, seg, videoEl) {
       document.removeEventListener('mouseup', onUp);
       const xPx = ev.clientX - wrapRect.left;
       const yPx = ev.clientY - wrapRect.top;
-      // Clamp drag rect to the VISIBLE region (don't allow crop into letterbox)
-      const x1 = Math.max(visX, Math.min(startXpx, xPx));
-      const y1 = Math.max(visY, Math.min(startYpx, yPx));
-      const x2 = Math.min(visX + visW, Math.max(startXpx, xPx));
-      const y2 = Math.min(visY + visH, Math.max(startYpx, yPx));
-      const minDim = 10;
-      if ((x2 - x1) < minDim || (y2 - y1) < minDim) {
+      const x1 = Math.max(0, Math.min(startXpx, xPx));
+      const y1 = Math.max(0, Math.min(startYpx, yPx));
+      const x2 = Math.min(W, Math.max(startXpx, xPx));
+      const y2 = Math.min(H, Math.max(startYpx, yPx));
+      if ((x2 - x1) < 10 || (y2 - y1) < 10) {
         draftEl.remove();
         cancelCropDrawMode();
         return;
       }
-      // v3.28b.31: Crop ratios are stored as fractions of the VISIBLE video
-      // region (which == the source video frame). The clipper div will be
-      // sized to that visible region and use these ratios directly.
-      // x1, y1, x2, y2 are in wrap-pixel coords clamped to the visible rect.
-      // Convert to ratios of (visW × visH):
       pushHistory();
       if (!seg.crop) seg.crop = { top: 0, right: 0, bottom: 0, left: 0 };
-      seg.crop.left   = Math.min(0.95, Math.max(0, (x1 - visX) / visW));
-      seg.crop.top    = Math.min(0.95, Math.max(0, (y1 - visY) / visH));
-      seg.crop.right  = Math.min(0.95, Math.max(0, ((visX + visW) - x2) / visW));
-      seg.crop.bottom = Math.min(0.95, Math.max(0, ((visY + visH) - y2) / visH));
+      seg.crop.left   = Math.min(0.95, Math.max(0, x1 / W));
+      seg.crop.top    = Math.min(0.95, Math.max(0, y1 / H));
+      seg.crop.right  = Math.min(0.95, Math.max(0, (W - x2) / W));
+      seg.crop.bottom = Math.min(0.95, Math.max(0, (H - y2) / H));
       draftEl.remove();
       cancelCropDrawMode();
       rebuildCanvas();
-      renderEditPanel();  // refresh hint text in panel
+      renderEditPanel();
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -5566,52 +5537,13 @@ function renderSegmentToCanvas(seg) {
         console.warn('Video failed to load:', video.url);
         wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#fff;font-size:48px;text-align:center;padding:40px;">Could not load video<br><span style="font-size:24px;color:#888;margin-top:20px;display:block;">' + (video.filename || video.id) + '</span></div>';
       });
-      // v3.28b.31: when crop is set, wrap the video in a div sized to its
-      // visible pixel region. We use seg._srcW/_srcH (stashed when metadata
-      // first loaded) — v.videoWidth is 0 because the element was just created.
-      const knownSrcW = seg._srcW || (v.videoWidth > 0 ? v.videoWidth : 0);
-      const knownSrcH = seg._srcH || (v.videoHeight > 0 ? v.videoHeight : 0);
-      if (hasCrop && knownSrcW > 0 && knownSrcH > 0) {
-        // Compute visible region inside the wrap (with object-fit:contain math)
-        const wrapW = seg.width || CANVAS_W;
-        const wrapH = seg.height || CANVAS_H;
-        const srcAspect = knownSrcW / knownSrcH;
-        const wrapAspect = wrapW / wrapH;
-        let visW, visH, visX, visY;
-        if (srcAspect > wrapAspect) {
-          visW = wrapW; visH = wrapW / srcAspect;
-          visX = 0; visY = (wrapH - visH) / 2;
-        } else {
-          visH = wrapH; visW = wrapH * srcAspect;
-          visY = 0; visX = (wrapW - visW) / 2;
-        }
-        // Build a clipper div at the visible-region rect with clip-path.
-        const clipper = document.createElement('div');
-        clipper.style.position = 'absolute';
-        clipper.style.left = visX + 'px';
-        clipper.style.top = visY + 'px';
-        clipper.style.width = visW + 'px';
-        clipper.style.height = visH + 'px';
-        clipper.style.overflow = 'hidden';
-        clipper.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
-        // Re-style the video to fill the clipper exactly
-        v.style.position = 'absolute';
-        v.style.left = '0';
-        v.style.top = '0';
-        v.style.width = '100%';
-        v.style.height = '100%';
-        v.style.objectFit = 'fill';  // safe now — clipper IS the visible rect
-        clipper.appendChild(v);
-        wrap.appendChild(clipper);
-      } else if (hasCrop) {
-        // No source dims yet (metadata not loaded). Fall back: just append
-        // video and apply clip-path on it. Will re-render correctly once
-        // metadata loads (loadedmetadata handler calls rebuildCanvas).
+      // v3.28b.38: SIMPLE crop. Just clip-path on the video element. No
+      // clipper div, no letterbox math, no source-dim tracking. The visible
+      // part stays where it was; the outside is cut. That's the whole feature.
+      if (hasCrop) {
         v.style.clipPath = 'inset(' + (ct*100).toFixed(2) + '% ' + (cr*100).toFixed(2) + '% ' + (cb*100).toFixed(2) + '% ' + (cl*100).toFixed(2) + '%)';
-        wrap.appendChild(v);
-      } else {
-        wrap.appendChild(v);
       }
+      wrap.appendChild(v);
       // v3.28b.28: attach the draw-crop mousedown handler. The handler only
       // ACTS when view.pendingCropSegId matches this seg's id (set by the
       // "Crop area" button). Otherwise it's a no-op and click-to-select works.
