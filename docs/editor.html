@@ -3884,7 +3884,7 @@ function renderSegmentPanel(panel) {
     '<div class="form-row" id="seg-volume-row" style="' + (seg.muteSourceAudio === false ? '' : 'display:none;') + '">' +
       '<label>Source video audio <span id="seg-volume-val">' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '%</span></label>' +
       '<input type="range" id="seg-volume" min="0" max="200" step="5" value="' + Math.round((seg.audioVolume != null ? seg.audioVolume : 1.0) * 100) + '" style="width:100%;">' +
-      '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Controls only this video\'s built-in audio. Audio track clips have their own volume sliders.</div>' +
+      '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Controls this video\'s built-in audio. Above 100% boosts the level (works in preview AND final render).</div>' +
     '</div>' +
     '<div class="form-row">' +
       '<label class="checkbox-label">' +
@@ -4439,11 +4439,16 @@ function wireSegmentPanel(seg) {
         const pct = parseInt(e.target.value, 10) || 0;
         if (_volLbl) _volLbl.textContent = pct + '%';
         seg.audioVolume = pct / 100;
-        // If this seg is the active one in playback, apply directly to its
-        // <video> element so the change is audible without a canvas rebuild.
+        // v3.28b.37: apply to WebAudio gain if connected, else native volume.
         const currentActive = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
         if (_activeVideoElement && currentActive && currentActive.id === seg.id && seg.muteSourceAudio === false) {
-          _activeVideoElement.volume = Math.max(0, Math.min(1, seg.audioVolume));
+          if (_activeVideoElement._waGain) {
+            // WebAudio path — gain supports 0..2+ for true amplification
+            _activeVideoElement._waGain.gain.value = Math.max(0, seg.audioVolume);
+          } else {
+            // Fallback — native volume (capped at 1.0 by browser)
+            _activeVideoElement.volume = Math.max(0, Math.min(1, seg.audioVolume));
+          }
         }
       });
       _vol.addEventListener('change', (e) => {
@@ -5104,6 +5109,13 @@ function cleanupActiveVideo() {
   if (_activeVideoElement) {
     try {
       _activeVideoElement.pause();
+      // v3.28b.37: tear down WebAudio nodes if attached
+      if (_activeVideoElement._waSource) {
+        try { _activeVideoElement._waSource.disconnect(); } catch(e) {}
+      }
+      if (_activeVideoElement._waGain) {
+        try { _activeVideoElement._waGain.disconnect(); } catch(e) {}
+      }
       _activeVideoElement.removeAttribute('src');
       _activeVideoElement.load(); // releases memory
     } catch (e) {}
@@ -5442,20 +5454,47 @@ function renderSegmentToCanvas(seg) {
       wrap.style.background = '#002B54';
       const v = document.createElement('video');
       v.src = video.url;
-      // v3.28b.24: video source audio — use native HTMLMediaElement.volume only.
-      // (WebAudio amplification was causing too many race conditions on Mac/Windows.
-      // Renderer still does true amplification via Remotion's <Video volume>.)
+      // v3.28b.37: source video audio via WebAudio GainNode.
+      // Native volume is capped at 1.0 by browsers. To support 0-200% in the
+      // editor preview, we route the video's audio through a GainNode whose
+      // gain.value = seg.audioVolume (0..2). The native v.volume stays at 1.0
+      // (or 0 when muted) — gain does the actual amplification.
       if (seg.muteSourceAudio !== false) {
         v.muted = true;
       } else {
         v.muted = false;
-        const vol = (seg.audioVolume != null) ? seg.audioVolume : 1.0;
-        // Clamp to [0, 1] for native volume. >100% only applies in final render.
-        v.volume = Math.max(0, Math.min(1, vol));
+        v.volume = 1.0;  // native always at max; gain controls actual level
       }
       v.playsInline = true;
-      v.preload = 'auto';  // v3.28b.24: was 'metadata'; force full preload to reduce play() delays
-      // v3.28b.18: no crossOrigin — fixes Windows preview failures
+      v.preload = 'auto';
+      v.crossOrigin = 'anonymous';  // required for WebAudio MediaElementSource on S3
+      // Hook up WebAudio gain once the video can play. Wrapped in try/catch —
+      // if WebAudio fails (rare; some embed contexts), fall back to native vol.
+      if (seg.muteSourceAudio === false) {
+        v._setupWebAudio = () => {
+          if (v._waConnected) return;
+          try {
+            const ctx = window._wa_ctx || (window._wa_ctx = new (window.AudioContext || window.webkitAudioContext)());
+            const source = ctx.createMediaElementSource(v);
+            const gain = ctx.createGain();
+            gain.gain.value = (seg.audioVolume != null) ? Math.max(0, seg.audioVolume) : 1.0;
+            source.connect(gain).connect(ctx.destination);
+            v._waSource = source;
+            v._waGain = gain;
+            v._waConnected = true;
+            if (ctx.state === 'suspended') ctx.resume();
+          } catch (e) {
+            // Fall back to native volume capped at 1.0
+            v.volume = Math.max(0, Math.min(1, (seg.audioVolume != null) ? seg.audioVolume : 1.0));
+          }
+        };
+        // Try immediately if metadata is already known (rare), otherwise on canplay
+        if (v.readyState >= 2) {
+          v._setupWebAudio();
+        } else {
+          v.addEventListener('canplay', v._setupWebAudio, { once: true });
+        }
+      }
       // v3.28b.5: apply per-video scale (default 1.0)
       const _vScale = (seg.videoScale != null && seg.videoScale > 0) ? seg.videoScale : 1.0;
       if (_vScale !== 1.0) {
