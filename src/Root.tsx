@@ -36,16 +36,7 @@ const RecordingComp: React.FC<{
   // v3.28b.5: default showFrame to TRUE if undefined (was false in v3.28b.4 and earlier)
   const showFrame = seg.showFrame !== false;
 
-  // v3.28b.25: crop — 0..1 ratios per side. Apply via CSS clip-path inset()
-  // identical to what the editor does, so the rendered MP4 matches the preview.
-  const crop = seg.crop || { top: 0, right: 0, bottom: 0, left: 0 };
-  const ct = Math.max(0, Math.min(0.95, crop.top || 0));
-  const cr = Math.max(0, Math.min(0.95, crop.right || 0));
-  const cb = Math.max(0, Math.min(0.95, crop.bottom || 0));
-  const cl = Math.max(0, Math.min(0.95, crop.left || 0));
-  const cropClipPath = (ct > 0 || cr > 0 || cb > 0 || cl > 0)
-    ? `inset(${(ct*100).toFixed(2)}% ${(cr*100).toFixed(2)}% ${(cb*100).toFixed(2)}% ${(cl*100).toFixed(2)}%)`
-    : undefined;
+  // v3.28b.42: crop feature removed
 
   return (
     <AbsoluteFill>
@@ -57,11 +48,6 @@ const RecordingComp: React.FC<{
         height: seg.height || tokens.canvasH,
         overflow: 'hidden',
         background: '#002B54',
-        // v3.28b.41: crop = mask on the segment wrap, not the video element.
-        // The visible area is exactly what the user drew, independent of where
-        // the wrap is positioned or what's inside it.
-        clipPath: cropClipPath,
-        WebkitClipPath: cropClipPath,
       }}>
         <Video
           src={video.url}
