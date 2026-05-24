@@ -30,10 +30,16 @@
   }
   button, input, textarea, select { font:inherit; color:inherit; }
 
+  /* v3.28b.34: grid sizes driven by CSS vars so drag-handles can update them */
+  :root {
+    --layout-left-w: 260px;
+    --layout-right-w: 320px;
+    --layout-timeline-h: 280px;
+  }
   .app {
     display:grid;
-    grid-template-rows:56px 1fr 280px;
-    grid-template-columns:260px 1fr 320px;
+    grid-template-rows:56px 1fr var(--layout-timeline-h);
+    grid-template-columns:var(--layout-left-w) 1fr var(--layout-right-w);
     grid-template-areas:
       "header header header"
       "left center right"
@@ -43,14 +49,35 @@
   .header { grid-area:header; background:var(--panel); }
   .left-rail { grid-area:left; background:var(--panel); overflow-y:auto; }
   .center-zone { grid-area:center; background:var(--panel); overflow:hidden; padding:12px 16px 16px 16px;
-                 display:flex; flex-direction:column; min-height:0; min-width:0; }
+                 display:flex; flex-direction:column; min-height:0; min-width:0; position:relative; }
   .right-rail { grid-area:right; background:var(--panel); overflow-y:auto; }
-  .timeline-zone { grid-area:timeline; background:var(--panel); overflow:hidden; }
+  .timeline-zone { grid-area:timeline; background:var(--panel); overflow:hidden; position:relative; }
+
+  /* v3.28b.34: resize handles. Each sits ON the gap between two zones.
+     - Left↔center handle: vertical bar on left edge of center-zone
+     - Center↔right handle: vertical bar on right edge of center-zone
+     - Center↔timeline handle: horizontal bar on top edge of timeline-zone
+     The handles are 6px wide/tall with a wider hit area (12px) for easier grabbing. */
+  .resize-handle {
+    position:fixed; z-index:50;
+    background:transparent;
+    transition:background 0.15s;
+  }
+  .resize-handle:hover, .resize-handle.dragging {
+    background:var(--accent);
+  }
+  .resize-handle.vertical {
+    width:6px; cursor:col-resize;
+    /* expand hit area via padding/margin trick */
+  }
+  .resize-handle.horizontal {
+    height:6px; cursor:row-resize;
+  }
 
   /* v3.28b.20: rail collapse — when .rail-collapsed is on .app, the left
      column shrinks to 0 and the center stretches into its space. Smooth
      transition. The expand button (floating) appears for re-opening. */
-  .app.rail-collapsed { grid-template-columns:0 1fr 320px; }
+  .app.rail-collapsed { grid-template-columns:0 1fr var(--layout-right-w); }
   .app.rail-collapsed .left-rail { display:none; }
   .rail-collapse-btn {
     position:sticky; top:0; right:0; z-index:5;
@@ -170,9 +197,9 @@
     aspect-ratio: 16 / 9;
     width: 100%;
     max-height: 100%;
-    /* Critical: when width would make it too tall, use height instead */
-    max-width: calc((100vh - 56px - 280px - 80px - 8px) * 16 / 9);
-    /* (subtract header 56px + timeline 280px + center padding ~80px + gap 8px from 100vh) */
+    /* v3.28b.34: use the timeline-height CSS var so the canvas auto-grows
+       when the user drags the timeline shorter (via the resize handle). */
+    max-width: calc((100vh - 56px - var(--layout-timeline-h, 280px) - 80px - 8px) * 16 / 9);
     margin: 0 auto;
     overflow:hidden; position:relative;
     border-radius:4px; background:#000;
@@ -367,6 +394,12 @@
   .tl-block.audio-block { background:linear-gradient(180deg, var(--audio-color), #6D28D9); }
   .tl-block.callout-block { background:linear-gradient(180deg, #FFE17A, #FDDB5D); color:var(--navy-900); }
   .tl-block.callout-block.selected { box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 0 2px var(--navy-900); }
+  /* v3.28b.34: icon-only timeline blocks. Center icon, no wrap, no overflow ellipsis. */
+  .tl-block.icon-only {
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700;
+    padding:0; overflow:hidden;
+  }
   /* v3.28b.20: vivid pink so customer card blocks don't blend into navy timeline */
   .tl-block.customercard-block { background:linear-gradient(180deg, #EC4899, #BE185D); color:#fff; }
   .tl-block.zoom-block { background:linear-gradient(180deg, #FFB84D, #FF9500); color:#1A1D24; }
@@ -4909,19 +4942,22 @@ function makeBlock(item, kind) {
     else if (item.kind === 'slide-divider') { cls += ' seg-slide-divider'; label = '↔ ' + (item.title || item.subtitle || 'Divider'); }
     else if (item.kind === 'slide-empty') { cls += ' seg-slide-empty'; label = '▢ ' + (item.title || 'Empty'); }
     else if (item.kind === 'slide-image') { cls += ' seg-slide-image'; label = '🖼 ' + (item.filename || 'Image'); }
-  } else if (kind === 'audio') { cls += ' audio-block'; label = '♫ ' + (item.audioId || 'audio'); }
-  else if (kind === 'callout') { cls += ' callout-block'; label = '! ' + (item.text || 'Callout').substring(0, 30); }
+  }
+  // v3.28b.34: for secondary blocks (audio/callout/effect/text/customer card),
+  // show only a small icon — the color identifies the kind. Frees timeline space.
+  else if (kind === 'audio') { cls += ' audio-block icon-only'; label = '♫'; }
+  else if (kind === 'callout') { cls += ' callout-block icon-only'; label = '!'; }
   else if (kind === 'effect') {
-    cls += ' ' + (item.kind === 'zoom' ? 'zoom-block' : 'spotlight-block');
-    label = (item.kind === 'zoom' ? '⊕ Zoom ' + (item.scale||1.5).toFixed(1)+'×' : '◉ Spotlight');
+    cls += ' ' + (item.kind === 'zoom' ? 'zoom-block icon-only' : 'spotlight-block icon-only');
+    label = (item.kind === 'zoom' ? '⊕' : '◉');
   }
   else if (kind === 'textOverlay') {
-    cls += ' textoverlay-block';
-    label = 'T ' + (item.text || 'Text').substring(0, 25);
+    cls += ' textoverlay-block icon-only';
+    label = 'T';
   }
   else if (kind === 'customerCard') {
-    cls += ' customercard-block';
-    label = '🏢 ' + (item.industry || item.employees || 'Customer').substring(0, 26);
+    cls += ' customercard-block icon-only';
+    label = '🏢';
   }
   if (view.selectedId === item.id) cls += ' selected';
   // v3.28b.16: multi-select highlight
@@ -7376,42 +7412,121 @@ function setupCanvasPan() {
     viewport.classList.remove('panning');
   });
   // v3.28b.21: Canvas-only zoom via Cmd/Ctrl+wheel AND trackpad pinch.
-  // Bound on the viewport element directly (NOT document), so:
-  //   - Only triggers when cursor is inside the canvas viewport
-  //   - preventDefault() stops browser page-zoom (Cmd+wheel) and
-  //     trackpad pinch-zoom from being interpreted as page zoom
-  //   - Doesn't affect timeline, sidebars, or any other UI
-  viewport.addEventListener('wheel', (e) => {
-    // Cmd/Ctrl + wheel OR trackpad pinch-zoom (which browsers report as
-    // ctrlKey=true synthetic wheel events on macOS/Windows) → zoom the canvas
-    if (!e.ctrlKey && !e.metaKey) return;
-    e.preventDefault();
-    e.stopPropagation();
-    // Negative deltaY = zoom in. Scale factor based on event delta magnitude.
-    const delta = -e.deltaY * 0.005;
-    setCanvasZoom(view.canvasZoom * Math.exp(delta), e.clientX, e.clientY);
-  }, { passive: false });
+  // v3.28b.34: canvas zoom retired — Cmd+wheel and pinch no longer zoom the canvas
 }
 
-// v3.28b.21: keyboard shortcuts for canvas zoom — Cmd/Ctrl + (+/-/=) and Cmd+0 reset
-function setupCanvasKeyboardZoom() {
-  document.addEventListener('keydown', (e) => {
-    if (!e.metaKey && !e.ctrlKey) return;
-    // Skip if user is typing in an input/textarea
-    const tag = (e.target.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
-    // Cmd+= or Cmd++  (same key, with/without shift)
-    if (e.key === '=' || e.key === '+') {
-      e.preventDefault();
-      setCanvasZoom(view.canvasZoom * 1.2);
-    } else if (e.key === '-' || e.key === '_') {
-      e.preventDefault();
-      setCanvasZoom(view.canvasZoom / 1.2);
-    } else if (e.key === '0') {
-      e.preventDefault();
-      fitCanvasToViewport();  // resets canvasZoom to 1.0 and pan to 0,0
+// v3.28b.34: setupCanvasKeyboardZoom is now a no-op (canvas zoom retired).
+// Kept as a stub so existing init calls don't throw.
+function setupCanvasKeyboardZoom() { /* no-op */ }
+
+// v3.28b.34: drag-borders to resize layout zones.
+// - Vertical handle between left rail and center → adjusts --layout-left-w
+// - Vertical handle between center and right rail → adjusts --layout-right-w
+// - Horizontal handle on top of timeline → adjusts --layout-timeline-h
+// Sizes are persisted in localStorage so they survive reloads.
+function setupResizeHandles() {
+  const root = document.documentElement;
+  const app = document.querySelector('.app');
+
+  // Restore prior sizes
+  try {
+    const saved = JSON.parse(localStorage.getItem('layoutSizes') || '{}');
+    if (saved.left) root.style.setProperty('--layout-left-w', saved.left + 'px');
+    if (saved.right) root.style.setProperty('--layout-right-w', saved.right + 'px');
+    if (saved.timeline) root.style.setProperty('--layout-timeline-h', saved.timeline + 'px');
+  } catch (e) {}
+
+  function persist() {
+    try {
+      const cur = {
+        left: parseInt(getComputedStyle(root).getPropertyValue('--layout-left-w'), 10) || 260,
+        right: parseInt(getComputedStyle(root).getPropertyValue('--layout-right-w'), 10) || 320,
+        timeline: parseInt(getComputedStyle(root).getPropertyValue('--layout-timeline-h'), 10) || 280,
+      };
+      localStorage.setItem('layoutSizes', JSON.stringify(cur));
+    } catch (e) {}
+  }
+
+  function makeHandle(orientation, cssVar, getStart, computeNew) {
+    const h = document.createElement('div');
+    h.className = 'resize-handle ' + orientation;
+    document.body.appendChild(h);
+    function position() {
+      // Position the handle to sit ON the border between two zones
+      const leftW = parseInt(getComputedStyle(root).getPropertyValue('--layout-left-w'), 10) || 260;
+      const rightW = parseInt(getComputedStyle(root).getPropertyValue('--layout-right-w'), 10) || 320;
+      const timelineH = parseInt(getComputedStyle(root).getPropertyValue('--layout-timeline-h'), 10) || 280;
+      const wh = window.innerHeight;
+      const ww = window.innerWidth;
+      const headerH = 56;
+      const collapsed = app.classList.contains('rail-collapsed');
+      if (cssVar === '--layout-left-w') {
+        // Hide when rail is collapsed
+        h.style.display = collapsed ? 'none' : '';
+        h.style.left = (collapsed ? 0 : leftW) + 'px';
+        h.style.top = headerH + 'px';
+        h.style.height = (wh - headerH - timelineH) + 'px';
+      } else if (cssVar === '--layout-right-w') {
+        h.style.display = '';
+        h.style.left = (ww - rightW - 6) + 'px';
+        h.style.top = headerH + 'px';
+        h.style.height = (wh - headerH - timelineH) + 'px';
+      } else if (cssVar === '--layout-timeline-h') {
+        h.style.display = '';
+        h.style.left = '0';
+        h.style.top = (wh - timelineH - 6) + 'px';
+        h.style.width = ww + 'px';
+      }
     }
-  });
+    position();
+    window.addEventListener('resize', position);
+    // Re-position when rail collapse state changes
+    new MutationObserver(position).observe(app, { attributes:true, attributeFilter:['class'] });
+    // Drag logic
+    h.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      h.classList.add('dragging');
+      document.body.style.cursor = orientation === 'vertical' ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+      const startVal = getStart();
+      const startMouse = orientation === 'vertical' ? e.clientX : e.clientY;
+      function onMove(ev) {
+        const curMouse = orientation === 'vertical' ? ev.clientX : ev.clientY;
+        const newVal = computeNew(startVal, curMouse - startMouse);
+        root.style.setProperty(cssVar, newVal + 'px');
+        position();
+        // Trigger canvas re-fit so the preview scales with the new center size
+        if (typeof applyCanvasTransform === 'function') applyCanvasTransform();
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        h.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        persist();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    return { position };
+  }
+
+  // Left↔Center: drag right increases left rail width
+  makeHandle('vertical', '--layout-left-w',
+    () => parseInt(getComputedStyle(root).getPropertyValue('--layout-left-w'), 10) || 260,
+    (start, dx) => Math.max(160, Math.min(500, start + dx)));
+
+  // Center↔Right: drag left increases right rail width (so we invert dx)
+  makeHandle('vertical', '--layout-right-w',
+    () => parseInt(getComputedStyle(root).getPropertyValue('--layout-right-w'), 10) || 320,
+    (start, dx) => Math.max(220, Math.min(600, start - dx)));
+
+  // Timeline↔Center: drag up increases timeline height
+  makeHandle('horizontal', '--layout-timeline-h',
+    () => parseInt(getComputedStyle(root).getPropertyValue('--layout-timeline-h'), 10) || 280,
+    (start, dy) => Math.max(140, Math.min(window.innerHeight - 250, start - dy)));
 }
 
 function setupTimelineWheelZoom() {
@@ -8575,6 +8690,8 @@ async function init() {
   setupEffectPlacement();
   setupCutIndicator();
   setupAudioElements();
+  // v3.28b.34: resizable layout zones (drag borders to resize)
+  setupResizeHandles();
   // v3.28b.20: rail collapse buttons
   const app = document.querySelector('.app');
   const btnCollapse = document.getElementById('btnRailCollapse');
