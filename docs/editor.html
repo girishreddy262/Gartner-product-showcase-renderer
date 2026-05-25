@@ -8485,6 +8485,24 @@ function setupKeyboard() {
       // v3.28b.16: X cuts the segment at the playhead (CapCut/Premiere style)
       if (e.code === 'KeyX') { e.preventDefault(); cutAtPlayhead(); return; }
     }
+    // v3.28b.52: , / . — seek the playhead.
+    //   ,         → back 1 second
+    //   .         → forward 1 second
+    //   Shift + , → back 5 seconds
+    //   Shift + . → forward 5 seconds
+    // Doesn't trigger inside inputs/textareas. Doesn't fire with Cmd/Ctrl.
+    if (!isMod && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      if (e.code === 'Comma' || e.code === 'Period') {
+        e.preventDefault();
+        const dir = e.code === 'Comma' ? -1 : 1;
+        const step = e.shiftKey ? 5000 : 1000;
+        const totalMs = getTotalDurationMs();
+        view.curTimeMs = Math.max(0, Math.min(totalMs, view.curTimeMs + dir * step));
+        updatePlayhead();
+        rebuildCanvas();
+        return;
+      }
+    }
     // v3.28b.16: Arrow keys SWAP the selected timeline item with its neighbor.
     // - Plain ← : swap with the clip immediately to the left (and collapse gap)
     // - Plain → : swap with the clip immediately to the right (and collapse gap)
