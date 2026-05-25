@@ -89,6 +89,7 @@ const SlideComp: React.FC<{ seg: SlideSegment }> = ({ seg }) => {
 };
 
 // v3.28b.5: full-bleed image slide with simple fade-in
+// v3.28b.51: + optional scale (50-150%) for zoom-in effect like video segments
 const ImageSlideComp: React.FC<{ seg: ImageSegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
   // Fade-in over 18 frames (600ms at 30fps)
@@ -97,6 +98,7 @@ const ImageSlideComp: React.FC<{ seg: ImageSegment }> = ({ seg }) => {
     extrapolateRight: 'clamp',
     easing: Easing.out(Easing.cubic),
   });
+  const imageScale = (seg.imageScale != null && seg.imageScale > 0) ? seg.imageScale : 1.0;
 
   return (
     <AbsoluteFill style={{ background: '#002B54' }}>
@@ -105,6 +107,8 @@ const ImageSlideComp: React.FC<{ seg: ImageSegment }> = ({ seg }) => {
         style={{
           width: '100%', height: '100%', objectFit: 'cover',
           opacity,
+          transform: imageScale !== 1.0 ? `scale(${imageScale})` : 'none',
+          transformOrigin: 'center center',
         }}
       />
     </AbsoluteFill>
@@ -243,14 +247,20 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
 
       {/* v3.28b.13: Frame overlay sits OUTSIDE the zoom-transformed div so the
           playback zoom effect doesn't scale the frame. We find the currently
-          active recording segment at this frame and apply its showFrame setting. */}
+          active recording segment OR image slide at this frame and apply showFrame.
+          v3.28b.51: image slides also support optional frame (default OFF). */}
       {(() => {
-        const activeRecording = payload.segments.find(s =>
-          s.kind === 'recording' &&
-          currentMs >= s.startMs &&
-          currentMs < s.startMs + s.durationMs
-        ) as RecordingSegment | undefined;
-        if (!activeRecording || activeRecording.showFrame === false) return null;
+        const activeFrameSeg = payload.segments.find(s => {
+          if (currentMs < s.startMs || currentMs >= s.startMs + s.durationMs) return false;
+          if (s.kind === 'recording') {
+            return (s as RecordingSegment).showFrame !== false;
+          }
+          if (s.kind === 'slide-image') {
+            return (s as ImageSegment).showFrame === true;
+          }
+          return false;
+        });
+        if (!activeFrameSeg) return null;
         return (
           <Img
             src={ASSETS.videoFrame}

@@ -193,11 +193,14 @@ export interface DividerSegment extends BaseSegment {
 
 
 // v3.28b.5: full-bleed image slide — uploaded JPEG/PNG fills the 1920x1080 canvas
-// with a simple fade-in animation. No chrome, no text, no frame.
+// with a simple fade-in animation.
+// v3.28b.51: + optional navy frame overlay + scale slider (50-150%)
 export interface ImageSegment extends BaseSegment {
   kind: 'slide-image';
   imageUrl: string;
   filename?: string;
+  showFrame?: boolean;     // default false; user toggles in edit panel
+  imageScale?: number;     // 0.5-1.5 (50-150%); default 1.0
 }
 
 export type Segment =

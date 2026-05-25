@@ -3644,6 +3644,7 @@ function renderEmptyEditUI(seg) {
 }
 
 // v3.28b.5: IMAGE — show current file and a replace button
+// v3.28b.51: + frame toggle + scale slider (50-150%) matching video segment controls
 function renderImageEditUI(seg) {
   let html = '<div class="form-row"><label>Image file</label>';
   html += '<div style="display:flex;align-items:center;gap:8px;color:rgba(255,255,255,0.75);font-size:12px;padding:6px 8px;background:rgba(255,255,255,0.04);border-radius:4px;">';
@@ -3651,6 +3652,19 @@ function renderImageEditUI(seg) {
   html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(seg.filename || (seg.imageUrl ? 'image' : 'no image')) + '</span>';
   html += '</div></div>';
   html += '<div class="form-row"><button class="repeater-add" id="seg-image-replace" style="width:100%;">↻ Replace image</button></div>';
+  // v3.28b.51: frame toggle (default ON, same as video)
+  const showFrame = seg.showFrame !== false;
+  html += '<div class="form-row">' +
+    '<label class="checkbox-label">' +
+      '<input type="checkbox" id="seg-image-frame" ' + (showFrame ? 'checked' : '') + '>' +
+      ' Show navy frame around image</label>' +
+  '</div>';
+  // v3.28b.51: scale slider (50-150%)
+  const scalePct = Math.round((seg.imageScale != null ? seg.imageScale : 1.0) * 100);
+  html += '<div class="align-section">' +
+    '<div class="align-label">Image scale: <span id="seg-imagescale-val" style="font-weight:700;color:#0183FF;">' + scalePct + '%</span></div>' +
+    '<input type="range" id="seg-imagescale" min="50" max="150" step="1" value="' + scalePct + '" style="width:100%;">' +
+  '</div>';
   html += '<div class="form-row"><div style="color:rgba(255,255,255,0.5);font-size:11px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:4px;">ℹ️ Image renders full-bleed with a fade-in. JPEG/PNG only, up to 20MB.</div></div>';
   return html;
 }
@@ -4059,28 +4073,53 @@ function wireSlideEditUI(seg) {
 }
 
 // v3.28b.5: Image slide — replace image button
+// v3.28b.51: + frame toggle + image scale slider
 function wireImageEditUI(seg) {
   const btn = $('seg-image-replace');
-  if (!btn) return;
-  btn.addEventListener('click', async () => {
-    try {
-      let _capturedFilename = '';
-      const imgUrl = await pickAndUploadAsset({
-        accept: 'image/jpeg,image/png',
-        maxMB: 20,
-        kind: 'image',
-        onFile: (f) => { _capturedFilename = f.name || ''; }
-      });
-      if (!imgUrl) return;
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      try {
+        let _capturedFilename = '';
+        const imgUrl = await pickAndUploadAsset({
+          accept: 'image/jpeg,image/png',
+          maxMB: 20,
+          kind: 'image',
+          onFile: (f) => { _capturedFilename = f.name || ''; }
+        });
+        if (!imgUrl) return;
+        pushHistory();
+        seg.imageUrl = imgUrl;
+        seg.filename = _capturedFilename;
+        rebuildAll();
+      } catch (e) {
+        console.error('Image replace failed:', e);
+        showToast('Image replace failed: ' + e.message, 'error');
+      }
+    });
+  }
+  // v3.28b.51: frame toggle
+  const frameEl = $('seg-image-frame');
+  if (frameEl) {
+    frameEl.addEventListener('change', (e) => {
       pushHistory();
-      seg.imageUrl = imgUrl;
-      seg.filename = _capturedFilename;
-      rebuildAll();
-    } catch (e) {
-      console.error('Image replace failed:', e);
-      showToast('Image replace failed: ' + e.message, 'error');
-    }
-  });
+      seg.showFrame = e.target.checked;
+      rebuildCanvas();
+    });
+  }
+  // v3.28b.51: scale slider — live label, persist on change
+  const scaleEl = $('seg-imagescale');
+  const scaleLbl = $('seg-imagescale-val');
+  if (scaleEl) {
+    scaleEl.addEventListener('input', (e) => {
+      if (scaleLbl) scaleLbl.textContent = e.target.value + '%';
+    });
+    scaleEl.addEventListener('change', (e) => {
+      pushHistory();
+      const pct = parseInt(e.target.value, 10) || 100;
+      seg.imageScale = pct / 100;
+      rebuildCanvas();
+    });
+  }
 }
 
 function wireIntroEditUI(seg) {
@@ -5253,7 +5292,10 @@ function rebuildCanvas() {
     // v3.28b.13: Frame overlay goes to the FRAME LAYER (sibling of stage-inner),
     // not stage-inner. This way the playback zoom effect that transforms
     // stage-inner doesn't scale the frame — frame stays at canvas dimensions.
-    if (isRecordingSegment(active) && active.showFrame !== false && frameLayer) {
+    // v3.28b.51: also applies to image slides (when user toggles frame on).
+    const wantsFrame = (isRecordingSegment(active) && active.showFrame !== false)
+      || (active.kind === 'slide-image' && active.showFrame === true);
+    if (wantsFrame && frameLayer) {
       const frame = document.createElement('div');
       frame.className = 'video-frame-overlay';
       frame.style.left = '0px';
@@ -5572,9 +5614,12 @@ function renderSegmentToCanvas(seg) {
     wrap.innerHTML += '<div class="canvas-slide-empty">Empty slide</div>';
   } else if (seg.kind === 'slide-image') {
     // v3.28b.5: full-bleed image slide
+    // v3.28b.51: apply optional scale (50-150%) — CSS transform on the <img>
     if (seg.imageUrl) {
+      const scale = (seg.imageScale != null && seg.imageScale > 0) ? seg.imageScale : 1.0;
+      const xformStyle = scale !== 1.0 ? ('transform:scale(' + scale + ');transform-origin:center center;') : '';
       wrap.innerHTML += '<div style="position:absolute;inset:0;background:#002B54;overflow:hidden;">' +
-        '<img src="' + escapeHtml(seg.imageUrl) + '" style="width:100%;height:100%;object-fit:cover;display:block;" alt="' + escapeHtml(seg.filename || 'image') + '">' +
+        '<img src="' + escapeHtml(seg.imageUrl) + '" style="width:100%;height:100%;object-fit:cover;display:block;' + xformStyle + '" alt="' + escapeHtml(seg.filename || 'image') + '">' +
       '</div>';
     } else {
       wrap.innerHTML += '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#002B54;color:#fff;font-size:48px;text-align:center;padding:40px;">No image — re-add this slide</div>';
