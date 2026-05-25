@@ -2116,6 +2116,25 @@ function statBarIconSvg(kind, x, y) {
   return '';
 }
 
+// v3.28b.49: wrap long text to a max chars-per-line by inserting newlines
+// at word boundaries. Existing user-typed line breaks are preserved.
+function wrapTextToCharLimit(text, maxChars) {
+  if (!text) return '';
+  return text.split('\n').map(line => {
+    if (line.length <= maxChars) return line;
+    const words = line.split(/\s+/);
+    const out = [];
+    let cur = '';
+    for (const w of words) {
+      if (!cur) { cur = w; continue; }
+      if ((cur + ' ' + w).length <= maxChars) cur = cur + ' ' + w;
+      else { out.push(cur); cur = w; }
+    }
+    if (cur) out.push(cur);
+    return out.join('\n');
+  }).join('\n');
+}
+
 // Escape XML for SVG text content
 function svgEsc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -2416,26 +2435,28 @@ function renderJourneySVG(seg) {
     }
 
     if (row.description) {
-      // v3.28b.17: wrap long descriptions onto multiple lines. The description
-      // area starts at x=1320 and goes to ~1880 (560px wide). At font-size 30
-      // Satoshi 700, ~32-36 chars fit on a line. We word-wrap and emit one
-      // <text> per line. Y position centered vertically around (y + 11).
-      const MAX_CHARS_PER_LINE = 36;
+      // v3.28b.49: respect user newlines from editor wrapping (30 chars).
+      // Fallback word-wrap for legacy data without newlines.
+      const MAX_CHARS_PER_LINE = 30;
       const LINE_HEIGHT = 36;
-      const words = String(row.description).split(/\s+/);
-      const lines = [];
-      let current = '';
-      for (const w of words) {
-        const candidate = current ? (current + ' ' + w) : w;
-        if (candidate.length > MAX_CHARS_PER_LINE && current) {
-          lines.push(current);
-          current = w;
-        } else {
-          current = candidate;
+      let lines;
+      if (String(row.description).includes('\n')) {
+        lines = String(row.description).split('\n');
+      } else {
+        const words = String(row.description).split(/\s+/);
+        lines = [];
+        let current = '';
+        for (const w of words) {
+          const candidate = current ? (current + ' ' + w) : w;
+          if (candidate.length > MAX_CHARS_PER_LINE && current) {
+            lines.push(current);
+            current = w;
+          } else {
+            current = candidate;
+          }
         }
+        if (current) lines.push(current);
       }
-      if (current) lines.push(current);
-      // Vertically center the block around (y + 11)
       const totalH = (lines.length - 1) * LINE_HEIGHT;
       const startY = (y + 11) - totalH / 2;
       lines.forEach((line, li) => {
@@ -2476,13 +2497,14 @@ function renderFocusSVG(seg) {
   const titleSize = variation === 1 ? 52 : 56;
   svg += '<text x="960" y="265" text-anchor="middle" fill="white" font-family="Satoshi" font-size="' + titleSize + '" font-weight="700">' + svgEsc(seg.title || '') + '</text>';
 
-  // Columns - v3.28b.48: FIXED column width (300px) and FIXED gap (45px).
-  // Max 5 columns. Cluster centers on the canvas. V2 and V3 untouched.
+  // Columns - v3.28b.49: FIXED column width (280px = ~17 chars heading) + FIXED
+  // gap (60px). Every column is the SAME width regardless of content (so gaps
+  // are uniform). Max 5 columns. Cluster centers on canvas. V2/V3 untouched.
   const cols = (seg.columns || []).slice(0, 5);
   const nCols = cols.length;
   if (variation === 1) {
-    const COL_W = 300;
-    const COL_GAP = 45;
+    const COL_W = 280;
+    const COL_GAP = 60;
     const clusterW = nCols > 0 ? (COL_W * nCols + COL_GAP * (nCols - 1)) : 0;
     const startX = Math.round(960 - clusterW / 2);
     const headingSize = 32;
@@ -3724,7 +3746,7 @@ function renderJourneyEditUI(seg) {
     // Name / designation / description (override persona defaults)
     html += '<div class="form-row"><label>Name (override)</label><input type="text" data-row-name data-idx="' + idx + '" value="' + escapeHtml(row.name||'') + '" placeholder="Auto from persona"></div>';
     html += '<div class="form-row"><label>Designation (override) <span style="color:var(--text-3);font-weight:400;font-size:11px;">(Enter for new line)</span></label><textarea data-row-designation data-idx="' + idx + '" rows="2" placeholder="Auto from persona">' + escapeHtml(row.designation||'') + '</textarea></div>';
-    html += '<div class="form-row"><label>Description</label><textarea data-row-description data-idx="' + idx + '" rows="2">' + escapeHtml(row.description||'') + '</textarea></div>';
+    html += '<div class="form-row"><label>Description (max 30 chars per line, wraps automatically)</label><textarea data-row-description data-idx="' + idx + '" rows="2">' + escapeHtml(row.description||'') + '</textarea></div>';
     html += '</div>';
   });
   html += '</div>';
@@ -3789,7 +3811,7 @@ function renderFocusEditUI(seg) {
       html += '</div>';
     });
     html += '</div></div>';
-    html += '<div class="form-row"><label>Heading (one line per row)</label><textarea data-col-heading data-idx="' + idx + '" rows="2">' + escapeHtml(col.heading||'') + '</textarea></div>';
+    html += '<div class="form-row"><label>Heading (max 17 chars per line, wraps automatically)</label><textarea data-col-heading data-idx="' + idx + '" rows="2">' + escapeHtml(col.heading||'') + '</textarea></div>';
     if (variation === 1) {
       html += '<div class="form-row"><label>Bullets (one line per bullet)</label><textarea data-col-body data-idx="' + idx + '" rows="3">' + escapeHtml(col.body||'') + '</textarea></div>';
     }
@@ -4178,7 +4200,14 @@ function wireJourneyEditUI(seg) {
     el.addEventListener('change', (e) => { pushHistory(); seg.rows[parseInt(el.dataset.idx)].designation = e.target.value; rebuildCanvas(); });
   });
   document.querySelectorAll('[data-row-description]').forEach(el => {
-    el.addEventListener('change', (e) => { pushHistory(); seg.rows[parseInt(el.dataset.idx)].description = e.target.value; rebuildCanvas(); });
+    el.addEventListener('change', (e) => {
+      pushHistory();
+      // v3.28b.49: auto-wrap description at 30 chars per line
+      const wrapped = wrapTextToCharLimit(e.target.value, 30);
+      seg.rows[parseInt(el.dataset.idx)].description = wrapped;
+      if (wrapped !== e.target.value) e.target.value = wrapped;
+      rebuildCanvas();
+    });
   });
   // Custom icon toggle per row
   document.querySelectorAll('[data-row-custom-icon]').forEach(cb => {
@@ -4312,7 +4341,14 @@ function wireFocusEditUI(seg) {
   });
   // Heading / body
   document.querySelectorAll('[data-col-heading]').forEach(el => {
-    el.addEventListener('change', (e) => { pushHistory(); seg.columns[parseInt(el.dataset.idx)].heading = e.target.value; rebuildCanvas(); });
+    el.addEventListener('change', (e) => {
+      pushHistory();
+      // v3.28b.49: auto-wrap heading at 17 chars per line
+      const wrapped = wrapTextToCharLimit(e.target.value, 17);
+      seg.columns[parseInt(el.dataset.idx)].heading = wrapped;
+      if (wrapped !== e.target.value) e.target.value = wrapped;
+      rebuildCanvas();
+    });
   });
   document.querySelectorAll('[data-col-body]').forEach(el => {
     el.addEventListener('change', (e) => { pushHistory(); seg.columns[parseInt(el.dataset.idx)].body = e.target.value; rebuildCanvas(); });
@@ -7557,6 +7593,40 @@ function copySelectedItem() {
   showToast('Copied: ' + label, 'success');
 }
 
+// v3.28b.49: Cut (Cmd+X / Ctrl+X) — copy the selected item to clipboard, then
+// remove it from the timeline. Paste with Cmd+V to place at playhead.
+function cutSelectedItem() {
+  if (!view.selectedId) {
+    showToast('Nothing selected', 'warning');
+    return;
+  }
+  // Resolve item + container array
+  let item, arr, kind;
+  item = state.segments.find(s => s.id === view.selectedId);
+  if (item) { kind = 'segment'; arr = state.segments; }
+  if (!item) { item = state.callouts.find(c => c.id === view.selectedId); if (item) { kind = 'callout'; arr = state.callouts; } }
+  if (!item) { item = (state.textOverlays || []).find(t => t.id === view.selectedId); if (item) { kind = 'textOverlay'; arr = state.textOverlays; } }
+  if (!item) { item = (state.customerCards || []).find(c => c.id === view.selectedId); if (item) { kind = 'customerCard'; arr = state.customerCards; } }
+  if (!item) { item = (state.audioPlacements || []).find(a => a.id === view.selectedId); if (item) { kind = 'audioPlacement'; arr = state.audioPlacements; } }
+  if (!item || !arr) return;
+  pushHistory();
+  _clipboard = { kind, data: JSON.parse(JSON.stringify(item)) };
+  // Remove from container
+  const idx = arr.indexOf(item);
+  if (idx >= 0) arr.splice(idx, 1);
+  view.selectedId = null;
+  view.selectedKind = null;
+  // Clear multi-select if it referenced the cut item
+  if (view.multiSelect) view.multiSelect = view.multiSelect.filter(s => s.id !== item.id);
+  const label = kind === 'segment' ? (item.kind === 'recording' ? 'Video segment' : (item.title || 'Slide'))
+    : (kind === 'callout' ? 'Callout'
+    : (kind === 'textOverlay' ? 'Text'
+    : (kind === 'audioPlacement' ? 'Audio clip' : 'Customer Card')));
+  rebuildAll();
+  renderEditPanel();
+  showToast('Cut: ' + label + ' — paste with Cmd+V', 'success');
+}
+
 function pasteClipboardAtPlayhead() {
   if (!_clipboard) {
     showToast('Clipboard is empty', 'warning');
@@ -8372,7 +8442,7 @@ function setupKeyboard() {
       selectAllInTimeline();
       return;
     }
-    // Cmd+C / Cmd+V — copy/paste the selected item (slide, callout, text overlay)
+    // Cmd+C / Cmd+V / Cmd+X — copy/paste/cut the selected item
     if (isMod && e.code === 'KeyC' && !e.shiftKey) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; // let browser copy text
       if (!view.selectedId) return;
@@ -8384,6 +8454,14 @@ function setupKeyboard() {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; // let browser paste text
       e.preventDefault();
       pasteClipboardAtPlayhead();
+      return;
+    }
+    // v3.28b.49: Cmd+X — cut selected item to clipboard
+    if (isMod && e.code === 'KeyX' && !e.shiftKey) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; // let browser cut text
+      if (!view.selectedId) return;
+      e.preventDefault();
+      cutSelectedItem();
       return;
     }
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;

@@ -357,23 +357,31 @@ const JourneyRowComp: React.FC<{
       )}
 
       {row.description && (() => {
-        // v3.28b.17: wrap long descriptions. Same logic as editor SVG path.
-        // Width at x=1320..1880 (≈560px) fits ~36 chars per line at 30px Satoshi 700.
-        const MAX_CHARS_PER_LINE = 36;
+        // v3.28b.49: respect user-typed newlines from the editor (which now
+        // auto-wraps at 30 chars on save). For legacy data without newlines,
+        // fall back to word-wrap at 30 chars.
+        const MAX_CHARS_PER_LINE = 30;
         const LINE_HEIGHT = 36;
-        const words = String(row.description).split(/\s+/);
-        const lines: string[] = [];
-        let current = '';
-        for (const w of words) {
-          const candidate = current ? (current + ' ' + w) : w;
-          if (candidate.length > MAX_CHARS_PER_LINE && current) {
-            lines.push(current);
-            current = w;
-          } else {
-            current = candidate;
+        let lines: string[];
+        if (String(row.description).includes('\n')) {
+          // Honor the editor's wrapping
+          lines = String(row.description).split('\n');
+        } else {
+          // Legacy: word-wrap on the fly
+          const words = String(row.description).split(/\s+/);
+          lines = [];
+          let current = '';
+          for (const w of words) {
+            const candidate = current ? (current + ' ' + w) : w;
+            if (candidate.length > MAX_CHARS_PER_LINE && current) {
+              lines.push(current);
+              current = w;
+            } else {
+              current = candidate;
+            }
           }
+          if (current) lines.push(current);
         }
-        if (current) lines.push(current);
         const totalH = (lines.length - 1) * LINE_HEIGHT;
         const startY = (y + 11) - totalH / 2;
         return (

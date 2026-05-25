@@ -108,10 +108,10 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
   const { fps } = useVideoConfig();
   const cols = columns.slice(0, 5);
   const n = cols.length;
-  // v3.28b.48: FIXED column width (300px) + FIXED gap (45px). Max 5 columns.
-  // Cluster centers on the canvas. Font sizes consistent across all counts.
-  const COL_W = 300;
-  const COL_GAP = 45;
+  // v3.28b.49: FIXED column width (280px = ~17 chars) + FIXED gap (60px). Max 5.
+  // Cluster centers on canvas. Font sizes consistent across all counts.
+  const COL_W = 280;
+  const COL_GAP = 60;
   const clusterW = n > 0 ? (COL_W * n + COL_GAP * (n - 1)) : 0;
   const startX = Math.round(tokens.canvasW / 2 - clusterW / 2);
   const headingSize = 32;
