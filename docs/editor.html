@@ -7596,27 +7596,34 @@ function copySelectedItem() {
 // v3.28b.49: Cut (Cmd+X / Ctrl+X) — copy the selected item to clipboard, then
 // remove it from the timeline. Paste with Cmd+V to place at playhead.
 function cutSelectedItem() {
+  console.log('[CUT] selectedId:', view.selectedId, 'selectedKind:', view.selectedKind);
   if (!view.selectedId) {
     showToast('Nothing selected', 'warning');
     return;
   }
-  // Resolve item + container array
+  // Resolve item + container array. ORDER MATTERS: try audio first if
+  // selectedKind hints at it, to avoid id-collision edge cases.
   let item, arr, kind;
-  item = state.segments.find(s => s.id === view.selectedId);
-  if (item) { kind = 'segment'; arr = state.segments; }
+  if (view.selectedKind === 'audio') {
+    item = (state.audioPlacements || []).find(a => a.id === view.selectedId);
+    if (item) { kind = 'audioPlacement'; arr = state.audioPlacements; }
+  }
+  if (!item) { item = state.segments.find(s => s.id === view.selectedId); if (item) { kind = 'segment'; arr = state.segments; } }
   if (!item) { item = state.callouts.find(c => c.id === view.selectedId); if (item) { kind = 'callout'; arr = state.callouts; } }
   if (!item) { item = (state.textOverlays || []).find(t => t.id === view.selectedId); if (item) { kind = 'textOverlay'; arr = state.textOverlays; } }
   if (!item) { item = (state.customerCards || []).find(c => c.id === view.selectedId); if (item) { kind = 'customerCard'; arr = state.customerCards; } }
   if (!item) { item = (state.audioPlacements || []).find(a => a.id === view.selectedId); if (item) { kind = 'audioPlacement'; arr = state.audioPlacements; } }
-  if (!item || !arr) return;
+  console.log('[CUT] resolved kind:', kind, 'item:', item ? item.id : 'NONE');
+  if (!item || !arr) {
+    showToast('Cut: nothing found for id ' + view.selectedId, 'warning');
+    return;
+  }
   pushHistory();
   _clipboard = { kind, data: JSON.parse(JSON.stringify(item)) };
-  // Remove from container
   const idx = arr.indexOf(item);
   if (idx >= 0) arr.splice(idx, 1);
   view.selectedId = null;
   view.selectedKind = null;
-  // Clear multi-select if it referenced the cut item
   if (view.multiSelect) view.multiSelect = view.multiSelect.filter(s => s.id !== item.id);
   const label = kind === 'segment' ? (item.kind === 'recording' ? 'Video segment' : (item.title || 'Slide'))
     : (kind === 'callout' ? 'Callout'
@@ -8456,9 +8463,14 @@ function setupKeyboard() {
       pasteClipboardAtPlayhead();
       return;
     }
-    // v3.28b.49: Cmd+X — cut selected item to clipboard
+    // v3.28b.49: Cmd+X — cut selected item to clipboard.
+    // If focus is in an input/textarea AND the user has text selected, let the
+    // browser cut that text instead. Otherwise cut the timeline item.
     if (isMod && e.code === 'KeyX' && !e.shiftKey) {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; // let browser cut text
+      const inField = (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+      const hasTextSelection = inField &&
+        (e.target.selectionStart !== e.target.selectionEnd);
+      if (inField && hasTextSelection) return; // browser cuts the selected text
       if (!view.selectedId) return;
       e.preventDefault();
       cutSelectedItem();
