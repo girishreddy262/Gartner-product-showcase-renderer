@@ -106,19 +106,20 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
 const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const cols = columns.slice(0, 6);
+  const cols = columns.slice(0, 5);
   const n = cols.length;
-  // v3.28b.47: text + icons stay LEFT-aligned per column (original design).
-  // Only the GROUP of columns is centered on the slide. Pitch scales with n.
-  const innerWidth = n <= 3 ? 1100 : n === 4 ? 1400 : n === 5 ? 1600 : 1700;
-  const COL_PITCH = n > 0 ? innerWidth / n : 0;
-  const firstX = Math.round(tokens.canvasW / 2 - innerWidth / 2 + COL_PITCH / 2 - 40);
-  const headingSize = n <= 4 ? 32 : (n === 5 ? 26 : 22);
-  const bodySize = n <= 4 ? 22 : (n === 5 ? 18 : 16);
+  // v3.28b.48: FIXED column width (300px) + FIXED gap (45px). Max 5 columns.
+  // Cluster centers on the canvas. Font sizes consistent across all counts.
+  const COL_W = 300;
+  const COL_GAP = 45;
+  const clusterW = n > 0 ? (COL_W * n + COL_GAP * (n - 1)) : 0;
+  const startX = Math.round(tokens.canvasW / 2 - clusterW / 2);
+  const headingSize = 32;
+  const bodySize = 22;
   return (
     <g>
       {cols.map((col, i) => {
-        const xLeft = Math.round(firstX + i * COL_PITCH);
+        const xLeft = Math.round(startX + i * (COL_W + COL_GAP));
         const colStart = (0.4 + i * 0.15) * fps;
         const colEnd = colStart + 0.4 * fps;
         const opacity = animOn
