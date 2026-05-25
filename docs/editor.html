@@ -5122,16 +5122,19 @@ function makeBlock(item, kind) {
 function onBlockMouseDown(e, item, kind) {
   if (e.button !== 0) return;
   e.stopPropagation();
-  // Cut tool: clicking on a video segment block splits it at the click x
-  if (view.tool === 'cut' && kind === 'segment' && item.kind === 'recording') {
+  // Cut tool: clicking on a video segment OR audio clip splits it at the click x
+  if (view.tool === 'cut' && ((kind === 'segment' && item.kind === 'recording') || kind === 'audio')) {
     e.preventDefault();
     const block = e.currentTarget;
     const rect = block.getBoundingClientRect();
     const relX = e.clientX - rect.left;
     const ratio = relX / rect.width;
     const cutTimelineMs = item.startMs + ratio * item.durationMs;
-    cutVideoSegment(item, cutTimelineMs);
-    // After cut, switch back to select for natural workflow
+    if (kind === 'audio') {
+      cutAudioPlacement(item, cutTimelineMs);
+    } else {
+      cutVideoSegment(item, cutTimelineMs);
+    }
     setTool('select');
     return;
   }
@@ -7596,13 +7599,11 @@ function copySelectedItem() {
 // v3.28b.49: Cut (Cmd+X / Ctrl+X) — copy the selected item to clipboard, then
 // remove it from the timeline. Paste with Cmd+V to place at playhead.
 function cutSelectedItem() {
-  console.log('[CUT] selectedId:', view.selectedId, 'selectedKind:', view.selectedKind);
   if (!view.selectedId) {
     showToast('Nothing selected', 'warning');
     return;
   }
-  // Resolve item + container array. ORDER MATTERS: try audio first if
-  // selectedKind hints at it, to avoid id-collision edge cases.
+  // Resolve item + container array. Try by selectedKind first to avoid edge cases.
   let item, arr, kind;
   if (view.selectedKind === 'audio') {
     item = (state.audioPlacements || []).find(a => a.id === view.selectedId);
@@ -7613,11 +7614,7 @@ function cutSelectedItem() {
   if (!item) { item = (state.textOverlays || []).find(t => t.id === view.selectedId); if (item) { kind = 'textOverlay'; arr = state.textOverlays; } }
   if (!item) { item = (state.customerCards || []).find(c => c.id === view.selectedId); if (item) { kind = 'customerCard'; arr = state.customerCards; } }
   if (!item) { item = (state.audioPlacements || []).find(a => a.id === view.selectedId); if (item) { kind = 'audioPlacement'; arr = state.audioPlacements; } }
-  console.log('[CUT] resolved kind:', kind, 'item:', item ? item.id : 'NONE');
-  if (!item || !arr) {
-    showToast('Cut: nothing found for id ' + view.selectedId, 'warning');
-    return;
-  }
+  if (!item || !arr) return;
   pushHistory();
   _clipboard = { kind, data: JSON.parse(JSON.stringify(item)) };
   const idx = arr.indexOf(item);
@@ -8205,7 +8202,7 @@ function setTool(tool) {
   $('btnToolSelect').classList.toggle('active', tool === 'select');
   $('btnToolCut').classList.toggle('active', tool === 'cut');
   document.body.classList.toggle('tool-cut', tool === 'cut');
-  $('status-text').textContent = tool === 'cut' ? 'Cut tool: click a video segment to split it' : 'Ready';
+  $('status-text').textContent = tool === 'cut' ? 'Cut tool: click a video segment or audio clip to split it' : 'Ready';
 }
 
 // Cut a video segment at the given timeline ms (must fall within the segment)
@@ -8248,21 +8245,71 @@ function cutVideoSegment(seg, atTimelineMs) {
   setSelected(second.id, 'segment');
 }
 
-// v3.28b.16: Cut at playhead — finds the active recording segment at the
-// current playhead time and splits it. Triggered by 'X' key or Cut button.
-function cutAtPlayhead() {
-  const t = view.curTimeMs;
-  // Find the recording segment that contains the playhead
-  const seg = state.segments.find(s =>
-    s.kind === 'recording' &&
-    t > s.startMs &&
-    t < s.startMs + s.durationMs
-  );
-  if (!seg) {
-    showToast('Move the playhead to a video segment first', 'warning');
+// v3.28b.50: slice an audio placement at the given timeline ms. Both halves
+// reference the same audio file. The second half gets a sourceStartMs offset
+// so it picks up where the first half left off.
+function cutAudioPlacement(ap, atTimelineMs) {
+  if (atTimelineMs <= ap.startMs + 100 || atTimelineMs >= ap.startMs + ap.durationMs - 100) {
+    showToast('Cut point too close to audio edge', 'warning');
     return;
   }
-  cutVideoSegment(seg, t);
+  pushHistory();
+  const localMs = atTimelineMs - ap.startMs;
+  const firstDur = localMs;
+  const secondDur = ap.durationMs - localMs;
+  const firstSourceStart = ap.sourceStartMs || 0;
+  // Mutate ap in place (first half)
+  ap.durationMs = Math.round(firstDur);
+  // Create second half referencing the same audio file
+  const second = {
+    id: uid('ap'),
+    audioId: ap.audioId,
+    startMs: Math.round(atTimelineMs),
+    durationMs: Math.round(secondDur),
+    volume: ap.volume != null ? ap.volume : 1.0,
+    sourceStartMs: Math.round(firstSourceStart + localMs)
+  };
+  state.audioPlacements.push(second);
+  rebuildAll();
+  setSelected(second.id, 'audio');
+}
+
+// v3.28b.16: Cut at playhead — finds the active recording segment OR audio
+// placement at the current playhead time and splits it. Triggered by 'X' key
+// or Cut button.
+// v3.28b.50: now also slices audio placements. Priority order:
+//   1. If selected item is an audio placement at the playhead → slice it
+//   2. If selected item is a video segment at the playhead → slice it
+//   3. Otherwise: video segment under playhead first, then audio
+function cutAtPlayhead() {
+  const t = view.curTimeMs;
+  // Prefer selected item if playhead is inside it
+  if (view.selectedId) {
+    if (view.selectedKind === 'audio') {
+      const ap = (state.audioPlacements || []).find(a => a.id === view.selectedId);
+      if (ap && t > ap.startMs && t < ap.startMs + ap.durationMs) {
+        cutAudioPlacement(ap, t);
+        return;
+      }
+    } else if (view.selectedKind === 'segment') {
+      const seg = state.segments.find(s => s.id === view.selectedId && s.kind === 'recording');
+      if (seg && t > seg.startMs && t < seg.startMs + seg.durationMs) {
+        cutVideoSegment(seg, t);
+        return;
+      }
+    }
+  }
+  // Fall through: find ANY video segment under the playhead
+  const seg = state.segments.find(s =>
+    s.kind === 'recording' && t > s.startMs && t < s.startMs + s.durationMs
+  );
+  if (seg) { cutVideoSegment(seg, t); return; }
+  // Last resort: find ANY audio placement under the playhead
+  const ap = (state.audioPlacements || []).find(a =>
+    t > a.startMs && t < a.startMs + a.durationMs
+  );
+  if (ap) { cutAudioPlacement(ap, t); return; }
+  showToast('Move the playhead to a video segment or audio clip first', 'warning');
 }
 
 // v3.28b.16: Swap the selected timeline item with its adjacent neighbor on
@@ -8699,25 +8746,23 @@ function syncAudioPlayback() {
       }
       if (!el) continue;
     }
-    const startMs = ap.startMs || 0;
-    const endMs = startMs + (ap.durationMs || 0);
-    const shouldPlay = view.isPlaying && view.curTimeMs >= startMs && view.curTimeMs < endMs;
-    if (shouldPlay) {
-      // v3.28b.24: if audio isn't ready yet (still loading), skip this tick.
-      // readyState < 2 means HAVE_METADATA hasn't fired; play() would throw or
-      // fire 'waiting' indefinitely. Trying to load again is harmless.
-      if (el.readyState < 2) {
-        if (!el._kickstartedLoad) {
-          try { el.load(); } catch(e) {}
-          el._kickstartedLoad = true;
+      const startMs = ap.startMs || 0;
+      const endMs = startMs + (ap.durationMs || 0);
+      const sourceOffsetMs = ap.sourceStartMs || 0;  // v3.28b.50: slice support
+      const shouldPlay = view.isPlaying && view.curTimeMs >= startMs && view.curTimeMs < endMs;
+      if (shouldPlay) {
+        if (el.readyState < 2) {
+          if (!el._kickstartedLoad) {
+            try { el.load(); } catch(e) {}
+            el._kickstartedLoad = true;
+          }
+          continue;
         }
-        continue;
-      }
-      const localT = (view.curTimeMs - startMs) / 1000;
-      // Sync if drifted more than 0.25s
-      if (Math.abs(el.currentTime - localT) > 0.25) {
-        try { el.currentTime = Math.max(0, localT); } catch(e) {}
-      }
+        // v3.28b.50: source time = sourceStartMs + (current - placement_start)
+        const localT = (sourceOffsetMs + (view.curTimeMs - startMs)) / 1000;
+        if (Math.abs(el.currentTime - localT) > 0.25) {
+          try { el.currentTime = Math.max(0, localT); } catch(e) {}
+        }
       el.volume = Math.min(1, Math.max(0, ap.volume != null ? ap.volume : 1));
       if (el.paused) {
         const p = el.play();

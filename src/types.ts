@@ -220,6 +220,8 @@ export interface AudioPlacement {
   startMs: number;
   durationMs: number;
   volume: number;
+  // v3.28b.50: offset into the source audio file (set when a placement is sliced)
+  sourceStartMs?: number;
 }
 
 export interface Callout {

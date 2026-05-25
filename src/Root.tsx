@@ -268,6 +268,8 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
       {payload.audioPlacements.map(ap => {
         const audioMeta = payload.audios.find(a => a.id === ap.audioId);
         if (!audioMeta) return null;
+        // v3.28b.50: sliced audio uses sourceStartMs to skip into the file
+        const sourceStartFrames = msToFrames(ap.sourceStartMs || 0);
         return (
           <Sequence
             key={ap.id}
@@ -275,7 +277,11 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
             durationInFrames={msToFrames(ap.durationMs)}
             name={`Audio: ${ap.audioId}`}
           >
-            <Audio src={audioMeta.url} volume={ap.volume ?? 1} />
+            <Audio
+              src={audioMeta.url}
+              volume={ap.volume ?? 1}
+              startFrom={sourceStartFrames > 0 ? sourceStartFrames : undefined}
+            />
           </Sequence>
         );
       })}
