@@ -1830,6 +1830,9 @@ const view = {
   pxPerMs: 0.05, tlZoom: 1.0,
   canvasZoom: 1.0, canvasPanX: 0, canvasPanY: 0, fitScale: 1.0,
   isPlaying: false, curTimeMs: 0, pendingEffect: null, pendingEffectSegId: null,
+  // v3.28b.61: flag set by scrub/seek handlers — consumed by syncAudioPlayback
+  // on its next tick to re-seek all audio elements to match new curTimeMs.
+  userSeeked: false,
   // v3.28b.28: when set to a segment id, the next mousedown on that segment's
   // wrap starts a drag-rectangle that sets seg.crop.
   pendingCropSegId: null,
@@ -2940,13 +2943,16 @@ function renderLeftRail() {
           : 'Delete "' + (asset?.filename || aid) + '"?';
         if (!confirm(msg)) return;
         pushHistory();
+        // v3.28b.62: remove ALL placement elements that reference this asset (was 1 per asset, now N per asset)
+        const placementsToRemove = (state.audioPlacements || []).filter(ap => ap.audioId === aid);
+        for (const ap of placementsToRemove) {
+          if (_audioElements[ap.id]) {
+            try { _audioElements[ap.id].pause(); _audioElements[ap.id].remove(); } catch(e) {}
+            delete _audioElements[ap.id];
+          }
+        }
         state.audios = state.audios.filter(a => a.id !== aid);
         state.audioPlacements = (state.audioPlacements || []).filter(ap => ap.audioId !== aid);
-        // Also remove the <audio> element from the DOM
-        if (_audioElements[aid]) {
-          try { _audioElements[aid].pause(); _audioElements[aid].remove(); } catch(e) {}
-          delete _audioElements[aid];
-        }
         renderLeftRail(); rebuildAll(); renderEditPanel();
         showToast('Audio deleted', 'success');
       }
@@ -3247,7 +3253,9 @@ function addAudioPlacement(audioId, startMs) {
   pushHistory();
   const dur = audioDurations[audioId] || 10000;
   const placement = { id: uid('ap'), audioId, startMs: Math.round(startMs || 0), durationMs: dur, volume: 1.0 };
-  state.audioPlacements.push(placement); setSelected(placement.id, 'audio'); rebuildAll();
+  state.audioPlacements.push(placement);
+  setupAudioElements();  // v3.28b.62: create the per-placement <audio> element
+  setSelected(placement.id, 'audio'); rebuildAll();
 }
 
 function addTextOverlay(opts) {
@@ -3379,6 +3387,7 @@ function setSelected(id, kind) {
     if (fx) {
       // Position playhead in the middle of the effect for max visual feedback
       view.curTimeMs = fx.startMs + (fx.durationMs / 2);
+      view.userSeeked = true;  // v3.28b.61
       _previewZoomActive = (fx.kind === 'zoom');
     }
   } else {
@@ -3404,6 +3413,7 @@ function deleteSelected() {
     }
     view.multiSelect = [];
     view.selectedId = null; view.selectedKind = null;
+    setupAudioElements(); // v3.28b.62: clean up orphaned placement elements
     rebuildAll();
     return;
   }
@@ -3447,6 +3457,7 @@ function deleteSelected() {
   else if (view.selectedKind === 'textOverlay') state.textOverlays = state.textOverlays.filter(t => t.id !== id);
   else if (view.selectedKind === 'customerCard') state.customerCards = state.customerCards.filter(c => c.id !== id);
   else if (view.selectedKind === 'shape') state.shapes = state.shapes.filter(s => s.id !== id);
+  setupAudioElements(); // v3.28b.62: clean up any orphaned placement elements
   view.selectedId = null; view.selectedKind = null; rebuildAll();
 }
 
@@ -6029,22 +6040,45 @@ function pause() {
 
 // v3.28b.56: wait for any pending play() promise to resolve before pause()
 // so we don't trigger AbortError. If no play is pending, pause immediately.
+// v3.28b.61: cancel any prior pending checkAndPause when called again, so
+// rapid play/pause/play cycles don't leave dangling pause callbacks.
 function safePauseMedia(el) {
   if (!el) return;
+  // Cancel any previously-scheduled pause for this element
+  if (el._pendingPauseTimer) {
+    clearTimeout(el._pendingPauseTimer);
+    el._pendingPauseTimer = null;
+  }
   if (el._playPending) {
-    // Wait for the play promise to resolve, THEN pause. Don't race it.
     const checkAndPause = () => {
-      if (!el._playPending) {
-        try { el.pause(); } catch(e) {}
-      } else {
-        // Still pending, check again next microtask
-        setTimeout(checkAndPause, 10);
+      el._pendingPauseTimer = null;
+      // Re-check: if isPlaying flipped back to true, don't pause
+      if (!view.isPlaying || !shouldElementBeActive(el)) {
+        if (!el._playPending) {
+          try { el.pause(); } catch(e) {}
+        } else {
+          el._pendingPauseTimer = setTimeout(checkAndPause, 10);
+        }
       }
     };
-    checkAndPause();
+    el._pendingPauseTimer = setTimeout(checkAndPause, 10);
   } else {
     try { el.pause(); } catch(e) {}
   }
+}
+
+// v3.28b.61: helper to check if an audio element should still be playing now
+function shouldElementBeActive(el) {
+  if (!view.isPlaying) return false;
+  for (const ap of (state.audioPlacements || [])) {
+    // v3.28b.62: lookup by placement id
+    if (_audioElements[ap.id] === el) {
+      const start = ap.startMs || 0;
+      const end = start + (ap.durationMs || 0);
+      if (view.curTimeMs >= start && view.curTimeMs < end) return true;
+    }
+  }
+  return false;
 }
 let _lastActiveSegmentId = null;
 function tick() {
@@ -7801,6 +7835,7 @@ function setupRuler() {
   const onRulerDown = (e) => {
     const ms = timelineMsAtClientX(e.clientX);
     view.curTimeMs = ms;
+    view.userSeeked = true;  // v3.28b.61: tell audio sync to re-seek
     // Initial state: full rebuild so the right segment is showing
     updatePlayhead();
     rebuildCanvas();
@@ -7813,6 +7848,7 @@ function setupRuler() {
       pendingRAF = false;
       const newMs = Math.max(0, timelineMsAtClientX(pendingClientX));
       view.curTimeMs = newMs;
+      view.userSeeked = true;  // v3.28b.61: tell audio sync to re-seek
       updatePlayhead();
       const activeSeg = state.segments.find(s => newMs >= s.startMs && newMs < s.startMs + s.durationMs);
       // If we moved to a different segment OR no segment is now active, do a full rebuild
@@ -8924,6 +8960,7 @@ function setupKeyboard() {
         const step = e.shiftKey ? 5000 : 1000;
         const totalMs = getTotalDurationMs();
         view.curTimeMs = Math.max(0, Math.min(totalMs, view.curTimeMs + dir * step));
+        view.userSeeked = true;  // v3.28b.61: tell audio sync to re-seek
         updatePlayhead();
         rebuildCanvas();
         return;
@@ -9139,6 +9176,9 @@ const _audioElements = {}; // keyed by audio.id
 let _audioUnlocked = false;
 
 function setupAudioElements() {
+  // v3.28b.62 (B2): elements are keyed by PLACEMENT id, not asset id.
+  // This allows the same audio asset to be used by multiple placements that
+  // can overlap in time (each gets its own <audio> element).
   // v3.28b.59: heal any existing elements that previous buggy versions left in
   // muted/volume=0 state. Safe to run repeatedly.
   for (const id in _audioElements) {
@@ -9146,30 +9186,38 @@ function setupAudioElements() {
     if (el.muted) el.muted = false;
     if (el.volume === 0) el.volume = 1;
   }
-  for (const a of state.audios) {
-    if (_audioElements[a.id]) continue;
+  // v3.28b.62: remove elements for deleted placements
+  const livePlacementIds = new Set((state.audioPlacements || []).map(ap => ap.id));
+  for (const id in _audioElements) {
+    if (!livePlacementIds.has(id)) {
+      try { _audioElements[id].pause(); _audioElements[id].remove(); } catch(e) {}
+      delete _audioElements[id];
+    }
+  }
+  // Create elements for any new placements
+  for (const ap of (state.audioPlacements || [])) {
+    if (_audioElements[ap.id]) continue;
+    const a = state.audios.find(x => x.id === ap.audioId);
+    if (!a) continue;
     const el = document.createElement('audio');
     el.src = a.url;
     el.preload = 'auto';
     el.style.display = 'none';
-    // v3.28b.59: explicitly unmute and set volume = 1. Some browsers default
-    // to muted in some contexts.
     el.muted = false;
     el.volume = 1;
+    el._placementId = ap.id;  // back-reference for diagnostics
+    el._audioAssetId = a.id;  // back-reference for diagnostics
     el.addEventListener('loadedmetadata', () => {
       if (!audioDurations[a.id]) audioDurations[a.id] = Math.round(el.duration * 1000);
       rebuildLeftRailDurations();
       el._setupAttempts = 0;
     });
-    // v3.28b.55: 10 retries with capped backoff (1s, 2s, 3s, 5s, 5s, 5s...).
-    // After 10 fails, pause 60s and start another cycle. Effectively never gives up.
     el.addEventListener('error', (e) => {
       const err = el.error;
       el._setupAttempts = (el._setupAttempts || 0) + 1;
-      console.warn('Audio load error for ' + a.id + ' (attempt ' + el._setupAttempts + '/10):',
+      console.warn('Audio load error for placement ' + ap.id + ' (attempt ' + el._setupAttempts + '/10):',
         a.url, err ? ('code=' + err.code + ' ' + err.message) : e);
       if (el._setupAttempts < 10) {
-        // Capped backoff: 1s, 2s, 3s, then 5s for the rest
         const delays = [1000, 2000, 3000, 5000, 5000, 5000, 5000, 5000, 5000];
         const backoff = delays[el._setupAttempts - 1] || 5000;
         setTimeout(() => {
@@ -9181,8 +9229,7 @@ function setupAudioElements() {
           } catch(e) { console.warn('Audio reload failed:', e); }
         }, backoff);
       } else {
-        console.warn('Audio paused retries after 10 attempts, will try again in 60s:', a.id);
-        // Start another 10-attempt cycle after 60s pause
+        console.warn('Audio paused retries after 10 attempts, will try again in 60s:', ap.id);
         setTimeout(() => {
           el._setupAttempts = 0;
           try {
@@ -9195,7 +9242,7 @@ function setupAudioElements() {
       }
     });
     document.body.appendChild(el);
-    _audioElements[a.id] = el;
+    _audioElements[ap.id] = el;
     try { el.load(); } catch (e) {}
   }
 }
@@ -9219,31 +9266,30 @@ function unlockAudioElements() {
     const el = _audioElements[id];
     if (el._unlocked) continue;
     try {
-      // v3.28b.59: critical insight — don't race with syncAudioPlayback.
-      // Just call play() in the gesture (which IS the unlock action), then
-      // immediately pause() in the same synchronous call. If audio should be
-      // playing at this moment, syncAudioPlayback's next tick will start it.
-      // Don't manipulate volume/muted — that fights syncAudioPlayback.
+      // v3.28b.61: set _playPending so syncAudioPlayback knows not to call play() yet
+      el._playPending = true;
       const p = el.play();
-      // Immediately pause in same tick — the play call already gave us unlock
       try { el.pause(); } catch(e) {}
       el._unlocked = true;
       if (p && typeof p.then === 'function') {
-        p.catch((err) => {
+        p.then(() => { el._playPending = false; })
+         .catch((err) => {
+          el._playPending = false;
           if (err.name === 'AbortError') {
-            // Expected — we paused before play resolved. Already unlocked.
+            // Expected — paused before play resolved. Element is unlocked.
           } else if (err.name === 'NotAllowedError') {
-            // Not actually in a user gesture. Mark as still locked.
             el._unlocked = false;
           } else if (!el._loggedUnlockError) {
             console.warn('Audio unlock error for ' + id + ': ' + err.name + ' — ' + err.message);
             el._loggedUnlockError = true;
           }
         });
+      } else {
+        el._playPending = false;
       }
     } catch (e) {
-      // Sync throw — usually NotAllowedError, will retry on next gesture
       el._unlocked = false;
+      el._playPending = false;
     }
   }
   _audioUnlocked = true;
@@ -9252,17 +9298,15 @@ function unlockAudioElements() {
 function syncAudioPlayback() {
   // For each placement, decide if it should be playing at view.curTimeMs
   for (const ap of state.audioPlacements) {
-    let el = _audioElements[ap.audioId];
+    // v3.28b.62: elements are keyed by placement id (each placement gets its own
+    // <audio>), so the same asset can be used by overlapping placements.
+    let el = _audioElements[ap.id];
     if (!el) {
-      // v3.28b.27 BUGFIX: element missing — try to create it now if the audio
-      // exists in state. This catches cases where setupAudioElements() didn't
-      // run after an upload, or a saved project loaded audios out of order.
+      // Element missing — try to create it now if the asset exists
       const audioAsset = state.audios.find(a => a.id === ap.audioId);
       if (audioAsset) {
         setupAudioElements();
-        el = _audioElements[ap.audioId];
-        // v3.28b.57: don't call unlockAudioElements from RAF loop — no user gesture context.
-        // Element will be unlocked on next user click via the earlyUnlock listener.
+        el = _audioElements[ap.id];
       }
       if (!el) continue;
     }
@@ -9313,11 +9357,23 @@ function syncAudioPlayback() {
         // audio's own clock run. Only re-seek on large drift (>2s) which indicates
         // user scrubbed the timeline.
         const localT = (sourceOffsetMs + (view.curTimeMs - startMs)) / 1000;
+        // v3.28b.62 (B3): if localT exceeds audio duration, audio file is exhausted.
+        // Don't keep retrying play() every frame — just stay paused for the remainder
+        // of the placement. Resets when user seeks back into range.
+        if (el.duration && localT >= el.duration - 0.05) {
+          if (!el.paused && !el._playPending) {
+            try { el.pause(); } catch(e) {}
+          }
+          continue;
+        }
         if (el.paused) {
           // About to play — seek to correct position
           try { el.currentTime = Math.max(0, localT); } catch(e) {}
+        } else if (view.userSeeked) {
+          // v3.28b.61: user just scrubbed/seeked the timeline — re-sync regardless of drift
+          try { el.currentTime = Math.max(0, localT); } catch(e) {}
         } else if (Math.abs(el.currentTime - localT) > 2.0) {
-          // Drifted way too far — user must have scrubbed. Re-sync.
+          // Drifted way too far — re-sync.
           try { el.currentTime = Math.max(0, localT); } catch(e) {}
         }
         // v3.28b.60: only set volume if it changed (avoid clicks from constant assignment)
@@ -9357,6 +9413,8 @@ function syncAudioPlayback() {
       else if (el._playPending) safePauseMedia(el);
     }
   }
+  // v3.28b.61: clear the seek flag after consuming it
+  view.userSeeked = false;
 }
 
 async function init() {
@@ -9417,16 +9475,14 @@ async function init() {
       setTimeout(() => { if (typeof fitCanvasToViewport === 'function') fitCanvasToViewport(); }, 50);
     });
   }
-  // v3.28b.18: Unlock audio elements on the FIRST user gesture anywhere on the
-  // page (not just the Play button). Many users click around (timeline, edit
-  // panel) before pressing Play. Without an early unlock, Windows Chrome
-  // rejects play() calls from the RAF loop even after the Play click. We use
-  // { once: true } so this listener auto-removes after firing.
+  // v3.28b.62: persistent unlock listener (not {once: true}) — so that audios
+  // uploaded AFTER the initial click also get unlocked on the next user gesture.
+  // unlockAudioElements is idempotent: already-unlocked elements are skipped.
   const earlyUnlock = () => {
     try { unlockAudioElements(); } catch (e) {}
   };
-  document.addEventListener('click', earlyUnlock, { once: true });
-  document.addEventListener('keydown', earlyUnlock, { once: true });
+  document.addEventListener('click', earlyUnlock);
+  document.addEventListener('keydown', earlyUnlock);
   rebuildAll();
   // v3.24: check for unsaved auto-save snapshot and offer restore
   setTimeout(maybeShowRestorePrompt, 500);
