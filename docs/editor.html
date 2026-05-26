@@ -9261,26 +9261,41 @@ function unlockAudioElements() {
 }
 
 function syncAudioPlayback() {
-  // For each placement, decide if it should be playing at view.curTimeMs
+  // v3.28b.57+fix: PASS 1 — determine which elements should be playing.
+  // Multiple placements can reference the SAME element (when they use the
+  // same audio asset). If ANY placement at the current time says "play",
+  // that element must play. Otherwise the next placement on the next loop
+  // iteration would pause it, causing 60fps pause/play thrash.
+  const activePlacementByEl = new Map();  // el -> the placement that's currently active
+  for (const ap of state.audioPlacements) {
+    let el = _audioElements[ap.audioId];
+    if (!el) continue;
+    const startMs = ap.startMs || 0;
+    const endMs = startMs + (ap.durationMs || 0);
+    if (view.isPlaying && view.curTimeMs >= startMs && view.curTimeMs < endMs) {
+      if (!activePlacementByEl.has(el)) activePlacementByEl.set(el, ap);
+    }
+  }
+  // PASS 2 — apply state per placement, using the active map to know if the
+  // shared element should be playing.
   for (const ap of state.audioPlacements) {
     let el = _audioElements[ap.audioId];
     if (!el) {
       // v3.28b.27 BUGFIX: element missing — try to create it now if the audio
-      // exists in state. This catches cases where setupAudioElements() didn't
-      // run after an upload, or a saved project loaded audios out of order.
+      // exists in state.
       const audioAsset = state.audios.find(a => a.id === ap.audioId);
       if (audioAsset) {
         setupAudioElements();
         el = _audioElements[ap.audioId];
-        // v3.28b.57: don't call unlockAudioElements from RAF loop — no user gesture context.
-        // Element will be unlocked on next user click via the earlyUnlock listener.
       }
       if (!el) continue;
     }
       const startMs = ap.startMs || 0;
       const endMs = startMs + (ap.durationMs || 0);
       const sourceOffsetMs = ap.sourceStartMs || 0;  // v3.28b.50: slice support
-      const shouldPlay = view.isPlaying && view.curTimeMs >= startMs && view.curTimeMs < endMs;
+      // shouldPlay now means: this specific placement is the active one for this element
+      const activeAp = activePlacementByEl.get(el);
+      const shouldPlay = activeAp === ap;
       if (shouldPlay) {
         if (el.readyState < 2) {
           // v3.28b.55: 10 retries with capped backoff (1s, 2s, 3s, 5s, 5s, 5s...).
@@ -9358,8 +9373,12 @@ function syncAudioPlayback() {
       }
     } else {
       // v3.28b.56: safe-pause to avoid AbortError race
-      if (!el.paused && !el._playPending) el.pause();
-      else if (el._playPending) safePauseMedia(el);
+      // v3.28b.57+fix: only pause if NO OTHER active placement owns this element.
+      // If another placement is currently playing this element, leave it alone.
+      if (!activePlacementByEl.has(el)) {
+        if (!el.paused && !el._playPending) el.pause();
+        else if (el._playPending) safePauseMedia(el);
+      }
     }
   }
 }
