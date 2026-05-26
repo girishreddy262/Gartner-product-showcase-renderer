@@ -2956,15 +2956,31 @@ function renderLeftRail() {
 
 async function preloadAudioDurations() {
   for (const a of state.audios) {
-    try {
-      const audio = new Audio(); audio.preload = 'metadata'; audio.src = a.url;
-      await new Promise((res, rej) => {
-        audio.addEventListener('loadedmetadata', res, { once: true });
-        audio.addEventListener('error', rej, { once: true });
-        setTimeout(rej, 8000);
-      });
-      audioDurations[a.id] = Math.round(audio.duration * 1000);
-    } catch (e) { audioDurations[a.id] = DEFAULT_VIDEO_DURATION_MS; }
+    // v3.28b.55: 10 retries with capped backoff (1s, 2s, 3s, 5s, 5s...)
+    let success = false;
+    const delays = [1000, 2000, 3000, 5000, 5000, 5000, 5000, 5000, 5000];
+    for (let attempt = 0; attempt < 10 && !success; attempt++) {
+      try {
+        const audio = new Audio();
+        audio.preload = 'metadata';
+        audio.src = a.url;
+        await new Promise((res, rej) => {
+          audio.addEventListener('loadedmetadata', res, { once: true });
+          audio.addEventListener('error', (e) => rej(new Error('Audio error: ' + (e.message || 'unknown'))), { once: true });
+          setTimeout(() => rej(new Error('Timeout after 20s')), 20000);
+        });
+        audioDurations[a.id] = Math.round(audio.duration * 1000);
+        success = true;
+      } catch (e) {
+        console.warn('Audio preload attempt ' + (attempt + 1) + '/10 failed for ' + a.id + ':', e.message);
+        if (attempt === 9) {
+          console.warn('Audio duration preload paused after 10 attempts for ' + a.id + ' — using default for now');
+          audioDurations[a.id] = DEFAULT_VIDEO_DURATION_MS;
+        } else {
+          await new Promise(r => setTimeout(r, delays[attempt] || 5000));
+        }
+      }
+    }
   }
 }
 
@@ -2981,27 +2997,34 @@ async function loadOneVideoDuration(videoId) {
   if (videoDurations[videoId] && videoDurations[videoId] !== DEFAULT_VIDEO_DURATION_MS) return videoDurations[videoId];
   const v = state.videos.find(x => x.id === videoId);
   if (!v) return DEFAULT_VIDEO_DURATION_MS;
-  try {
-    const vid = document.createElement('video');
-    // v3.28b.18: no crossOrigin attribute — Dropbox serves these fine without
-    // it, and on Windows Chrome the strict CORS check intermittently fails.
-    vid.preload = 'metadata';
-    vid.muted = true;
-    vid.src = v.url;
-    await new Promise((res, rej) => {
-      vid.addEventListener('loadedmetadata', () => res(), { once: true });
-      vid.addEventListener('error', rej, { once: true });
-      setTimeout(rej, 6000);
-    });
-    const ms = Math.round(vid.duration * 1000) || DEFAULT_VIDEO_DURATION_MS;
-    vid.removeAttribute('src'); vid.load(); // free memory
-    videoDurations[videoId] = ms;
-    return ms;
-  } catch (e) {
-    console.warn('Could not load duration for', videoId, e);
-    videoDurations[videoId] = DEFAULT_VIDEO_DURATION_MS;
-    return DEFAULT_VIDEO_DURATION_MS;
+  // v3.28b.55: 10 retries with capped backoff (1s, 2s, 3s, 5s, 5s...) — 20s timeout each
+  const delays = [1000, 2000, 3000, 5000, 5000, 5000, 5000, 5000, 5000];
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      const vid = document.createElement('video');
+      vid.preload = 'metadata';
+      vid.muted = true;
+      vid.src = v.url;
+      await new Promise((res, rej) => {
+        vid.addEventListener('loadedmetadata', () => res(), { once: true });
+        vid.addEventListener('error', (e) => rej(new Error('Video error: ' + (e.message || 'unknown'))), { once: true });
+        setTimeout(() => rej(new Error('Timeout after 20s')), 20000);
+      });
+      const ms = Math.round(vid.duration * 1000) || DEFAULT_VIDEO_DURATION_MS;
+      vid.removeAttribute('src'); vid.load();
+      videoDurations[videoId] = ms;
+      return ms;
+    } catch (e) {
+      console.warn('Video duration attempt ' + (attempt + 1) + '/10 failed for ' + videoId + ':', e.message);
+      if (attempt === 9) {
+        console.warn('Video duration preload paused for ' + videoId + ' — using default');
+        videoDurations[videoId] = DEFAULT_VIDEO_DURATION_MS;
+        return DEFAULT_VIDEO_DURATION_MS;
+      }
+      await new Promise(r => setTimeout(r, delays[attempt] || 5000));
+    }
   }
+  return DEFAULT_VIDEO_DURATION_MS;
 }
 
 let _drag = null;
@@ -5707,8 +5730,34 @@ function renderSegmentToCanvas(seg) {
         }
       });
       v.addEventListener('error', () => {
-        console.warn('Video failed to load:', video.url);
-        wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#fff;font-size:48px;text-align:center;padding:40px;">Could not load video<br><span style="font-size:24px;color:#888;margin-top:20px;display:block;">' + (video.filename || video.id) + '</span></div>';
+        // v3.28b.55: 10 retries with capped backoff (1s, 2s, 3s, 5s, 5s...).
+        // After 10 fails, pause 60s and start another cycle.
+        v._loadAttempts = (v._loadAttempts || 0) + 1;
+        if (v._loadAttempts < 11) {
+          const delays = [1000, 2000, 3000, 5000, 5000, 5000, 5000, 5000, 5000, 5000];
+          const backoff = delays[v._loadAttempts - 1] || 5000;
+          console.warn('Video load attempt ' + v._loadAttempts + '/10 failed, retrying in ' + backoff + 'ms:', video.url);
+          setTimeout(() => {
+            try {
+              const currentSrc = v.src;
+              v.src = '';
+              v.src = currentSrc;
+              v.load();
+            } catch(e) { console.warn('Video reload failed:', e); }
+          }, backoff);
+        } else {
+          console.warn('Video paused retries after 10 attempts, will try again in 60s:', video.url);
+          // Start another cycle after 60s pause
+          setTimeout(() => {
+            v._loadAttempts = 0;
+            try {
+              const currentSrc = v.src;
+              v.src = '';
+              v.src = currentSrc;
+              v.load();
+            } catch(e) {}
+          }, 60000);
+        }
       });
       wrap.appendChild(v);
     }
@@ -9060,22 +9109,45 @@ function setupAudioElements() {
     const el = document.createElement('audio');
     el.src = a.url;
     el.preload = 'auto';
-    // v3.28b.16: NO crossOrigin attribute. Setting it to 'anonymous' makes the
-    // browser require CORS headers from Dropbox AND can intermittently fail on
-    // Windows Chrome (stricter cache validation). We don't need cross-origin
-    // canvas/webaudio access, so we don't need this.
     el.style.display = 'none';
     el.addEventListener('loadedmetadata', () => {
       if (!audioDurations[a.id]) audioDurations[a.id] = Math.round(el.duration * 1000);
       rebuildLeftRailDurations();
+      el._setupAttempts = 0;
     });
+    // v3.28b.55: 10 retries with capped backoff (1s, 2s, 3s, 5s, 5s, 5s...).
+    // After 10 fails, pause 60s and start another cycle. Effectively never gives up.
     el.addEventListener('error', (e) => {
       const err = el.error;
-      console.warn('Audio failed to load for ' + a.id + ':', a.url, err ? ('code=' + err.code + ' ' + err.message) : e);
+      el._setupAttempts = (el._setupAttempts || 0) + 1;
+      console.warn('Audio load error for ' + a.id + ' (attempt ' + el._setupAttempts + '/10):',
+        a.url, err ? ('code=' + err.code + ' ' + err.message) : e);
+      if (el._setupAttempts < 10) {
+        // Capped backoff: 1s, 2s, 3s, then 5s for the rest
+        const delays = [1000, 2000, 3000, 5000, 5000, 5000, 5000, 5000, 5000];
+        const backoff = delays[el._setupAttempts - 1] || 5000;
+        setTimeout(() => {
+          try {
+            const currentSrc = el.src;
+            el.src = '';
+            el.src = currentSrc;
+            el.load();
+          } catch(e) { console.warn('Audio reload failed:', e); }
+        }, backoff);
+      } else {
+        console.warn('Audio paused retries after 10 attempts, will try again in 60s:', a.id);
+        // Start another 10-attempt cycle after 60s pause
+        setTimeout(() => {
+          el._setupAttempts = 0;
+          try {
+            const currentSrc = el.src;
+            el.src = '';
+            el.src = currentSrc;
+            el.load();
+          } catch(e) {}
+        }, 60000);
+      }
     });
-    // v3.28b.22: explicitly trigger load. Windows Chrome sometimes doesn't
-    // auto-load preload="auto" sources until first play() attempt, which
-    // causes the play() in the RAF loop to fail.
     document.body.appendChild(el);
     _audioElements[a.id] = el;
     try { el.load(); } catch (e) {}
@@ -9160,12 +9232,41 @@ function syncAudioPlayback() {
       const shouldPlay = view.isPlaying && view.curTimeMs >= startMs && view.curTimeMs < endMs;
       if (shouldPlay) {
         if (el.readyState < 2) {
-          if (!el._kickstartedLoad) {
-            try { el.load(); } catch(e) {}
-            el._kickstartedLoad = true;
+          // v3.28b.55: 10 retries with capped backoff (1s, 2s, 3s, 5s, 5s, 5s...).
+          // After 10 fails, pause 60s and start another cycle.
+          el._loadAttempts = el._loadAttempts || 0;
+          el._lastLoadAt = el._lastLoadAt || 0;
+          const now = Date.now();
+          const delays = [500, 1000, 2000, 3000, 5000, 5000, 5000, 5000, 5000, 5000];
+          const backoffMs = el._loadAttempts === 0 ? 0 : (delays[el._loadAttempts - 1] || 5000);
+          if (now - el._lastLoadAt >= backoffMs) {
+            if (el._loadAttempts < 10) {
+              try {
+                if (el._loadAttempts > 0) {
+                  const currentSrc = el.src;
+                  el.src = '';
+                  el.src = currentSrc;
+                }
+                el.load();
+                el._loadAttempts++;
+                el._lastLoadAt = now;
+              } catch(e) {
+                console.warn('Audio load attempt failed:', e);
+              }
+            } else if (!el._loggedLoadFailure) {
+              console.warn('Audio paused retries after 10 attempts, will try again in 60s:', ap.audioId);
+              el._loggedLoadFailure = true;
+              setTimeout(() => {
+                el._loadAttempts = 0;
+                el._loggedLoadFailure = false;
+              }, 60000);
+            }
           }
           continue;
         }
+        // Reset retry counters once we have data
+        el._loadAttempts = 0;
+        el._loggedLoadFailure = false;
         // v3.28b.50: source time = sourceStartMs + (current - placement_start)
         const localT = (sourceOffsetMs + (view.curTimeMs - startMs)) / 1000;
         if (Math.abs(el.currentTime - localT) > 0.25) {
