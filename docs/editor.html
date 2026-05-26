@@ -9318,9 +9318,14 @@ function syncAudioPlayback() {
         // Reset retry counters once we have data
         el._loadAttempts = 0;
         el._loggedLoadFailure = false;
-        // v3.28b.50: source time = sourceStartMs + (current - placement_start)
+        // v3.28b.60: ONLY seek currentTime when audio starts (paused→playing transition).
+        // Per-frame resyncing causes audible glitches every 1-2s as JS time drifts
+        // past 0.25s threshold vs audio sample clock. Let audio's own clock run free
+        // during playback. Only re-seek on large drift (>2s) which indicates user scrub.
         const localT = (sourceOffsetMs + (view.curTimeMs - startMs)) / 1000;
-        if (Math.abs(el.currentTime - localT) > 0.25) {
+        if (el.paused) {
+          try { el.currentTime = Math.max(0, localT); } catch(e) {}
+        } else if (Math.abs(el.currentTime - localT) > 2.0) {
           try { el.currentTime = Math.max(0, localT); } catch(e) {}
         }
       el.volume = Math.min(1, Math.max(0, ap.volume != null ? ap.volume : 1));
