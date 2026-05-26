@@ -9139,6 +9139,13 @@ const _audioElements = {}; // keyed by audio.id
 let _audioUnlocked = false;
 
 function setupAudioElements() {
+  // v3.28b.59: heal any existing elements that previous buggy versions left in
+  // muted/volume=0 state. Safe to run repeatedly.
+  for (const id in _audioElements) {
+    const el = _audioElements[id];
+    if (el.muted) el.muted = false;
+    if (el.volume === 0) el.volume = 1;
+  }
   for (const a of state.audios) {
     if (_audioElements[a.id]) continue;
     const el = document.createElement('audio');
