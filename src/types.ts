@@ -302,6 +302,25 @@ export interface SpotlightEffect {
 
 export type Effect = ZoomEffect | SpotlightEffect;
 
+// v3.28b.53: Shape overlays (rectangle + ellipse) with fill/stroke/opacity
+export interface ShapeOverlay {
+  id: string;
+  shapeType: 'rect' | 'ellipse';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  startMs: number;
+  durationMs: number;
+  fill?: string;
+  fillEnabled?: boolean;
+  stroke?: string;
+  strokeEnabled?: boolean;
+  strokeWidth?: number;
+  opacity?: number;
+  cornerRadius?: number;  // rect only
+}
+
 // --- Full Payload ---
 
 export interface ShowcasePayload {
@@ -314,6 +333,7 @@ export interface ShowcasePayload {
   effects: Effect[];
   textOverlays: TextOverlay[];
   customerCards?: CustomerCardOverlay[];
+  shapes?: ShapeOverlay[];
   frameUrl?: string;
   jobId: string;
 }

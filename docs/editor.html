@@ -416,6 +416,9 @@
   }
   /* v3.28b.20: vivid pink so customer card blocks don't blend into navy timeline */
   .tl-block.customercard-block { background:linear-gradient(180deg, #EC4899, #BE185D); color:#fff; }
+  /* v3.28b.53: shape blocks — amber to distinguish from other tracks */
+  .tl-block.shape-block { background:linear-gradient(180deg, #FFB347, #E89125); color:#1A1D24; }
+  .tl-block.shape-block.selected { box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 0 2px #1A1D24; }
   .tl-block.zoom-block { background:linear-gradient(180deg, #FFB84D, #FF9500); color:#1A1D24; }
   .tl-block.spotlight-block { background:linear-gradient(180deg, #FFD43B, #FFA500); color:#1A1D24; }
   .tl-block-handle {
@@ -451,6 +454,25 @@
   .canvas-callout.editor-mode.selected {
     outline:3px solid #fff; outline-offset:4px;
   }
+  /* v3.28b.53: shape on canvas */
+  .canvas-shape {
+    pointer-events:auto;
+  }
+  .canvas-shape.editor-mode:hover {
+    outline:2px dashed rgba(255,179,71,0.6); outline-offset:2px;
+  }
+  .canvas-shape.editor-mode.selected {
+    outline:2px solid #FFB347; outline-offset:2px;
+  }
+  .shape-handle {
+    position:absolute; width:12px; height:12px;
+    background:#FFB347; border:2px solid #1A1D24; border-radius:2px;
+    z-index:2;
+  }
+  .shape-handle.tl { left:-6px; top:-6px; cursor:nwse-resize; }
+  .shape-handle.tr { right:-6px; top:-6px; cursor:nesw-resize; }
+  .shape-handle.bl { left:-6px; bottom:-6px; cursor:nesw-resize; }
+  .shape-handle.br { right:-6px; bottom:-6px; cursor:nwse-resize; }
   .canvas-spotlight-backdrop {
     /* No longer needed — box-shadow on .canvas-spotlight-region creates the cutout */
     display:none;
@@ -1383,6 +1405,26 @@
     </div>
 
     <div class="rail-section">
+      <h3>Shapes</h3>
+      <div>
+        <button class="asset-card effect-btn" id="addRectBtn" type="button">
+          <div class="ac-icon" style="background:linear-gradient(143deg, #FFB347, #E89125); color:#1A1D24; font-size:18px;">▭</div>
+          <div class="ac-text">
+            <div class="ac-label">Rectangle</div>
+            <div class="ac-desc">Add a rectangle at playhead</div>
+          </div>
+        </button>
+        <button class="asset-card effect-btn" id="addEllipseBtn" type="button">
+          <div class="ac-icon" style="background:linear-gradient(143deg, #FFB347, #E89125); color:#1A1D24; font-size:18px;">◯</div>
+          <div class="ac-text">
+            <div class="ac-label">Ellipse</div>
+            <div class="ac-desc">Add an ellipse at playhead</div>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="rail-section">
       <h3>Effects</h3>
       <div id="effectsList">
         <button class="asset-card effect-btn" id="addZoomBtn" type="button">
@@ -1463,6 +1505,7 @@
         <div class="tl-label-cell textoverlays">Text</div>
         <div class="tl-label-cell callouts">Callouts</div>
         <div class="tl-label-cell customercards" style="height:24px;">Customer Cards</div>
+        <div class="tl-label-cell shapes" style="height:24px;">Shapes</div>
         <div class="tl-label-cell segments">Segments</div>
         <div class="tl-label-cell audios">Audios</div>
       </div>
@@ -1480,6 +1523,9 @@
           </div>
           <div class="tl-track customercard-track" id="customerCardsTrack" style="height:24px; background:rgba(31,138,255,0.06);">
             <div class="tl-track-empty" id="customerCardsEmpty">Drag customer card here or onto the canvas</div>
+          </div>
+          <div class="tl-track shape-track" id="shapesTrack" style="height:24px; background:rgba(255,170,71,0.06);">
+            <div class="tl-track-empty" id="shapesEmpty">Click "+ Shape" in the left rail</div>
           </div>
           <div class="tl-track segment-track" id="segmentsTrack">
             <div class="tl-track-empty" id="segmentsEmpty">Drag videos or slide templates here</div>
@@ -1799,7 +1845,9 @@ const state = {
   callouts: PAYLOAD.callouts || [],
   effects: PAYLOAD.effects || [],
   textOverlays: PAYLOAD.textOverlays || [],
-  customerCards: PAYLOAD.customerCards || []
+  customerCards: PAYLOAD.customerCards || [],
+  // v3.28b.53: shapes (rectangle + ellipse with fill/stroke). Timeline items.
+  shapes: PAYLOAD.shapes || []
 };
 
 // ====================================================================
@@ -1936,6 +1984,7 @@ function _snapshotState() {
     effects: state.effects,
     textOverlays: state.textOverlays,
     customerCards: state.customerCards,
+    shapes: state.shapes,
     module: state.module
   }));
 }
@@ -1947,6 +1996,7 @@ function _restoreState(snap) {
   state.effects = snap.effects;
   state.textOverlays = snap.textOverlays || [];
   state.customerCards = snap.customerCards || [];
+  state.shapes = snap.shapes || [];
   state.module = snap.module;
 }
 
@@ -3230,6 +3280,44 @@ function addCustomerCard(opts) {
   state.customerCards.push(c); setSelected(c.id, 'customerCard'); rebuildAll();
 }
 
+// v3.28b.53: SHAPE color presets (Darwinbox brand palette)
+const SHAPE_COLOR_PRESETS = [
+  '#0183FF', '#003B73', '#7ABEFF', '#FFFFFF',
+  '#000000', '#FF4040', '#22C55E', '#FFB347'
+];
+const DEFAULT_SHAPE_DURATION_MS = 3000;
+
+// v3.28b.53: add a shape (rectangle or ellipse). Lives on the shapes track.
+// User can drag to move/resize and edit fill/stroke/opacity in the right panel.
+function addShape(opts) {
+  pushHistory();
+  opts = opts || {};
+  const shapeType = opts.shapeType || 'rect';  // 'rect' | 'ellipse'
+  const startMs = opts.startMs != null ? Math.round(opts.startMs) : Math.round(view.curTimeMs);
+  const w = opts.width || 400;
+  const h = opts.height || 250;
+  const s = {
+    id: uid('sh'),
+    shapeType: shapeType,
+    x: opts.x != null ? Math.round(opts.x) : Math.round(CANVAS_W / 2 - w / 2),
+    y: opts.y != null ? Math.round(opts.y) : Math.round(CANVAS_H / 2 - h / 2),
+    width: w,
+    height: h,
+    startMs: startMs,
+    durationMs: opts.durationMs || DEFAULT_SHAPE_DURATION_MS,
+    fill: '#0183FF',
+    fillEnabled: true,
+    stroke: '#FFFFFF',
+    strokeEnabled: false,
+    strokeWidth: 4,
+    opacity: 1.0,
+    cornerRadius: 0
+  };
+  state.shapes.push(s);
+  setSelected(s.id, 'shape');
+  rebuildAll();
+}
+
 function addEffect(kind, opts) {
   pushHistory();
   opts = opts || {};
@@ -3289,6 +3377,7 @@ function deleteSelected() {
       else if (sel.kind === 'effect') state.effects = state.effects.filter(e => e.id !== id);
       else if (sel.kind === 'textOverlay') state.textOverlays = state.textOverlays.filter(t => t.id !== id);
       else if (sel.kind === 'customerCard') state.customerCards = state.customerCards.filter(c => c.id !== id);
+      else if (sel.kind === 'shape') state.shapes = state.shapes.filter(s => s.id !== id);
     }
     view.multiSelect = [];
     view.selectedId = null; view.selectedKind = null;
@@ -3334,6 +3423,7 @@ function deleteSelected() {
   else if (view.selectedKind === 'effect') state.effects = state.effects.filter(e => e.id !== id);
   else if (view.selectedKind === 'textOverlay') state.textOverlays = state.textOverlays.filter(t => t.id !== id);
   else if (view.selectedKind === 'customerCard') state.customerCards = state.customerCards.filter(c => c.id !== id);
+  else if (view.selectedKind === 'shape') state.shapes = state.shapes.filter(s => s.id !== id);
   view.selectedId = null; view.selectedKind = null; rebuildAll();
 }
 
@@ -3370,6 +3460,9 @@ function snapSelected() {
     } else if (sel.kind === 'customerCard') {
       item = (state.customerCards || []).find(c => c.id === sel.id);
       arr = state.customerCards;
+    } else if (sel.kind === 'shape') {
+      item = (state.shapes || []).find(s => s.id === sel.id);
+      arr = state.shapes;
     }
     if (item && arr) resolved.push({ item, kind: sel.kind });
   }
@@ -3420,6 +3513,7 @@ function selectAllInTimeline() {
   for (const e of state.effects || []) view.multiSelect.push({ id: e.id, kind: 'effect' });
   for (const t of state.textOverlays || []) view.multiSelect.push({ id: t.id, kind: 'textOverlay' });
   for (const cc of state.customerCards || []) view.multiSelect.push({ id: cc.id, kind: 'customerCard' });
+  for (const sh of state.shapes || []) view.multiSelect.push({ id: sh.id, kind: 'shape' });
   // Clear single selection (no edit panel) — bulk mode
   view.selectedId = null; view.selectedKind = null;
   showToast(view.multiSelect.length + ' items selected — press Delete to remove all, or click anywhere to cancel');
@@ -3470,6 +3564,7 @@ function rangeSelectInTimeline(id, kind) {
   else if (kind === 'effect') pool = state.effects;
   else if (kind === 'textOverlay') pool = state.textOverlays;
   else if (kind === 'customerCard') pool = state.customerCards;
+  else if (kind === 'shape') pool = state.shapes || [];
   // Sort by startMs and find positions of anchor and target
   const sorted = [...pool].sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
   const a = sorted.findIndex(x => x.id === anchorId);
@@ -3513,6 +3608,7 @@ function renderEditPanel() {
   else if (view.selectedKind === 'effect') renderEffectPanel(panel);
   else if (view.selectedKind === 'textOverlay') renderTextOverlayPanel(panel);
   else if (view.selectedKind === 'customerCard') renderCustomerCardPanel(panel);
+  else if (view.selectedKind === 'shape') renderShapePanel(panel);
 }
 
 // =====================================================================
@@ -5012,6 +5108,7 @@ function rebuildTimeline() {
   rebuildEffectsTrack();
   rebuildTextOverlayTrack();
   rebuildCustomerCardsTrack();
+  rebuildShapesTrack();
   updatePlayhead();
   $('segmentsEmpty').classList.toggle('hidden', state.segments.length > 0);
   $('audiosEmpty').classList.toggle('hidden', state.audioPlacements.length > 0);
@@ -5020,6 +5117,8 @@ function rebuildTimeline() {
   $('textOverlaysEmpty').classList.toggle('hidden', state.textOverlays.length > 0);
   const ccEmpty = $('customerCardsEmpty');
   if (ccEmpty) ccEmpty.classList.toggle('hidden', (state.customerCards || []).length > 0);
+  const shEmpty = $('shapesEmpty');
+  if (shEmpty) shEmpty.classList.toggle('hidden', (state.shapes || []).length > 0);
   const totalMs = getTotalDurationMs();
   // v3.28b.21: totalLength element removed; guard the assignment
   const tl = $('totalLength');
@@ -5104,6 +5203,14 @@ function rebuildCustomerCardsTrack() {
   (state.customerCards || []).forEach(c => track.appendChild(makeBlock(c, 'customerCard')));
 }
 
+// v3.28b.53: shape blocks on the shapes track
+function rebuildShapesTrack() {
+  const track = $('shapesTrack');
+  if (!track) return;
+  track.querySelectorAll('.tl-block').forEach(b => b.remove());
+  (state.shapes || []).forEach(s => track.appendChild(makeBlock(s, 'shape')));
+}
+
 function makeBlock(item, kind) {
   const px = getEffectivePxPerMs();
   const block = document.createElement('div');
@@ -5139,6 +5246,11 @@ function makeBlock(item, kind) {
   else if (kind === 'customerCard') {
     cls += ' customercard-block icon-only';
     label = '🏢';
+  }
+  // v3.28b.53: shape block
+  else if (kind === 'shape') {
+    cls += ' shape-block icon-only';
+    label = item.shapeType === 'ellipse' ? '◯' : '▭';
   }
   if (view.selectedId === item.id) cls += ' selected';
   // v3.28b.16: multi-select highlight
@@ -5448,6 +5560,46 @@ function rebuildCanvas() {
     el.addEventListener('mousedown', (e) => onCanvasElementMouseDown(e, c, 'customerCard'));
     inner.appendChild(el);
   });
+  // v3.28b.53: Shapes — render active shapes as SVG rect/ellipse
+  (state.shapes || []).filter(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs).forEach(s => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'canvas-shape editor-mode' + (view.selectedId === s.id ? ' selected' : '');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = s.x + 'px';
+    wrapper.style.top = s.y + 'px';
+    wrapper.style.width = s.width + 'px';
+    wrapper.style.height = s.height + 'px';
+    wrapper.style.cursor = 'move';
+    wrapper.style.opacity = String(s.opacity != null ? s.opacity : 1);
+    wrapper.dataset.id = s.id;
+    // Build SVG
+    const fillVal = s.fillEnabled ? s.fill : 'none';
+    const strokeVal = s.strokeEnabled ? s.stroke : 'none';
+    const strokeW = s.strokeEnabled ? (s.strokeWidth || 4) : 0;
+    // Inset the shape by half stroke width so the stroke fits inside the bounding box
+    const inset = strokeW / 2;
+    const w = s.width - strokeW;
+    const h = s.height - strokeW;
+    let inner_svg = '';
+    if (s.shapeType === 'ellipse') {
+      inner_svg = '<ellipse cx="' + (s.width/2) + '" cy="' + (s.height/2) + '" rx="' + (w/2) + '" ry="' + (h/2) + '" fill="' + fillVal + '" stroke="' + strokeVal + '" stroke-width="' + strokeW + '"/>';
+    } else {
+      const r = Math.min(s.cornerRadius || 0, w/2, h/2);
+      inner_svg = '<rect x="' + inset + '" y="' + inset + '" width="' + w + '" height="' + h + '" rx="' + r + '" ry="' + r + '" fill="' + fillVal + '" stroke="' + strokeVal + '" stroke-width="' + strokeW + '"/>';
+    }
+    wrapper.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 ' + s.width + ' ' + s.height + '" style="display:block;overflow:visible;">' + inner_svg + '</svg>';
+    // Selection outline + resize handles
+    if (view.selectedId === s.id) {
+      ['tl','tr','bl','br'].forEach(corner => {
+        const h = document.createElement('div');
+        h.className = 'shape-handle ' + corner;
+        h.addEventListener('mousedown', (e) => { e.stopPropagation(); onShapeResize(e, s, corner); });
+        wrapper.appendChild(h);
+      });
+    }
+    wrapper.addEventListener('mousedown', (e) => onCanvasElementMouseDown(e, s, 'shape'));
+    inner.appendChild(wrapper);
+  });
   applyCanvasTransform();
 }
 
@@ -5704,6 +5856,32 @@ function onSegmentResize(e, seg, corner) {
     else if (corner === 'bl') { seg.x = Math.round(x0 + dx); seg.width = Math.max(50, w0 - dx); seg.height = Math.max(50, h0 + dy); }
     else if (corner === 'tr') { seg.y = Math.round(y0 + dy); seg.width = Math.max(50, w0 + dx); seg.height = Math.max(50, h0 - dy); }
     else if (corner === 'tl') { seg.x = Math.round(x0 + dx); seg.y = Math.round(y0 + dy); seg.width = Math.max(50, w0 - dx); seg.height = Math.max(50, h0 - dy); }
+    rebuildCanvas();
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    renderEditPanel();
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+// v3.28b.53: resize shapes via corner handles
+function onShapeResize(e, s, corner) {
+  if (e.button !== 0) return;
+  pushHistory();
+  const start = clientToCanvas(e.clientX, e.clientY);
+  const x0 = s.x, y0 = s.y, w0 = s.width, h0 = s.height;
+  const MIN = 20;
+  const onMove = (ev) => {
+    const cur = clientToCanvas(ev.clientX, ev.clientY);
+    const dx = cur.x - start.x;
+    const dy = cur.y - start.y;
+    if (corner === 'br') { s.width = Math.max(MIN, w0 + dx); s.height = Math.max(MIN, h0 + dy); }
+    else if (corner === 'bl') { s.x = Math.round(x0 + dx); s.width = Math.max(MIN, w0 - dx); s.height = Math.max(MIN, h0 + dy); }
+    else if (corner === 'tr') { s.y = Math.round(y0 + dy); s.width = Math.max(MIN, w0 + dx); s.height = Math.max(MIN, h0 - dy); }
+    else if (corner === 'tl') { s.x = Math.round(x0 + dx); s.y = Math.round(y0 + dy); s.width = Math.max(MIN, w0 - dx); s.height = Math.max(MIN, h0 - dy); }
     rebuildCanvas();
   };
   const onUp = () => {
@@ -6145,6 +6323,154 @@ function wireCustomerCardPanel(c) {
   $('cc-anim-out-at').addEventListener('change', (e) => { pushHistory(); c.animOutAt = parseFloat(e.target.value) || 0; });
 
   $('cc-delete').addEventListener('click', deleteSelected);
+}
+
+// v3.28b.53: SHAPE edit panel — rectangle/ellipse with fill + stroke + opacity + size + time
+function renderShapePanel(panel) {
+  const s = (state.shapes || []).find(x => x.id === view.selectedId);
+  if (!s) return;
+  // Color swatches helper
+  function swatchRow(idPrefix, selectedColor) {
+    let html = '<div class="shape-swatch-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">';
+    SHAPE_COLOR_PRESETS.forEach((c, i) => {
+      const isSel = (selectedColor || '').toLowerCase() === c.toLowerCase();
+      html += '<button type="button" class="shape-swatch ' + (isSel ? 'selected' : '') + '" '
+        + 'data-' + idPrefix + '-color="' + c + '" '
+        + 'style="width:22px;height:22px;border-radius:4px;background:' + c + ';'
+        + 'border:' + (isSel ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)') + ';'
+        + 'cursor:pointer;padding:0;"></button>';
+    });
+    // Custom picker
+    html += '<input type="color" id="' + idPrefix + '-picker" value="' + selectedColor + '" '
+      + 'style="width:30px;height:26px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;background:transparent;cursor:pointer;padding:0;" '
+      + 'title="Pick a custom color">';
+    // Hex input
+    html += '<input type="text" id="' + idPrefix + '-hex" value="' + selectedColor + '" maxlength="7" '
+      + 'style="width:78px;font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:4px 6px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:#fff;">';
+    html += '</div>';
+    return html;
+  }
+  const shapeLabel = s.shapeType === 'ellipse' ? 'Ellipse' : 'Rectangle';
+  const shapeIcon = s.shapeType === 'ellipse' ? '◯' : '▭';
+  let html = '<div class="edit-panel-content">' +
+    '<div class="edit-panel-header"><div class="ep-icon" style="background:#FFB347;color:#1A1D24;">' + shapeIcon + '</div>' +
+    '<div class="ep-title-wrap"><div class="ep-title">' + shapeLabel + '</div>' +
+    '<div class="ep-subtitle">' + fmtTimeDecimal(s.startMs) + ' — ' + fmtTimeDecimal(s.startMs + s.durationMs) + '</div></div></div>';
+  // Shape type toggle
+  html += '<div class="align-section"><div class="align-label">Shape</div>' +
+    '<div class="align-grid">' +
+    '<button class="align-btn ' + (s.shapeType === 'rect' ? 'active' : '') + '" data-shape-type="rect">▭ Rectangle</button>' +
+    '<button class="align-btn ' + (s.shapeType === 'ellipse' ? 'active' : '') + '" data-shape-type="ellipse">◯ Ellipse</button>' +
+    '</div></div>';
+  // Fill section
+  html += '<div class="align-section"><div class="align-label">' +
+    '<label class="checkbox-label" style="display:inline-flex;align-items:center;gap:6px;">' +
+    '<input type="checkbox" id="sh-fill-enabled" ' + (s.fillEnabled ? 'checked' : '') + '> Fill</label></div>' +
+    swatchRow('sh-fill', s.fill || '#0183FF') + '</div>';
+  // Stroke section
+  html += '<div class="align-section"><div class="align-label">' +
+    '<label class="checkbox-label" style="display:inline-flex;align-items:center;gap:6px;">' +
+    '<input type="checkbox" id="sh-stroke-enabled" ' + (s.strokeEnabled ? 'checked' : '') + '> Stroke</label></div>' +
+    swatchRow('sh-stroke', s.stroke || '#FFFFFF') +
+    '<div style="margin-top:8px;">' +
+    '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);">' +
+    '<span style="min-width:64px;">Thickness:</span>' +
+    '<input type="range" id="sh-stroke-width" min="1" max="20" step="1" value="' + (s.strokeWidth || 4) + '" style="flex:1;">' +
+    '<span id="sh-stroke-width-val" style="font-weight:700;color:#0183FF;min-width:32px;">' + (s.strokeWidth || 4) + 'px</span>' +
+    '</div></div></div>';
+  // Opacity
+  html += '<div class="align-section"><div class="align-label">Opacity: <span id="sh-opacity-val" style="color:#0183FF;font-weight:700;">' + Math.round((s.opacity != null ? s.opacity : 1) * 100) + '%</span></div>' +
+    '<input type="range" id="sh-opacity" min="0" max="100" step="1" value="' + Math.round((s.opacity != null ? s.opacity : 1) * 100) + '" style="width:100%;"></div>';
+  // Corner radius (rect only)
+  if (s.shapeType === 'rect') {
+    html += '<div class="align-section"><div class="align-label">Corner radius: <span id="sh-radius-val" style="color:#0183FF;font-weight:700;">' + (s.cornerRadius || 0) + 'px</span></div>' +
+      '<input type="range" id="sh-radius" min="0" max="100" step="1" value="' + (s.cornerRadius || 0) + '" style="width:100%;"></div>';
+  }
+  // Time + duration
+  html += '<div class="form-row dual">' +
+    '<div><label>Start</label><div class="field-with-unit"><input type="number" step="0.1" min="0" id="sh-start" value="' + (s.startMs / 1000).toFixed(2) + '"><span class="unit">s</span></div></div>' +
+    '<div><label>Duration</label><div class="field-with-unit"><input type="number" step="0.1" min="0.1" id="sh-duration" value="' + (s.durationMs / 1000).toFixed(2) + '"><span class="unit">s</span></div></div>' +
+    '</div>';
+  // Position + size
+  html += '<div class="align-section"><div class="align-label">Position & Size</div>' +
+    '<div class="form-row dual" style="margin-bottom:6px;">' +
+    '<div><label>X</label><div class="field-with-unit"><input type="number" id="sh-x" value="' + Math.round(s.x) + '"><span class="unit">px</span></div></div>' +
+    '<div><label>Y</label><div class="field-with-unit"><input type="number" id="sh-y" value="' + Math.round(s.y) + '"><span class="unit">px</span></div></div>' +
+    '</div>' +
+    '<div class="form-row dual" style="margin-bottom:0;">' +
+    '<div><label>Width</label><div class="field-with-unit"><input type="number" id="sh-w" value="' + Math.round(s.width) + '"><span class="unit">px</span></div></div>' +
+    '<div><label>Height</label><div class="field-with-unit"><input type="number" id="sh-h" value="' + Math.round(s.height) + '"><span class="unit">px</span></div></div>' +
+    '</div></div>';
+  html += '<div class="form-actions"><button class="btn danger" id="sh-delete">Delete</button></div></div>';
+  panel.innerHTML = html;
+  wireShapePanel(s);
+}
+
+function wireShapePanel(s) {
+  function setFill(c) { pushHistory(); s.fill = c; rebuildCanvas(); renderEditPanel(); }
+  function setStroke(c) { pushHistory(); s.stroke = c; rebuildCanvas(); renderEditPanel(); }
+  // Shape type toggle
+  document.querySelectorAll('[data-shape-type]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      pushHistory();
+      s.shapeType = btn.dataset.shapeType;
+      rebuildAll();
+      renderEditPanel();
+    });
+  });
+  // Fill enabled
+  $('sh-fill-enabled').addEventListener('change', (e) => { pushHistory(); s.fillEnabled = e.target.checked; rebuildCanvas(); });
+  // Fill preset swatches
+  document.querySelectorAll('[data-sh-fill-color]').forEach(btn => {
+    btn.addEventListener('click', () => setFill(btn.dataset.shFillColor));
+  });
+  // Fill picker
+  $('sh-fill-picker').addEventListener('input', (e) => { s.fill = e.target.value; rebuildCanvas(); });
+  $('sh-fill-picker').addEventListener('change', (e) => { pushHistory(); s.fill = e.target.value; renderEditPanel(); });
+  // Fill hex
+  $('sh-fill-hex').addEventListener('change', (e) => {
+    const v = e.target.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) setFill(v);
+    else { e.target.value = s.fill || '#0183FF'; showToast('Use hex like #0183FF', 'warning'); }
+  });
+  // Stroke enabled
+  $('sh-stroke-enabled').addEventListener('change', (e) => { pushHistory(); s.strokeEnabled = e.target.checked; rebuildCanvas(); });
+  // Stroke preset
+  document.querySelectorAll('[data-sh-stroke-color]').forEach(btn => {
+    btn.addEventListener('click', () => setStroke(btn.dataset.shStrokeColor));
+  });
+  // Stroke picker
+  $('sh-stroke-picker').addEventListener('input', (e) => { s.stroke = e.target.value; rebuildCanvas(); });
+  $('sh-stroke-picker').addEventListener('change', (e) => { pushHistory(); s.stroke = e.target.value; renderEditPanel(); });
+  $('sh-stroke-hex').addEventListener('change', (e) => {
+    const v = e.target.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) setStroke(v);
+    else { e.target.value = s.stroke || '#FFFFFF'; showToast('Use hex like #FFFFFF', 'warning'); }
+  });
+  // Stroke width
+  const swEl = $('sh-stroke-width'), swLbl = $('sh-stroke-width-val');
+  swEl.addEventListener('input', (e) => { swLbl.textContent = e.target.value + 'px'; s.strokeWidth = parseInt(e.target.value, 10); rebuildCanvas(); });
+  swEl.addEventListener('change', () => pushHistory());
+  // Opacity
+  const opEl = $('sh-opacity'), opLbl = $('sh-opacity-val');
+  opEl.addEventListener('input', (e) => { opLbl.textContent = e.target.value + '%'; s.opacity = parseInt(e.target.value, 10) / 100; rebuildCanvas(); });
+  opEl.addEventListener('change', () => pushHistory());
+  // Corner radius (rect only)
+  if ($('sh-radius')) {
+    const rEl = $('sh-radius'), rLbl = $('sh-radius-val');
+    rEl.addEventListener('input', (e) => { rLbl.textContent = e.target.value + 'px'; s.cornerRadius = parseInt(e.target.value, 10); rebuildCanvas(); });
+    rEl.addEventListener('change', () => pushHistory());
+  }
+  // Time + duration
+  $('sh-start').addEventListener('change', (e) => { pushHistory(); s.startMs = Math.max(0, Math.round(parseFloat(e.target.value) * 1000)); rebuildAll(); });
+  $('sh-duration').addEventListener('change', (e) => { pushHistory(); s.durationMs = Math.max(100, Math.round(parseFloat(e.target.value) * 1000)); rebuildAll(); });
+  // Position + size
+  $('sh-x').addEventListener('change', (e) => { pushHistory(); s.x = parseInt(e.target.value, 10) || 0; rebuildCanvas(); });
+  $('sh-y').addEventListener('change', (e) => { pushHistory(); s.y = parseInt(e.target.value, 10) || 0; rebuildCanvas(); });
+  $('sh-w').addEventListener('change', (e) => { pushHistory(); s.width = Math.max(20, parseInt(e.target.value, 10) || 100); rebuildCanvas(); });
+  $('sh-h').addEventListener('change', (e) => { pushHistory(); s.height = Math.max(20, parseInt(e.target.value, 10) || 100); rebuildCanvas(); });
+  // Delete
+  $('sh-delete').addEventListener('click', deleteSelected);
 }
 
 function renderTextOverlayPanel(panel) {
@@ -7099,6 +7425,7 @@ async function approve() {
     effects: state.effects,
     textOverlays: state.textOverlays,
     customerCards: state.customerCards,
+    shapes: state.shapes,
     frameUrl: PAYLOAD.frameUrl,
     rendererVersion: RENDERER_VERSION
   };
@@ -7632,12 +7959,17 @@ function copySelectedItem() {
     item = (state.audioPlacements || []).find(a => a.id === view.selectedId);
     if (item) kind = 'audioPlacement';
   }
+  if (!item) {
+    item = (state.shapes || []).find(s => s.id === view.selectedId);
+    if (item) kind = 'shape';
+  }
   if (!item) return;
   _clipboard = { kind, data: JSON.parse(JSON.stringify(item)) };
   const label = kind === 'segment' ? (item.kind === 'recording' ? 'Video segment' : (item.title || 'Slide'))
     : (kind === 'callout' ? 'Callout'
     : (kind === 'textOverlay' ? 'Text'
-    : (kind === 'audioPlacement' ? 'Audio clip' : 'Customer Card')));
+    : (kind === 'audioPlacement' ? 'Audio clip'
+    : (kind === 'shape' ? 'Shape' : 'Customer Card'))));
   showToast('Copied: ' + label, 'success');
 }
 
@@ -7658,6 +7990,7 @@ function cutSelectedItem() {
   if (!item) { item = state.callouts.find(c => c.id === view.selectedId); if (item) { kind = 'callout'; arr = state.callouts; } }
   if (!item) { item = (state.textOverlays || []).find(t => t.id === view.selectedId); if (item) { kind = 'textOverlay'; arr = state.textOverlays; } }
   if (!item) { item = (state.customerCards || []).find(c => c.id === view.selectedId); if (item) { kind = 'customerCard'; arr = state.customerCards; } }
+  if (!item) { item = (state.shapes || []).find(s => s.id === view.selectedId); if (item) { kind = 'shape'; arr = state.shapes; } }
   if (!item) { item = (state.audioPlacements || []).find(a => a.id === view.selectedId); if (item) { kind = 'audioPlacement'; arr = state.audioPlacements; } }
   if (!item || !arr) return;
   pushHistory();
@@ -7670,7 +8003,8 @@ function cutSelectedItem() {
   const label = kind === 'segment' ? (item.kind === 'recording' ? 'Video segment' : (item.title || 'Slide'))
     : (kind === 'callout' ? 'Callout'
     : (kind === 'textOverlay' ? 'Text'
-    : (kind === 'audioPlacement' ? 'Audio clip' : 'Customer Card')));
+    : (kind === 'audioPlacement' ? 'Audio clip'
+    : (kind === 'shape' ? 'Shape' : 'Customer Card'))));
   rebuildAll();
   renderEditPanel();
   showToast('Cut: ' + label + ' — paste with Cmd+V', 'success');
@@ -7687,7 +8021,8 @@ function pasteClipboardAtPlayhead() {
   const idPrefix = _clipboard.kind === 'segment' ? 'seg'
     : (_clipboard.kind === 'callout' ? 'co'
     : (_clipboard.kind === 'textOverlay' ? 'to'
-    : (_clipboard.kind === 'audioPlacement' ? 'ap' : 'cc')));
+    : (_clipboard.kind === 'audioPlacement' ? 'ap'
+    : (_clipboard.kind === 'shape' ? 'sh' : 'cc'))));
   fresh.id = uid(idPrefix);
   fresh.startMs = dropMs;
   ['rows', 'columns', 'bullets', 'statPills', 'customerStats'].forEach(k => {
@@ -7708,6 +8043,9 @@ function pasteClipboardAtPlayhead() {
   } else if (_clipboard.kind === 'audioPlacement') {
     if (!state.audioPlacements) state.audioPlacements = [];
     state.audioPlacements.push(fresh);
+  } else if (_clipboard.kind === 'shape') {
+    if (!state.shapes) state.shapes = [];
+    state.shapes.push(fresh);
   }
   view.selectedId = fresh.id;
   // v3.28b.20: also set selectedKind so the edit panel rerenders correctly
@@ -7738,7 +8076,8 @@ function buildProjectJson() {
       callouts: state.callouts,
       effects: state.effects,
       textOverlays: state.textOverlays,
-      customerCards: state.customerCards
+      customerCards: state.customerCards,
+      shapes: state.shapes
     }
   };
 }
@@ -7800,6 +8139,7 @@ function openProjectFromFile() {
         state.effects = p.effects || [];
         state.textOverlays = p.textOverlays || [];
         state.customerCards = p.customerCards || [];
+        state.shapes = p.shapes || [];
         view.selectedId = null; view.selectedKind = null;
         rebuildAll();
         showToast('Project loaded (saved ' + (proj.savedAt || 'earlier') + ')', 'success');
@@ -8071,6 +8411,7 @@ async function loadCloudProjectIfRequested() {
       state.effects = p.effects || [];
       state.textOverlays = p.textOverlays || [];
       state.customerCards = p.customerCards || [];
+      state.shapes = p.shapes || [];
       _history.past = [];
       _history.future = [];
     }
@@ -8234,6 +8575,7 @@ function restoreAutoSaveState(proj) {
     state.effects = p.effects || [];
     state.textOverlays = p.textOverlays || [];
     state.customerCards = p.customerCards || [];
+    state.shapes = p.shapes || [];
     view.selectedId = null; view.selectedKind = null;
     rebuildAll();
     showToast('Restored session from ' + fmtSavedAgo(proj.savedAt), 'success');
@@ -8636,6 +8978,9 @@ function setupHeader() {
   // v3.28b.44: Snap button — closes gaps between selected clips
   $('btnSnap').addEventListener('click', snapSelected);
   $('addTextOverlayBtn').addEventListener('click', () => addTextOverlay());
+  // v3.28b.53: shape buttons
+  $('addRectBtn').addEventListener('click', () => addShape({ shapeType: 'rect' }));
+  $('addEllipseBtn').addEventListener('click', () => addShape({ shapeType: 'ellipse' }));
   $('addZoomBtn').addEventListener('click', () => startPendingEffect('zoom'));
   $('addSpotlightBtn').addEventListener('click', () => startPendingEffect('spotlight'));
   $('btnUndo').addEventListener('click', undo);

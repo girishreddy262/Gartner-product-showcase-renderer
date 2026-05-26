@@ -6,6 +6,7 @@ import {
 import type {
   ShowcasePayload, Segment, RecordingSegment, SlideSegment,
   ZoomEffect, SpotlightEffect, JourneySegment, ImageSegment,
+  ShapeOverlay,
 } from './types';
 import { tokens, satoshiFontFaceCSS } from './tokens';
 import { SlideRenderer } from './slides/SlideRenderer';
@@ -112,6 +113,78 @@ const ImageSlideComp: React.FC<{ seg: ImageSegment }> = ({ seg }) => {
         }}
       />
     </AbsoluteFill>
+  );
+};
+
+// v3.28b.53: Shape component — renders SVG rect or ellipse with fill/stroke
+const ShapeComp: React.FC<{ shape: ShapeOverlay }> = ({ shape }) => {
+  const frame = useCurrentFrame();
+  // Fade in/out matching callouts (300ms each side)
+  const FADE_FRAMES = 9;
+  const totalFrames = Math.max(1, Math.round((shape.durationMs / 1000) * 30));
+  const opacityAnim = interpolate(
+    frame,
+    [0, FADE_FRAMES, totalFrames - FADE_FRAMES, totalFrames],
+    [0, 1, 1, 0],
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) }
+  );
+  const userOpacity = shape.opacity != null ? shape.opacity : 1;
+  const finalOpacity = opacityAnim * userOpacity;
+  const fillVal = shape.fillEnabled !== false && shape.fill ? shape.fill : 'none';
+  const strokeVal = shape.strokeEnabled && shape.stroke ? shape.stroke : 'none';
+  const strokeW = shape.strokeEnabled ? (shape.strokeWidth || 4) : 0;
+  const inset = strokeW / 2;
+  const w = shape.width - strokeW;
+  const h = shape.height - strokeW;
+  let inner: React.ReactNode;
+  if (shape.shapeType === 'ellipse') {
+    inner = (
+      <ellipse
+        cx={shape.width / 2}
+        cy={shape.height / 2}
+        rx={Math.max(0, w / 2)}
+        ry={Math.max(0, h / 2)}
+        fill={fillVal}
+        stroke={strokeVal}
+        strokeWidth={strokeW}
+      />
+    );
+  } else {
+    const r = Math.min(shape.cornerRadius || 0, w / 2, h / 2);
+    inner = (
+      <rect
+        x={inset}
+        y={inset}
+        width={Math.max(0, w)}
+        height={Math.max(0, h)}
+        rx={r}
+        ry={r}
+        fill={fillVal}
+        stroke={strokeVal}
+        strokeWidth={strokeW}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: shape.x,
+        top: shape.y,
+        width: shape.width,
+        height: shape.height,
+        opacity: finalOpacity,
+      }}
+    >
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${shape.width} ${shape.height}`}
+        style={{ display: 'block', overflow: 'visible' }}
+      >
+        {inner}
+      </svg>
+    </div>
   );
 };
 
@@ -235,6 +308,24 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
             >
               <AbsoluteFill>
                 <CustomerCardComp card={c} startFrame={startFrame} durationFrames={durFrames} />
+              </AbsoluteFill>
+            </Sequence>
+          );
+        })}
+
+        {/* v3.28b.53: Shapes (rect/ellipse) with fill+stroke */}
+        {(payload.shapes || []).map(s => {
+          const startFrame = msToFrames(s.startMs);
+          const durFrames = msToFrames(s.durationMs);
+          return (
+            <Sequence
+              key={s.id}
+              from={startFrame}
+              durationInFrames={durFrames}
+              name={`Shape: ${s.shapeType}`}
+            >
+              <AbsoluteFill>
+                <ShapeComp shape={s} />
               </AbsoluteFill>
             </Sequence>
           );
