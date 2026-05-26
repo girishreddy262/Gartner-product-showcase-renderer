@@ -55,12 +55,11 @@
     letter-spacing: -0.01em;
   }
   .topbar-logo {
-    width: 28px; height: 28px;
+    width: 32px; height: 32px;
     border-radius: 6px;
-    background: var(--accent);
-    color: white;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 16px; line-height: 1;
+    display: block;
+    object-fit: contain;
+    flex: none;
   }
   .avatar {
     width: 32px; height: 32px; border-radius: 8px;
@@ -313,7 +312,7 @@
 
 <div class="topbar">
   <div class="topbar-brand">
-    <div class="topbar-logo">d</div>
+    <img class="topbar-logo" src="assets/darwinbox-logo.svg" alt="Darwinbox">
     <span>Darwinbox Product Showcase</span>
   </div>
   <button class="btn-primary" id="btnNewProject">
