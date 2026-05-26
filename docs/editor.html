@@ -5388,7 +5388,8 @@ let _activeVideoElement = null;
 function cleanupActiveVideo() {
   if (_activeVideoElement) {
     try {
-      _activeVideoElement.pause();
+      // v3.28b.56: safe-pause to avoid AbortError race during segment switches
+      safePauseMedia(_activeVideoElement);
       // v3.28b.37: tear down WebAudio nodes if attached
       if (_activeVideoElement._waSource) {
         try { _activeVideoElement._waSource.disconnect(); } catch(e) {}
@@ -5716,13 +5717,18 @@ function renderSegmentToCanvas(seg) {
         try { v.currentTime = clamp(sourceT, 0, v.duration || 0); } catch(e) {}
         v.playbackRate = speed;
         if (view.isPlaying) {
-          v.play().catch((err) => {
+          // v3.28b.56: track pending play to prevent pause race causing AbortError
+          v._playPending = true;
+          v.play().then(() => { v._playPending = false; })
+           .catch((err) => {
+            v._playPending = false;
             if (!v._loggedPlayError) {
               console.warn('Video play() rejected on loadeddata:', err.name, '—', err.message);
               if (err.name === 'NotAllowedError' && !v.muted) {
                 console.warn('  Falling back to muted playback. Click Play after first interaction to enable audio.');
                 v.muted = true;
-                v.play().catch(() => {});
+                v._playPending = true;
+                v.play().then(() => { v._playPending = false; }).catch(() => { v._playPending = false; });
               }
               v._loggedPlayError = true;
             }
@@ -6009,12 +6015,33 @@ function play() {
 function pause() {
   view.isPlaying = false;
   if (_playbackHandle) { cancelAnimationFrame(_playbackHandle); _playbackHandle = null; }
-  if (_activeVideoElement) { try { _activeVideoElement.pause(); } catch(e) {} }
-  // Pause all audio elements
+  // v3.28b.56: safe-pause helpers — wait for pending play promises before pausing
+  // to prevent AbortError race that causes media to lock up.
+  if (_activeVideoElement) safePauseMedia(_activeVideoElement);
   for (const id in _audioElements) {
-    try { _audioElements[id].pause(); } catch(e) {}
+    safePauseMedia(_audioElements[id]);
   }
   $('status-text').textContent = 'Paused';
+}
+
+// v3.28b.56: wait for any pending play() promise to resolve before pause()
+// so we don't trigger AbortError. If no play is pending, pause immediately.
+function safePauseMedia(el) {
+  if (!el) return;
+  if (el._playPending) {
+    // Wait for the play promise to resolve, THEN pause. Don't race it.
+    const checkAndPause = () => {
+      if (!el._playPending) {
+        try { el.pause(); } catch(e) {}
+      } else {
+        // Still pending, check again next microtask
+        setTimeout(checkAndPause, 10);
+      }
+    };
+    checkAndPause();
+  } else {
+    try { el.pause(); } catch(e) {}
+  }
 }
 let _lastActiveSegmentId = null;
 function tick() {
@@ -6034,17 +6061,19 @@ function tick() {
     rebuildCanvas();
   } else if (active) {
     // Same segment: just sync video time (if any) and check overlays
-    if (_activeVideoElement && _activeVideoElement.paused && view.isPlaying) {
-      // v3.28b.24: surface play errors once. If the video has audio and the
-      // browser refuses to autoplay-unmuted, this is the first place we'll see it.
-      _activeVideoElement.play().catch((err) => {
+    if (_activeVideoElement && _activeVideoElement.paused && view.isPlaying && !_activeVideoElement._playPending) {
+      // v3.28b.56: track pending play to prevent pause race
+      _activeVideoElement._playPending = true;
+      _activeVideoElement.play().then(() => { _activeVideoElement._playPending = false; })
+       .catch((err) => {
+        _activeVideoElement._playPending = false;
         if (!_activeVideoElement._loggedPlayError) {
           console.warn('Video play() rejected:', err.name, '—', err.message);
           if (err.name === 'NotAllowedError' && !_activeVideoElement.muted) {
             console.warn('  Likely cause: browser blocks unmuted autoplay. Click Play again to retry.');
-            // Try to fall back to muted playback so the visual at least plays
             _activeVideoElement.muted = true;
-            _activeVideoElement.play().catch(() => {});
+            _activeVideoElement._playPending = true;
+            _activeVideoElement.play().then(() => { _activeVideoElement._playPending = false; }).catch(() => { _activeVideoElement._playPending = false; });
           }
           _activeVideoElement._loggedPlayError = true;
         }
@@ -9311,8 +9340,9 @@ function syncAudioPlayback() {
         }
       }
     } else {
-      // v3.28b.56: only pause if NOT in the middle of a pending play (prevents AbortError race)
+      // v3.28b.56: safe-pause to avoid AbortError race
       if (!el.paused && !el._playPending) el.pause();
+      else if (el._playPending) safePauseMedia(el);
     }
   }
 }
