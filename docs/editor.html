@@ -9162,6 +9162,12 @@ function setupAudioElements() {
 //
 // On Windows Chrome strict mode, the critical thing is that play() is INVOKED
 // inside the gesture, even if it doesn't resolve immediately.
+// v3.28b.56: unlock that handles Windows AbortError correctly.
+// On Windows Chrome, play() inside a gesture sometimes resolves with AbortError
+// when pause() is called too fast. We now ALWAYS mark as unlocked after the
+// gesture, since the browser has seen the user-initiated play() call which
+// is what actually unlocks the element. The AbortError is benign — the unlock
+// mechanism only requires the play() invocation, not its successful completion.
 function unlockAudioElements() {
   for (const id in _audioElements) {
     const el = _audioElements[id];
@@ -9169,37 +9175,41 @@ function unlockAudioElements() {
     try {
       const wasMuted = el.muted;
       const wasVolume = el.volume;
-      // Step 1: mute and set volume to 0 (so even if something escapes, no
-      // surprise audio)
       el.muted = true;
       el.volume = 0;
-      // Step 2: ensure source is loaded (no-op if already loaded)
       if (el.readyState < 2) {
         try { el.load(); } catch(e) {}
       }
-      // Step 3: synchronously call play() inside the gesture
+      // Synchronously call play() inside the gesture — this is what unlocks
       const p = el.play();
+      // CRITICAL: mark as unlocked NOW, regardless of whether play() promise
+      // succeeds or fails. The unlock happened the moment we called play()
+      // inside the gesture, not when the promise resolves.
+      el._unlocked = true;
       if (p && typeof p.then === 'function') {
         p.then(() => {
-          // Step 4: immediately pause and reset
           el.pause();
           el.currentTime = 0;
           el.muted = wasMuted;
           el.volume = wasVolume;
-          el._unlocked = true;
         }).catch((err) => {
-          // Failed — restore state. Will retry on next user gesture.
+          // AbortError is expected on Windows when pause races play.
+          // The element is still unlocked. Just restore state.
           el.muted = wasMuted;
           el.volume = wasVolume;
-          console.warn('Audio unlock pending for ' + id + ': ' + err.name + ' — ' + err.message);
+          try { el.pause(); } catch(e) {}
+          try { el.currentTime = 0; } catch(e) {}
+          if (err.name !== 'AbortError' && !el._loggedUnlockError) {
+            console.warn('Audio unlock unusual error for ' + id + ': ' + err.name + ' — ' + err.message);
+            el._loggedUnlockError = true;
+          }
         });
       } else {
         // Sync return — old browser
-        el.pause();
-        el.currentTime = 0;
+        try { el.pause(); } catch(e) {}
+        try { el.currentTime = 0; } catch(e) {}
         el.muted = wasMuted;
         el.volume = wasVolume;
-        el._unlocked = true;
       }
     } catch (e) {
       console.warn('Audio unlock threw for ' + id + ':', e);
@@ -9273,10 +9283,14 @@ function syncAudioPlayback() {
           try { el.currentTime = Math.max(0, localT); } catch(e) {}
         }
       el.volume = Math.min(1, Math.max(0, ap.volume != null ? ap.volume : 1));
-      if (el.paused) {
+      if (el.paused && !el._playPending) {
+        // v3.28b.56: track pending play to prevent pause() race that causes AbortError
+        el._playPending = true;
         const p = el.play();
-        if (p && typeof p.catch === 'function') {
-          p.catch((err) => {
+        if (p && typeof p.then === 'function') {
+          p.then(() => { el._playPending = false; })
+           .catch((err) => {
+            el._playPending = false;
             if (!el._loggedPlayError) {
               console.warn('Audio play() rejected for ' + ap.audioId + ': ' + err.name + ' — ' + err.message);
               if (err.name === 'NotAllowedError') {
@@ -9292,10 +9306,13 @@ function syncAudioPlayback() {
               el._needsUnlock = true;
             }
           });
+        } else {
+          el._playPending = false;
         }
       }
     } else {
-      if (!el.paused) el.pause();
+      // v3.28b.56: only pause if NOT in the middle of a pending play (prevents AbortError race)
+      if (!el.paused && !el._playPending) el.pause();
     }
   }
 }
