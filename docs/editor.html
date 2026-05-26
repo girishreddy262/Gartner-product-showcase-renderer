@@ -9209,39 +9209,47 @@ function unlockAudioElements() {
       if (el.readyState < 2) {
         try { el.load(); } catch(e) {}
       }
-      // Synchronously call play() inside the gesture — this is what unlocks
+      // v3.28b.57: synchronously call play() inside the gesture - this is what unlocks.
+      // Only mark _unlocked = true on actual success. If NotAllowedError fires, the
+      // element is still locked and we should NOT skip re-unlock next time.
       const p = el.play();
-      // CRITICAL: mark as unlocked NOW, regardless of whether play() promise
-      // succeeds or fails. The unlock happened the moment we called play()
-      // inside the gesture, not when the promise resolves.
-      el._unlocked = true;
       if (p && typeof p.then === 'function') {
         p.then(() => {
-          el.pause();
-          el.currentTime = 0;
+          // Real success — fully unlocked now
+          el._unlocked = true;
+          try { el.pause(); } catch(e) {}
+          try { el.currentTime = 0; } catch(e) {}
           el.muted = wasMuted;
           el.volume = wasVolume;
         }).catch((err) => {
-          // AbortError is expected on Windows when pause races play.
-          // The element is still unlocked. Just restore state.
+          // Restore state regardless of error type
           el.muted = wasMuted;
           el.volume = wasVolume;
           try { el.pause(); } catch(e) {}
           try { el.currentTime = 0; } catch(e) {}
-          if (err.name !== 'AbortError' && !el._loggedUnlockError) {
-            console.warn('Audio unlock unusual error for ' + id + ': ' + err.name + ' — ' + err.message);
+          if (err.name === 'AbortError') {
+            // Race condition: a pause() came in during play() — element IS unlocked
+            el._unlocked = true;
+          } else if (err.name === 'NotAllowedError') {
+            // Browser blocked autoplay — element is NOT unlocked yet
+            // Silent — this is expected when called outside a user gesture
+            el._unlocked = false;
+          } else if (!el._loggedUnlockError) {
+            // Actual unusual error worth logging
+            console.warn('Audio unlock error for ' + id + ': ' + err.name + ' — ' + err.message);
             el._loggedUnlockError = true;
           }
         });
       } else {
-        // Sync return — old browser
+        // Sync return (very old browser path)
         try { el.pause(); } catch(e) {}
         try { el.currentTime = 0; } catch(e) {}
         el.muted = wasMuted;
         el.volume = wasVolume;
+        el._unlocked = true;
       }
     } catch (e) {
-      console.warn('Audio unlock threw for ' + id + ':', e);
+      // Silently ignore — usually NotAllowedError thrown sync, will retry on next gesture
     }
   }
   _audioUnlocked = true;
@@ -9259,9 +9267,8 @@ function syncAudioPlayback() {
       if (audioAsset) {
         setupAudioElements();
         el = _audioElements[ap.audioId];
-        if (el && _audioUnlocked) {
-          try { unlockAudioElements(); } catch(e) {}
-        }
+        // v3.28b.57: don't call unlockAudioElements from RAF loop — no user gesture context.
+        // Element will be unlocked on next user click via the earlyUnlock listener.
       }
       if (!el) continue;
     }
