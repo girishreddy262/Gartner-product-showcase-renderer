@@ -3104,7 +3104,7 @@ async function addVideoSegment(videoId, startMs) {
       seg.durationMs = realDur;
       rebuildAll();
     }
-  });
+  }).catch(e => { /* loadOneVideoDuration always resolves; this is safety net */ });
 }
 
 // Slide picker — used by + Add Slide button
@@ -9348,6 +9348,19 @@ function syncAudioPlayback() {
 }
 
 async function init() {
+  // v3.28b.56: global safety nets — log unhandled errors instead of letting them die silently
+  window.addEventListener('error', (e) => {
+    console.error('Uncaught error:', e.error || e.message, e.filename, e.lineno);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    // Filter benign AbortErrors from media playback that shouldn't bubble
+    const msg = (e.reason && e.reason.message) || String(e.reason);
+    if (msg.indexOf('AbortError') >= 0 || msg.indexOf('interrupted by') >= 0) {
+      e.preventDefault();
+      return;
+    }
+    console.error('Unhandled promise rejection:', e.reason);
+  });
   // v3.28b.12: if URL has ?project=ID, fetch it from KV before rendering anything
   await loadCloudProjectIfRequested();
   renderLeftRail();
@@ -9411,7 +9424,7 @@ async function init() {
     renderLeftRail();
     setupTrackDropTargets();
     rebuildAll();
-  });
+  }).catch(e => { console.warn('Duration preload error (non-fatal):', e); });
   window.addEventListener('resize', () => {
     applyCanvasTransform();
     rebuildTimeline();
