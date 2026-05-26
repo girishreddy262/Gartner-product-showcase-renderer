@@ -6065,22 +6065,23 @@ function tick() {
   } else if (active) {
     // Same segment: just sync video time (if any) and check overlays
     if (_activeVideoElement && _activeVideoElement.paused && view.isPlaying && !_activeVideoElement._playPending) {
-      // v3.28b.56: track pending play to prevent pause race
-      _activeVideoElement._playPending = true;
-      _activeVideoElement.play().then(() => { _activeVideoElement._playPending = false; })
+      // v3.28b.58: capture element locally so .then()/.catch() don't reference null after segment change
+      const ve = _activeVideoElement;
+      ve._playPending = true;
+      ve.play().then(() => { if (ve) ve._playPending = false; })
        .catch((err) => {
-        _activeVideoElement._playPending = false;
-        // v3.28b.57: AbortError is benign - silently ignore
+        if (!ve) return;
+        ve._playPending = false;
         if (err.name === 'AbortError') return;
-        if (!_activeVideoElement._loggedPlayError) {
+        if (!ve._loggedPlayError) {
           console.warn('Video play() rejected:', err.name, '—', err.message);
-          if (err.name === 'NotAllowedError' && !_activeVideoElement.muted) {
+          if (err.name === 'NotAllowedError' && !ve.muted) {
             console.warn('  Likely cause: browser blocks unmuted autoplay. Click Play again to retry.');
-            _activeVideoElement.muted = true;
-            _activeVideoElement._playPending = true;
-            _activeVideoElement.play().then(() => { _activeVideoElement._playPending = false; }).catch(() => { _activeVideoElement._playPending = false; });
+            ve.muted = true;
+            ve._playPending = true;
+            ve.play().then(() => { if (ve) ve._playPending = false; }).catch(() => { if (ve) ve._playPending = false; });
           }
-          _activeVideoElement._loggedPlayError = true;
+          ve._loggedPlayError = true;
         }
       });
     }
@@ -9144,6 +9145,10 @@ function setupAudioElements() {
     el.src = a.url;
     el.preload = 'auto';
     el.style.display = 'none';
+    // v3.28b.59: explicitly unmute and set volume = 1. Some browsers default
+    // to muted in some contexts.
+    el.muted = false;
+    el.volume = 1;
     el.addEventListener('loadedmetadata', () => {
       if (!audioDurations[a.id]) audioDurations[a.id] = Math.round(el.duration * 1000);
       rebuildLeftRailDurations();
@@ -9207,54 +9212,31 @@ function unlockAudioElements() {
     const el = _audioElements[id];
     if (el._unlocked) continue;
     try {
-      const wasMuted = el.muted;
-      const wasVolume = el.volume;
-      el.muted = true;
-      el.volume = 0;
-      if (el.readyState < 2) {
-        try { el.load(); } catch(e) {}
-      }
-      // v3.28b.57: synchronously call play() inside the gesture - this is what unlocks.
-      // Only mark _unlocked = true on actual success. If NotAllowedError fires, the
-      // element is still locked and we should NOT skip re-unlock next time.
+      // v3.28b.59: critical insight — don't race with syncAudioPlayback.
+      // Just call play() in the gesture (which IS the unlock action), then
+      // immediately pause() in the same synchronous call. If audio should be
+      // playing at this moment, syncAudioPlayback's next tick will start it.
+      // Don't manipulate volume/muted — that fights syncAudioPlayback.
       const p = el.play();
+      // Immediately pause in same tick — the play call already gave us unlock
+      try { el.pause(); } catch(e) {}
+      el._unlocked = true;
       if (p && typeof p.then === 'function') {
-        p.then(() => {
-          // Real success — fully unlocked now
-          el._unlocked = true;
-          try { el.pause(); } catch(e) {}
-          try { el.currentTime = 0; } catch(e) {}
-          el.muted = wasMuted;
-          el.volume = wasVolume;
-        }).catch((err) => {
-          // Restore state regardless of error type
-          el.muted = wasMuted;
-          el.volume = wasVolume;
-          try { el.pause(); } catch(e) {}
-          try { el.currentTime = 0; } catch(e) {}
+        p.catch((err) => {
           if (err.name === 'AbortError') {
-            // Race condition: a pause() came in during play() — element IS unlocked
-            el._unlocked = true;
+            // Expected — we paused before play resolved. Already unlocked.
           } else if (err.name === 'NotAllowedError') {
-            // Browser blocked autoplay — element is NOT unlocked yet
-            // Silent — this is expected when called outside a user gesture
+            // Not actually in a user gesture. Mark as still locked.
             el._unlocked = false;
           } else if (!el._loggedUnlockError) {
-            // Actual unusual error worth logging
             console.warn('Audio unlock error for ' + id + ': ' + err.name + ' — ' + err.message);
             el._loggedUnlockError = true;
           }
         });
-      } else {
-        // Sync return (very old browser path)
-        try { el.pause(); } catch(e) {}
-        try { el.currentTime = 0; } catch(e) {}
-        el.muted = wasMuted;
-        el.volume = wasVolume;
-        el._unlocked = true;
       }
     } catch (e) {
-      // Silently ignore — usually NotAllowedError thrown sync, will retry on next gesture
+      // Sync throw — usually NotAllowedError, will retry on next gesture
+      el._unlocked = false;
     }
   }
   _audioUnlocked = true;
@@ -9323,7 +9305,10 @@ function syncAudioPlayback() {
         if (Math.abs(el.currentTime - localT) > 0.25) {
           try { el.currentTime = Math.max(0, localT); } catch(e) {}
         }
+      // v3.28b.59: force volume AND unmute every frame — defensive against
+      // any code (current or legacy) that may have set muted=true
       el.volume = Math.min(1, Math.max(0, ap.volume != null ? ap.volume : 1));
+      if (el.muted) el.muted = false;
       if (el.paused && !el._playPending) {
         // v3.28b.56: track pending play to prevent pause() race that causes AbortError
         el._playPending = true;
