@@ -5722,6 +5722,9 @@ function renderSegmentToCanvas(seg) {
           v.play().then(() => { v._playPending = false; })
            .catch((err) => {
             v._playPending = false;
+            // v3.28b.57: AbortError is benign - play() was interrupted by pause(),
+            // element is fine. Don't log noise.
+            if (err.name === 'AbortError') return;
             if (!v._loggedPlayError) {
               console.warn('Video play() rejected on loadeddata:', err.name, '—', err.message);
               if (err.name === 'NotAllowedError' && !v.muted) {
@@ -6067,6 +6070,8 @@ function tick() {
       _activeVideoElement.play().then(() => { _activeVideoElement._playPending = false; })
        .catch((err) => {
         _activeVideoElement._playPending = false;
+        // v3.28b.57: AbortError is benign - silently ignore
+        if (err.name === 'AbortError') return;
         if (!_activeVideoElement._loggedPlayError) {
           console.warn('Video play() rejected:', err.name, '—', err.message);
           if (err.name === 'NotAllowedError' && !_activeVideoElement.muted) {
@@ -9327,14 +9332,14 @@ function syncAudioPlayback() {
           p.then(() => { el._playPending = false; })
            .catch((err) => {
             el._playPending = false;
+            // v3.28b.57: AbortError is benign — silently ignore
+            if (err.name === 'AbortError') return;
             if (!el._loggedPlayError) {
               console.warn('Audio play() rejected for ' + ap.audioId + ': ' + err.name + ' — ' + err.message);
               if (err.name === 'NotAllowedError') {
                 console.warn('  Likely cause: autoplay policy. Click anywhere on the page first, then press Play again.');
               } else if (err.name === 'NotSupportedError') {
                 console.warn('  Likely cause: audio source URL invalid or format unsupported. Check:', el.src);
-              } else if (err.name === 'AbortError') {
-                console.warn('  Likely cause: a newer play()/pause() preempted this one. Usually harmless.');
               }
               el._loggedPlayError = true;
             }
