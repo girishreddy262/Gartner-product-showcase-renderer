@@ -9821,18 +9821,32 @@ const AI_COMMANDS = {
     }
   },
   add_customer_card: {
-    desc: 'Add a customer card. args: {body?, industry?, location?, employees?, startMs?, x?, y?}',
+    desc: 'Add a customer card. args: {logo?, body?, industry?, location?, employees?, startMs?, x?, y?}',
     run(args) {
       addCustomerCard({ startMs: _aiParseTime(args.startMs), x: args.x, y: args.y });
       const el = _aiSelectedEl();
+      let logoNote = '';
       if (el) {
         if (args.body) el.body = String(args.body);
         if (args.industry) el.industry = String(args.industry);
         if (args.location) el.location = String(args.location);
         if (args.employees) el.employees = String(args.employees);
+        // v3.28b.71: match a logo name to the CUSTOMER_LOGOS_LIB (51 logos).
+        // Accept args.logo OR args.customer OR args.company as the lookup key.
+        const logoKey = args.logo || args.customer || args.company;
+        if (logoKey) {
+          const low = String(logoKey).toLowerCase().replace(/\s+/g, '');
+          const lib = (typeof CUSTOMER_LOGOS_LIB !== 'undefined') ? CUSTOMER_LOGOS_LIB : [];
+          const hit = lib.find(l => l.id.toLowerCase() === low)
+                   || lib.find(l => l.name.toLowerCase().replace(/\s+/g, '') === low)
+                   || lib.find(l => l.name.toLowerCase().includes(String(logoKey).toLowerCase()))
+                   || lib.find(l => l.id.toLowerCase().includes(low));
+          if (hit) { el.customerLogoId = hit.id; el.logoUrl = null; logoNote = ` with ${hit.name} logo`; }
+          else logoNote = ` (no logo match for "${logoKey}")`;
+        }
         rebuildAll();
       }
-      return `Added customer card${args.industry ? ' (' + args.industry + ')' : ''}${args.startMs != null ? ' at ' + fmtTime(_aiParseTime(args.startMs)) : ''}`;
+      return `Added customer card${args.industry ? ' (' + args.industry + ')' : ''}${logoNote}${args.startMs != null ? ' at ' + fmtTime(_aiParseTime(args.startMs)) : ''}`;
     }
   },
   add_text_overlay: {
@@ -9959,16 +9973,38 @@ const AI_COMMANDS = {
       if (!seg || seg.kind !== 'slide-journey') throw new Error('Could not create journey slide');
       const names = (args.names || []).map(n => String(n).trim()).filter(Boolean).slice(0, 5);
       if (names.length) {
-        seg.rows = names.map(nm => ({
-          id: uid('row'), dual: false, personaIds: [null], useCustomIcon: false,
-          customIconUrl: null, name: nm, designation: '', description: '',
-          glowState: 'inactive'
-        }));
+        const personas = (ASSETS && ASSETS.personas) ? ASSETS.personas : [];
+        const matched = [];  // names that matched a library persona
+        seg.rows = names.map(nm => {
+          // v3.28b.71: match typed name to a library persona (case-insensitive).
+          // Try exact full-name, then "starts with", then first-name match.
+          const low = nm.toLowerCase();
+          let p = personas.find(x => x.name.toLowerCase() === low)
+               || personas.find(x => x.name.toLowerCase().startsWith(low))
+               || personas.find(x => x.name.toLowerCase().split(/\s+/)[0] === low)
+               || personas.find(x => x.name.toLowerCase().includes(low));
+          if (p) matched.push(p.name);
+          return {
+            id: uid('row'), dual: false,
+            personaIds: [p ? p.id : null],          // ← avatar from library if matched
+            useCustomIcon: false, customIconUrl: null,
+            name: p ? '' : nm,                        // blank name → renderer uses persona's name
+            designation: p ? '' : '',                 // blank → renderer uses persona's designation
+            description: '',
+            glowState: 'inactive'
+          };
+        });
         seg.highlightUpToRow = 0;
+        if (args.title) seg.title = String(args.title);
+        rebuildAll();
+        const note = matched.length
+          ? ` (matched ${matched.length} from library: ${matched.join(', ')})`
+          : ' (no library matches — gray placeholders, names kept as text)';
+        return `Added journey slide with ${names.length} row${names.length === 1 ? '' : 's'}${note}`;
       }
       if (args.title) seg.title = String(args.title);
       rebuildAll();
-      return `Added journey slide with ${names.length} row${names.length === 1 ? '' : 's'}: ${names.join(', ')}`;
+      return `Added journey slide`;
     }
   },
   // v3.28b.70: set a journey row to animate (glow-animate). 1-based row number.
@@ -10198,7 +10234,8 @@ function _aiParseLocalCommand(msg) {
       return A('add_callout', { startMs: timeTok, text: kv.text || freeText, x: kv.x, y: kv.y });
     case 'card': case 'customer':
       return A('add_customer_card', { startMs: timeTok, body: kv.body || freeText,
-        industry: kv.industry, location: kv.location, employees: kv.employees, x: kv.x, y: kv.y });
+        industry: kv.industry, location: kv.location, employees: kv.employees,
+        logo: kv.logo || kv.company, x: kv.x, y: kv.y });
     case 'text':
       return A('add_text_overlay', { startMs: timeTok, text: kv.text || freeText,
         color: kv.color, fontSize: kv.fontSize, x: kv.x, y: kv.y });
@@ -10456,7 +10493,7 @@ const _AI_PALETTE = [
   { key: 'journey',   ic: '🧭', name: 'Journey slide',  ds: 'Add a journey slide with people/flow rows', tmpl: '/journey ', ex: '/journey Asha, Ravi, Meera' },
   { key: 'animate',   ic: '✨', name: 'Animate row',    ds: 'Animate a flow step in the selected journey', tmpl: '/animate ', ex: '/animate 3' },
   { key: 'callout',   ic: '💬', name: 'Callout',        ds: 'Add a callout with text', tmpl: '/callout ', ex: '/callout 0:14 "Boosted retention"' },
-  { key: 'customer',  ic: '🏢', name: 'Customer card',  ds: 'Add a customer story card', tmpl: '/customer ', ex: '/customer industry:Retail location:SG' },
+  { key: 'customer',  ic: '🏢', name: 'Customer card',  ds: 'Add a customer story card (logo from library)', tmpl: '/customer ', ex: '/customer logo:Ather industry:Mobility' },
   { key: 'text',      ic: '🅣', name: 'Text overlay',   ds: 'Add floating text', tmpl: '/text ', ex: '/text 0:05 "Label"' },
   { key: 'shape',     ic: '⬛', name: 'Shape',          ds: 'Add a rectangle or ellipse', tmpl: '/shape ', ex: '/shape rect fill:#0183FF' },
   { key: 'zoom',      ic: '🔍', name: 'Zoom effect',    ds: 'Zoom into a point', tmpl: '/zoom ', ex: '/zoom 0:05 center' },
