@@ -6946,16 +6946,15 @@ async function validateVideo(file) {
     v.onloadedmetadata = () => {
       const w = v.videoWidth;
       const h = v.videoHeight;
-      // v3.28b.11: relaxed bounds. Lambda's renderer handles any size via
-      // object-fit:contain, but we still need sanity limits.
-      const MIN_W = 1280, MIN_H = 720;            // below this, output looks bad
-      const MAX_W = 3840, MAX_H = 2160;           // beyond 4K, Lambda memory tight
+      // v3.28b.65: max-only check. Lambda's renderer handles any size via
+      // object-fit:contain — mobile Figma recordings, vertical clips, small
+      // screen captures all render fine (just shown smaller in the 1920×1080
+      // frame). Only block sizes the renderer truly can't handle: above 4K
+      // (Lambda memory tight) or odd dimensions (H.264 codec limitation).
+      const MAX_W = 3840, MAX_H = 2160;
       let ok = true;
       let reason = null;
-      if (w < MIN_W || h < MIN_H) {
-        ok = false;
-        reason = `Resolution too low (min 1280×720). Recommended: 1920×1080.`;
-      } else if (w > MAX_W || h > MAX_H) {
+      if (w > MAX_W || h > MAX_H) {
         ok = false;
         reason = `Resolution too high (max 3840×2160).`;
       } else if (w % 2 !== 0 || h % 2 !== 0) {
@@ -7011,7 +7010,7 @@ function showVideoFormatModal(check) {
     : 'Video format not supported';
   const explainer = isFaststartOnly
     ? `Your video is <strong style="color:#fff;">${dim}</strong> — dimensions are fine, but the file's metadata is stored at the END of the file instead of the beginning. The Lambda renderer needs "faststart" mp4 files (metadata at the front) so it can stream-decode without downloading the whole file first.`
-    : `Your video is <strong style="color:#fff;">${dim}</strong>${check.error ? ' — ' + check.error : ''}. Recommended: <strong style="color:#fff;">1920×1080</strong> (Full HD), but the renderer accepts anything from 1280×720 up to 3840×2160 with even-numbered dimensions.`;
+    : `Your video is <strong style="color:#fff;">${dim}</strong>${check.error ? ' — ' + check.error : ''}. Recommended: <strong style="color:#fff;">1920×1080</strong> (Full HD), but the renderer accepts anything up to 3840×2160 with even-numbered dimensions.`;
   const html = `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;" id="vidFmtModal">
       <div style="background:#1a2740;border:1px solid #2a4368;border-radius:12px;padding:32px;max-width:640px;color:white;font-family:'Inter',sans-serif;">
@@ -7162,7 +7161,7 @@ async function handleBulkFileUpload(fileList, kind) {
         } else if (check.error) {
           reason = check.error;
         } else {
-          reason = `${dim} — accepted range is 1280×720 to 3840×2160 (even numbers)`;
+          reason = `${dim} — accepted range is up to 3840×2160 (even numbers)`;
         }
         skipped.push({ name: file.name, reason, dim });
         continue;
