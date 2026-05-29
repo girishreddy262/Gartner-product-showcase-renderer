@@ -1295,6 +1295,113 @@
   .upload-toast.error .upload-toast-bar-fill { background:#ef4444; }
   .upload-toast.done .upload-toast-bar-fill { background:#7AD163; }
   .upload-toast-percent { font-size:11px; color:var(--text-dim); font-family:ui-monospace,Menlo,monospace; }
+  /* v3.28b.68: AI Assistant panel */
+  .ai-toggle-btn {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9000;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #0183FF, #003B73);
+    border: none; cursor: pointer; color: #fff;
+    box-shadow: 0 4px 16px rgba(1,131,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .ai-toggle-btn:hover { transform: scale(1.08); box-shadow: 0 6px 22px rgba(1,131,255,0.55); }
+  .ai-toggle-icon { font-size: 22px; line-height: 1; }
+  .ai-panel {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 9001;
+    width: 380px; max-width: 90vw;
+    background: var(--panel, #1a1d24);
+    border-left: 1px solid var(--line, #2a2e38);
+    box-shadow: -8px 0 28px rgba(0,0,0,0.4);
+    display: flex; flex-direction: column;
+    transition: transform 0.22s ease;
+  }
+  .ai-panel.hidden { transform: translateX(110%); }
+  .ai-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--line, #2a2e38);
+    flex-shrink: 0;
+  }
+  .ai-panel-title { font-weight: 600; font-size: 15px; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .ai-panel-title .ai-toggle-icon { font-size: 16px; color: #0183FF; }
+  .ai-close-btn {
+    background: none; border: none; color: #9CA3AF; font-size: 24px;
+    cursor: pointer; line-height: 1; padding: 0 4px;
+  }
+  .ai-close-btn:hover { color: #fff; }
+  .ai-messages {
+    flex: 1; overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .ai-msg { display: flex; }
+  .ai-msg-user { justify-content: flex-end; }
+  .ai-msg-assistant { justify-content: flex-start; }
+  .ai-msg-body {
+    max-width: 85%; padding: 9px 13px; border-radius: 12px;
+    font-size: 13px; line-height: 1.45; word-wrap: break-word;
+  }
+  .ai-msg-user .ai-msg-body { background: #0183FF; color: #fff; border-bottom-right-radius: 3px; }
+  .ai-msg-assistant .ai-msg-body { background: rgba(255,255,255,0.08); color: #E5E7EB; border-bottom-left-radius: 3px; }
+  .ai-msg-system .ai-msg-body { background: rgba(34,197,94,0.12); color: #86EFAC; font-size: 12px; border-radius: 8px; }
+  .ai-msg-error .ai-msg-body { background: rgba(255,64,64,0.12); color: #FCA5A5; font-size: 12px; border-radius: 8px; }
+  .ai-actions-summary {
+    margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.1);
+    font-size: 11px; opacity: 0.75;
+  }
+  .ai-actions-summary li { margin: 2px 0; }
+  .ai-thinking { display: inline-flex; gap: 4px; align-items: center; }
+  .ai-thinking span {
+    width: 6px; height: 6px; border-radius: 50%; background: #9CA3AF;
+    animation: aiBlink 1.2s infinite both;
+  }
+  .ai-thinking span:nth-child(2) { animation-delay: 0.2s; }
+  .ai-thinking span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes aiBlink { 0%,80%,100% { opacity: 0.3; } 40% { opacity: 1; } }
+  .ai-input-row {
+    display: flex; gap: 8px; padding: 12px 14px;
+    border-top: 1px solid var(--line, #2a2e38); flex-shrink: 0;
+    position: relative;
+  }
+  /* v3.28b.70: slash-command palette (like Claude's / menu) */
+  #aiCmdPalette {
+    position: absolute; bottom: calc(100% + 6px); left: 14px; right: 14px;
+    background: #131A26; border: 1px solid #2A3850; border-radius: 12px;
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.5); max-height: 320px; overflow-y: auto;
+    z-index: 50; display: none; padding: 6px;
+  }
+  #aiCmdPalette.open { display: block; }
+  .ai-cmd-item {
+    display: flex; align-items: flex-start; gap: 10px; padding: 9px 11px;
+    border-radius: 8px; cursor: pointer;
+  }
+  .ai-cmd-item.active, .ai-cmd-item:hover { background: #1E2A3E; }
+  .ai-cmd-item .ic {
+    flex-shrink: 0; width: 26px; height: 26px; border-radius: 7px;
+    background: #0183FF22; color: #4DA3FF; display: flex; align-items: center;
+    justify-content: center; font-size: 14px; margin-top: 1px;
+  }
+  .ai-cmd-item .meta { flex: 1; min-width: 0; }
+  .ai-cmd-item .nm { font-size: 13px; font-weight: 600; color: #fff; }
+  .ai-cmd-item .nm .cmd-key { color: #4DA3FF; }
+  .ai-cmd-item .ds { font-size: 11px; color: #7A8AA0; margin-top: 1px; line-height: 1.35; }
+  .ai-cmd-item .ex { font-size: 10.5px; color: #5A6A80; margin-top: 2px; font-family: monospace; }
+  #aiCmdPaletteHint {
+    font-size: 10.5px; color: #5A6A80; padding: 6px 11px 4px; border-top: 1px solid #1E2A3E; margin-top: 4px;
+  }
+  .ai-input {
+    flex: 1; resize: none; background: rgba(255,255,255,0.06);
+    border: 1px solid var(--line, #2a2e38); border-radius: 10px;
+    color: #fff; padding: 9px 12px; font-size: 13px; font-family: inherit;
+    max-height: 120px; line-height: 1.4;
+  }
+  .ai-input:focus { outline: none; border-color: #0183FF; box-shadow: 0 0 0 3px rgba(1,131,255,0.15); }
+  .ai-send-btn {
+    flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px;
+    background: #0183FF; border: none; color: #fff; font-size: 18px;
+    cursor: pointer; align-self: flex-end;
+  }
+  .ai-send-btn:hover { background: #0166cc; }
+  .ai-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -1544,6 +1651,39 @@
 
 <div class="audio-meta-loader" id="audioMetaLoader"></div>
 <div class="toast" id="toast"></div>
+
+<!-- v3.28b.68: AI Assistant — non-destructive chat panel. Drives the SAME
+     state-mutation functions the UI buttons call. No special powers. -->
+<button id="aiToggleBtn" class="ai-toggle-btn" title="AI Assistant (⌘J)" aria-label="Open AI Assistant">
+  <span class="ai-toggle-icon">✦</span>
+</button>
+
+<div id="aiPanel" class="ai-panel hidden">
+  <div class="ai-panel-header">
+    <div class="ai-panel-title"><span class="ai-toggle-icon">✦</span> AI Assistant</div>
+    <button id="aiCloseBtn" class="ai-close-btn" aria-label="Close">×</button>
+  </div>
+  <div id="aiMessages" class="ai-messages">
+    <div class="ai-msg ai-msg-assistant">
+      <div class="ai-msg-body">
+        Press <code>/</code> to see what I can add, or just type plainly. Examples:
+        <ul style="margin:8px 0 0 0;padding-left:18px;font-size:12px;opacity:0.85;">
+          <li><code>/journey Asha, Ravi, Meera</code></li>
+          <li><code>/animate 3</code> &nbsp;(animate flow row 3)</li>
+          <li>add callout "Boosted retention" at 14</li>
+          <li>add a customer card for Retail in Singapore</li>
+        </ul>
+        <div style="margin-top:8px;font-size:11px;opacity:0.6;">Press <code>/</code> for the full menu. Everything is undoable with ⌘Z.</div>
+      </div>
+    </div>
+  </div>
+  <div class="ai-input-row">
+    <div id="aiCmdPalette"></div>
+    <textarea id="aiInput" class="ai-input" rows="1" placeholder="Type to add things, or press / for commands"></textarea>
+    <button id="aiSendBtn" class="ai-send-btn" aria-label="Send">↑</button>
+  </div>
+</div>
+
 
 <script>
 'use strict';
@@ -9622,6 +9762,815 @@ async function init() {
 }
 
 window.addEventListener('DOMContentLoaded', init);
+
+// ════════════════════════════════════════════════════════════════════════
+// v3.28b.68: AI ASSISTANT
+// A non-destructive chat that drives the SAME state-mutation functions the UI
+// buttons call. The AI emits a structured action list; we validate each action
+// against a WHITELIST and execute by calling existing functions. The AI gets
+// NO direct state access and NO ability to run arbitrary code.
+// ════════════════════════════════════════════════════════════════════════
+
+// ─── Command registry: maps action names → existing functions ───
+// Each command:
+//   - validates/normalizes args
+//   - calls the SAME function a UI button calls
+//   - optionally patches the just-created element's properties
+//   - returns a human-readable summary line
+//
+// Helper: after an add*() call, the new element is auto-selected
+// (view.selectedId). We use that to find & patch it.
+function _aiSelectedEl() {
+  const id = view.selectedId, kind = view.selectedKind;
+  if (!id) return null;
+  const lists = {
+    segment: state.segments, audio: state.audioPlacements, callout: state.callouts,
+    textOverlay: state.textOverlays, customerCard: state.customerCards,
+    shape: state.shapes, effect: state.effects
+  };
+  const list = lists[kind];
+  if (!list) return null;
+  return list.find(x => x.id === id) || null;
+}
+
+// Parse a time string ("0:14", "14s", "14000", 14) → milliseconds
+function _aiParseTime(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v < 600 ? Math.round(v * 1000) : Math.round(v); // small numbers = seconds
+  const s = String(v).trim();
+  if (s.includes(':')) {
+    const parts = s.split(':').map(Number);
+    if (parts.length === 2) return Math.round((parts[0] * 60 + parts[1]) * 1000);
+    if (parts.length === 3) return Math.round((parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000);
+  }
+  if (s.endsWith('ms')) return Math.round(parseFloat(s));
+  if (s.endsWith('s')) return Math.round(parseFloat(s) * 1000);
+  const n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return n < 600 ? Math.round(n * 1000) : Math.round(n);
+}
+
+const AI_COMMANDS = {
+  add_callout: {
+    desc: 'Add a callout. args: {text?, startMs?, x?, y?}',
+    run(args) {
+      addCallout({ startMs: _aiParseTime(args.startMs), x: args.x, y: args.y });
+      const el = _aiSelectedEl();
+      if (el && args.text) { el.text = String(args.text); rebuildAll(); }
+      return `Added callout${args.text ? ' "' + truncate(args.text, 40) + '"' : ''}${args.startMs != null ? ' at ' + fmtTime(_aiParseTime(args.startMs)) : ''}`;
+    }
+  },
+  add_customer_card: {
+    desc: 'Add a customer card. args: {body?, industry?, location?, employees?, startMs?, x?, y?}',
+    run(args) {
+      addCustomerCard({ startMs: _aiParseTime(args.startMs), x: args.x, y: args.y });
+      const el = _aiSelectedEl();
+      if (el) {
+        if (args.body) el.body = String(args.body);
+        if (args.industry) el.industry = String(args.industry);
+        if (args.location) el.location = String(args.location);
+        if (args.employees) el.employees = String(args.employees);
+        rebuildAll();
+      }
+      return `Added customer card${args.industry ? ' (' + args.industry + ')' : ''}${args.startMs != null ? ' at ' + fmtTime(_aiParseTime(args.startMs)) : ''}`;
+    }
+  },
+  add_text_overlay: {
+    desc: 'Add a text overlay. args: {text?, startMs?, x?, y?, fontSize?, color?}',
+    run(args) {
+      addTextOverlay({ startMs: _aiParseTime(args.startMs), x: args.x, y: args.y });
+      const el = _aiSelectedEl();
+      if (el) {
+        if (args.text) el.text = String(args.text);
+        if (args.fontSize) el.fontSize = Number(args.fontSize);
+        if (args.color) el.color = String(args.color);
+        rebuildAll();
+      }
+      return `Added text overlay${args.text ? ' "' + truncate(args.text, 40) + '"' : ''}`;
+    }
+  },
+  add_shape: {
+    desc: 'Add a shape. args: {shapeType: "rect"|"ellipse", fill?, startMs?, x?, y?, width?, height?}',
+    run(args) {
+      addShape({ shapeType: args.shapeType === 'ellipse' ? 'ellipse' : 'rect',
+        startMs: _aiParseTime(args.startMs), x: args.x, y: args.y,
+        width: args.width, height: args.height });
+      const el = _aiSelectedEl();
+      if (el && args.fill) { el.fill = String(args.fill); el.fillEnabled = true; rebuildAll(); }
+      return `Added ${args.shapeType === 'ellipse' ? 'ellipse' : 'rectangle'}`;
+    }
+  },
+  add_zoom: {
+    desc: 'Add a zoom effect. args: {startMs?, x?, y?, scale?}',
+    run(args) {
+      addEffect('zoom', { startMs: _aiParseTime(args.startMs), x: args.x, y: args.y });
+      const el = _aiSelectedEl();
+      if (el && args.scale) { el.scale = Number(args.scale); rebuildAll(); }
+      return `Added zoom effect${args.startMs != null ? ' at ' + fmtTime(_aiParseTime(args.startMs)) : ''}`;
+    }
+  },
+  add_spotlight: {
+    desc: 'Add a spotlight effect. args: {startMs?, x?, y?, w?, h?}',
+    run(args) {
+      addEffect('spotlight', { startMs: _aiParseTime(args.startMs), x: args.x, y: args.y, w: args.w, h: args.h });
+      return `Added spotlight effect`;
+    }
+  },
+  add_slide: {
+    desc: 'Add a slide. args: {type: "intro"|"journey"|"focus"|"keygoals"|"empty"|"image", startMs?}',
+    run(args) {
+      const validTypes = ['intro', 'journey', 'focus', 'keygoals', 'empty', 'image'];
+      const type = validTypes.includes(args.type) ? args.type : 'empty';
+      addSlideOfType(type, _aiParseTime(args.startMs));
+      return `Added ${type} slide`;
+    }
+  },
+  add_audio_placement: {
+    desc: 'Place an uploaded audio on the timeline. args: {audioId OR audioName, startMs?}',
+    run(args) {
+      let audioId = args.audioId;
+      if (!audioId && args.audioName) {
+        const a = state.audios.find(x => (x.filename || '').toLowerCase().includes(String(args.audioName).toLowerCase()));
+        if (a) audioId = a.id;
+      }
+      if (!audioId && state.audios.length === 1) audioId = state.audios[0].id;
+      if (!audioId) throw new Error('No matching audio found. Upload audio first or specify which one.');
+      addAudioPlacement(audioId, _aiParseTime(args.startMs));
+      return `Placed audio on timeline`;
+    }
+  },
+  rename_project: {
+    desc: 'Rename the project. args: {name}',
+    run(args) {
+      if (!args.name) throw new Error('No name provided');
+      pushHistory();
+      state.module = state.module || {};
+      state.module.name = String(args.name);
+      const titleEl = document.getElementById('projectTitle') || document.getElementById('projectName');
+      if (titleEl) { if ('value' in titleEl) titleEl.value = args.name; else titleEl.textContent = args.name; }
+      return `Renamed project to "${truncate(args.name, 50)}"`;
+    }
+  },
+  update_selected: {
+    desc: 'Update the currently-selected element. args: {prop: value, ...}. Use to tweak text, color, timing, position of whatever is selected.',
+    run(args) {
+      const el = _aiSelectedEl();
+      if (!el) throw new Error('Nothing is selected to update');
+      pushHistory();
+      const allowed = ['text', 'body', 'industry', 'location', 'employees', 'fill', 'stroke',
+        'color', 'fontSize', 'fontWeight', 'opacity', 'scale', 'x', 'y', 'width', 'height',
+        'startMs', 'durationMs', 'title'];
+      const changed = [];
+      for (const k of Object.keys(args)) {
+        if (!allowed.includes(k)) continue;
+        let v = args[k];
+        if (k === 'startMs' || k === 'durationMs') v = _aiParseTime(v);
+        el[k] = (typeof el[k] === 'number' && typeof v === 'string') ? Number(v) : v;
+        changed.push(k);
+      }
+      rebuildAll();
+      return changed.length ? `Updated ${changed.join(', ')}` : 'No valid properties to update';
+    }
+  },
+  delete_selected: {
+    desc: 'Delete the currently-selected element. args: {}',
+    run() {
+      if (!view.selectedId) throw new Error('Nothing is selected to delete');
+      deleteSelected();
+      return `Deleted selected element`;
+    }
+  },
+  seek: {
+    desc: 'Move the playhead to a time. args: {time}',
+    run(args) {
+      const ms = _aiParseTime(args.time != null ? args.time : args.startMs);
+      if (ms == null) throw new Error('No valid time provided');
+      view.curTimeMs = Math.max(0, ms);
+      view.userSeeked = true;
+      updatePlayhead(); rebuildCanvas();
+      return `Moved playhead to ${fmtTime(ms)}`;
+    }
+  },
+  // v3.28b.70: journey slide pre-filled with comma-separated names as rows
+  add_journey_with_names: {
+    desc: 'Add a journey slide with rows. args: {names: ["Asha","Ravi"], title?, startMs?}',
+    run(args) {
+      addSlideOfType('journey', _aiParseTime(args.startMs));
+      const seg = state.segments.find(s => s.id === view.selectedId);
+      if (!seg || seg.kind !== 'slide-journey') throw new Error('Could not create journey slide');
+      const names = (args.names || []).map(n => String(n).trim()).filter(Boolean).slice(0, 5);
+      if (names.length) {
+        seg.rows = names.map(nm => ({
+          id: uid('row'), dual: false, personaIds: [null], useCustomIcon: false,
+          customIconUrl: null, name: nm, designation: '', description: '',
+          glowState: 'inactive'
+        }));
+        seg.highlightUpToRow = 0;
+      }
+      if (args.title) seg.title = String(args.title);
+      rebuildAll();
+      return `Added journey slide with ${names.length} row${names.length === 1 ? '' : 's'}: ${names.join(', ')}`;
+    }
+  },
+  // v3.28b.70: set a journey row to animate (glow-animate). 1-based row number.
+  animate_row: {
+    desc: 'Animate a journey row. args: {row: 3}  (1-based). Operates on selected journey slide.',
+    run(args) {
+      let seg = state.segments.find(s => s.id === view.selectedId && s.kind === 'slide-journey');
+      if (!seg) {
+        // fall back to the journey slide under the playhead
+        seg = state.segments.find(s => s.kind === 'slide-journey' &&
+          view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
+      }
+      if (!seg) seg = [...state.segments].reverse().find(s => s.kind === 'slide-journey');
+      if (!seg) throw new Error('No journey slide found. Add one first with /journey.');
+      const rowNum = parseInt(args.row, 10);
+      if (!rowNum || rowNum < 1 || rowNum > (seg.rows || []).length) {
+        throw new Error(`Row ${args.row} out of range (slide has ${(seg.rows||[]).length} rows)`);
+      }
+      pushHistory();
+      // rows before the animated one become static glow, the target animates
+      seg.rows.forEach((r, i) => {
+        if (i < rowNum - 1) r.glowState = 'glow-static';
+        else if (i === rowNum - 1) r.glowState = 'glow-animate';
+        else r.glowState = 'inactive';
+      });
+      seg.highlightUpToRow = rowNum;
+      setSelected(seg.id, 'segment');
+      rebuildAll();
+      return `Animated row ${rowNum} (${seg.rows[rowNum-1].name || 'unnamed'})`;
+    }
+  }
+};
+
+function truncate(s, n) { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+// ─── Build a compact project summary for the AI's context ───
+function _aiProjectSummary() {
+  const fmt = (ms) => fmtTime(ms || 0);
+  const segs = (state.segments || []).map(s =>
+    `${s.kind} [${fmt(s.startMs)}–${fmt(s.startMs + s.durationMs)}]${s.title ? ' "' + truncate(s.title, 30) + '"' : ''}`
+  );
+  return {
+    projectName: state.module?.name || 'Untitled',
+    currentTime: fmt(view.curTimeMs),
+    totalDuration: fmt(getTotalDurationMs()),
+    segmentCount: (state.segments || []).length,
+    segments: segs,
+    calloutCount: (state.callouts || []).length,
+    customerCardCount: (state.customerCards || []).length,
+    textOverlayCount: (state.textOverlays || []).length,
+    shapeCount: (state.shapes || []).length,
+    effectCount: (state.effects || []).length,
+    uploadedVideos: (state.videos || []).map(v => v.filename || v.id),
+    uploadedAudios: (state.audios || []).map(a => a.filename || a.id),
+    selectedElement: view.selectedId ? `${view.selectedKind} (${view.selectedId})` : 'none'
+  };
+}
+
+// ─── The system prompt ───
+function _aiSystemPrompt() {
+  const cmds = Object.entries(AI_COMMANDS)
+    .map(([name, c]) => `- ${name}: ${c.desc}`).join('\n');
+  return `You are an assistant embedded in the Darwinbox Product Showcase video editor. The user gives plain-language instructions; you translate them into a list of actions the editor will execute.
+
+You can ONLY use these commands:
+${cmds}
+
+Rules:
+- Respond with ONLY a JSON object, no markdown, no prose outside the JSON.
+- Format: {"actions": [{"command": "name", "args": {...}}], "reply": "one short sentence describing what you did"}
+- Times can be "M:SS" (like "0:14"), seconds (14), or milliseconds. Prefer the user's format.
+- If the user doesn't specify a time/position, omit it — the editor uses sensible defaults (current playhead, center).
+- If the instruction is ambiguous or impossible with the available commands, return {"actions": [], "reply": "ask a clarifying question or explain what you can't do"}.
+- To modify an existing element, the user usually selects it first; use update_selected or delete_selected.
+- Keep replies short and concrete.
+- Never invent commands not in the list.`;
+}
+
+// ─── Call Claude API ───
+async function _aiCallClaude(userMessage, history) {
+  const messages = [];
+  for (const h of history) {
+    messages.push({ role: h.role, content: h.content });
+  }
+  messages.push({
+    role: 'user',
+    content: `Current project state:\n${JSON.stringify(_aiProjectSummary(), null, 2)}\n\nUser instruction: ${userMessage}`
+  });
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system: _aiSystemPrompt(),
+      messages
+    })
+  });
+  if (!response.ok) {
+    const txt = await response.text().catch(() => '');
+    throw new Error('API error ' + response.status + (txt ? ': ' + txt.slice(0, 200) : ''));
+  }
+  const data = await response.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  // Strip any accidental markdown fences
+  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  let parsed;
+  try { parsed = JSON.parse(clean); }
+  catch (e) { throw new Error('Could not parse AI response: ' + truncate(clean, 150)); }
+  return parsed;
+}
+
+// ─── Execute the validated action list ───
+function _aiExecuteActions(actions) {
+  const results = [];
+  for (const action of (actions || [])) {
+    const cmd = AI_COMMANDS[action.command];
+    if (!cmd) { results.push({ ok: false, summary: `Unknown command: ${action.command}` }); continue; }
+    try {
+      const summary = cmd.run(action.args || {});
+      results.push({ ok: true, summary });
+    } catch (e) {
+      results.push({ ok: false, summary: e.message });
+    }
+  }
+  return results;
+}
+
+// ─── UI wiring ───
+const _aiHistory = [];
+let _aiBusy = false;
+// v3.28b.69: flip to true once the Cloudflare Worker AI proxy + API key is wired
+// (expected ~4 days). Until then, only slash commands work (no API calls made).
+const _AI_API_ENABLED = false;
+
+function _aiAppendMessage(role, html) {
+  const container = document.getElementById('aiMessages');
+  if (!container) return null;
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai-msg-' + role;
+  div.innerHTML = '<div class="ai-msg-body">' + html + '</div>';
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+// ─── v3.28b.69: LOCAL slash-command parser (no API needed) ───
+// Parses structured commands into the SAME {command, args} format the AI emits,
+// so they flow through the identical _aiExecuteActions whitelist. Works offline.
+// Syntax examples:
+//   /callout 0:14 "Boosted retention 30%"
+//   /card 0:10 industry:Retail location:Singapore body:"Processes payroll"
+//   /text 0:05 "Hello" color:#FF0000
+//   /shape rect 0:03 fill:#0183FF
+//   /zoom 0:05 center        (or  /zoom 0:05 x:200 y:150 scale:1.8)
+//   /spotlight 0:05 x:400 y:300
+//   /slide journey 0:00
+//   /audio 0:00 name:intro
+//   /rename "Acme Q3 Showcase"
+//   /set color:#FF0000 text:"New text"     (updates selected element)
+//   /delete
+//   /seek 0:20
+//   /gaps
+// Returns { actions: [...], reply } or null if not a slash command.
+function _aiParseLocalCommand(msg) {
+  const text = msg.trim();
+  if (!text.startsWith('/')) return null;
+
+  const A = (command, args) => ({ actions: [{ command, args }], reply: null, _local: true });
+
+  // v3.28b.70: special-case commands whose payload is free-form (commas, spaces)
+  // and shouldn't go through the key:value tokenizer.
+  const firstSpace = text.indexOf(' ');
+  const head = (firstSpace === -1 ? text : text.slice(0, firstSpace)).slice(1).toLowerCase();
+  const tail = firstSpace === -1 ? '' : text.slice(firstSpace + 1).trim();
+
+  if (head === 'journey') {
+    // /journey Asha, Ravi, Meera   → rows from comma-separated names
+    // optional leading timecode: /journey 0:05 Asha, Ravi
+    let startMs, namesStr = tail;
+    const tm = tail.match(/^(\d+(?::\d+)*(?:\.\d+)?)\s+(.*)$/);
+    if (tm) { startMs = tm[1]; namesStr = tm[2]; }
+    const names = namesStr.split(',').map(s => s.trim()).filter(Boolean);
+    if (!names.length) return A('add_slide', { type: 'journey', startMs });
+    return A('add_journey_with_names', { names, startMs });
+  }
+  if (head === 'animate') {
+    // /animate 3   → animate row 3 of selected/active journey slide
+    const n = parseInt(tail, 10);
+    if (!n) return { actions: [], reply: null, _local: true, _err: 'Usage: /animate 3 (row number)' };
+    return A('animate_row', { row: n });
+  }
+
+  // Tokenize respecting quoted strings and key:"value with spaces"
+  const tokens = [];
+  const re = /([a-zA-Z_]+:"[^"]*"|[a-zA-Z_]+:\S+|"[^"]*"|\S+)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) tokens.push(m[1]);
+  if (!tokens.length) return null;
+
+  const cmd = tokens[0].slice(1).toLowerCase();  // strip leading '/'
+  const rest = tokens.slice(1);
+
+  // Helpers
+  const stripQuotes = (s) => (s && s.startsWith('"') && s.endsWith('"')) ? s.slice(1, -1) : s;
+  const isTime = (s) => /^\d+(:\d+)*(\.\d+)?$/.test(s);  // 0:14, 14, 1:05.5
+  const kv = {};            // key:value pairs
+  const positional = [];    // bare tokens (timecode, free text, type words)
+  for (const tk of rest) {
+    const ci = tk.indexOf(':');
+    // treat as key:value only if it's not a timecode like 0:14
+    if (ci > 0 && !isTime(tk) && /^[a-zA-Z_]+$/.test(tk.slice(0, ci))) {
+      kv[tk.slice(0, ci)] = stripQuotes(tk.slice(ci + 1));
+    } else {
+      positional.push(stripQuotes(tk));
+    }
+  }
+  // First positional that looks like a time becomes startMs/time
+  const timeTok = positional.find(isTime);
+  const freeText = positional.find(p => !isTime(p) && !['rect','ellipse','center','intro','journey','focus','keygoals','empty','image'].includes(p));
+
+  // (A() helper declared at top of function)
+
+  switch (cmd) {
+    case 'callout':
+      return A('add_callout', { startMs: timeTok, text: kv.text || freeText, x: kv.x, y: kv.y });
+    case 'card': case 'customer':
+      return A('add_customer_card', { startMs: timeTok, body: kv.body || freeText,
+        industry: kv.industry, location: kv.location, employees: kv.employees, x: kv.x, y: kv.y });
+    case 'text':
+      return A('add_text_overlay', { startMs: timeTok, text: kv.text || freeText,
+        color: kv.color, fontSize: kv.fontSize, x: kv.x, y: kv.y });
+    case 'shape': {
+      const shapeType = positional.includes('ellipse') ? 'ellipse' : 'rect';
+      return A('add_shape', { shapeType, startMs: timeTok, fill: kv.fill || kv.color,
+        x: kv.x, y: kv.y, width: kv.width, height: kv.height });
+    }
+    case 'zoom': {
+      let x = kv.x, y = kv.y;
+      if (positional.includes('center')) { x = CANVAS_W / 2; y = CANVAS_H / 2; }
+      return A('add_zoom', { startMs: timeTok, x, y, scale: kv.scale });
+    }
+    case 'spotlight':
+      return A('add_spotlight', { startMs: timeTok, x: kv.x, y: kv.y, w: kv.w || kv.width, h: kv.h || kv.height });
+    case 'slide': {
+      const type = positional.find(p => ['intro','journey','focus','keygoals','empty','image'].includes(p)) || 'empty';
+      return A('add_slide', { type, startMs: timeTok });
+    }
+    case 'audio':
+      return A('add_audio_placement', { startMs: timeTok, audioName: kv.name || freeText });
+    case 'rename':
+      return A('rename_project', { name: kv.name || freeText });
+    case 'set': case 'update': {
+      const args = {};
+      for (const k of Object.keys(kv)) args[k] = kv[k];
+      if (freeText && !args.text) args.text = freeText;
+      return A('update_selected', args);
+    }
+    case 'delete': case 'del':
+      return A('delete_selected', {});
+    case 'seek': case 'goto':
+      return A('seek', { time: timeTok });
+    case 'gaps': case 'closegaps':
+      return { actions: [], reply: null, _local: true, _direct: () => { closeGaps(); } };
+    case 'help': case '?':
+      return { actions: [], reply: null, _local: true, _help: true };
+    default:
+      return { actions: [], reply: null, _local: true, _unknown: cmd };
+  }
+}
+
+const _AI_HELP_TEXT = `<b>Press / for the command menu.</b> Or type plainly like "add callout Hello at 14".<br><br>
+<b>Commands:</b><br>
+<code>/journey Asha, Ravi, Meera</code> — journey slide with rows<br>
+<code>/animate 3</code> — animate flow row 3<br>
+<code>/callout 0:14 "text"</code><br>
+<code>/customer industry:Retail location:SG</code><br>
+<code>/text 0:05 "label" color:#FF0000</code><br>
+<code>/shape rect fill:#0183FF</code> &nbsp; <code>/shape ellipse</code><br>
+<code>/zoom 0:05 center</code><br>
+<code>/slide intro</code> &nbsp; <code>/slide focus</code> &nbsp; <code>/slide keygoals</code><br>
+<code>/rename "New Name"</code><br>
+<code>/delete</code> &nbsp; <code>/seek 0:20</code> &nbsp; <code>/gaps</code><br>
+<span style="opacity:0.6;">Everything is undoable with ⌘Z.</span>`;
+
+// ─── v3.28b.70: forgiving KEYWORD parser (no slash, no API) ───
+// Scans plain text for intent words and pulls out timecode / quoted text / names.
+// Deliberately simple and predictable. Returns {actions:[...]} or null.
+function _aiParseKeyword(msg) {
+  const text = msg.trim();
+  const low = text.toLowerCase();
+  const A = (command, args) => ({ actions: [{ command, args }] });
+
+  // pull a timecode like "at 0:14", "at 14", "@ 1:05"
+  let startMs;
+  const tcMatch = low.match(/(?:at|@)\s*(\d+(?::\d+)+|\d+(?:\.\d+)?)\b/) || text.match(/\b(\d+:\d+)\b/);
+  if (tcMatch) startMs = tcMatch[1];
+
+  // pull quoted text "like this" or 'like this'
+  let quoted;
+  const qMatch = text.match(/["'](.+?)["']/);
+  if (qMatch) quoted = qMatch[1];
+
+  // pull a hex color
+  const colMatch = text.match(/#[0-9a-fA-F]{3,6}\b/);
+  const color = colMatch ? colMatch[0] : undefined;
+
+  // text after "saying"/"that says"/"with text"
+  let sayText = quoted;
+  if (!sayText) {
+    const sm = text.match(/(?:saying|says|that says|with text|text)\s+(.+)$/i);
+    if (sm) sayText = sm[1].replace(/["']/g, '').trim();
+  }
+
+  // JOURNEY with names: "add journey Asha, Ravi, Meera" or "journey slide for Asha, Ravi"
+  if (low.includes('journey')) {
+    const after = text.replace(/.*journey(?:\s+slide)?(?:\s+(?:for|with|of))?/i, '').trim();
+    const names = after.split(',').map(s => s.replace(/["']/g, '').trim()).filter(s => s && !/^(slide|at|\d)/i.test(s));
+    if (names.length) return A('add_journey_with_names', { names, startMs });
+    return A('add_slide', { type: 'journey', startMs });
+  }
+
+  // ANIMATE row: "animate row 3", "animate 3rd", "animate step 2"
+  if (low.includes('animate')) {
+    const nm = low.match(/animate\s+(?:row\s+|step\s+)?(\d+)/);
+    const ordinal = low.match(/(\d+)(?:st|nd|rd|th)/);
+    const n = nm ? parseInt(nm[1], 10) : (ordinal ? parseInt(ordinal[1], 10) : null);
+    if (n) return A('animate_row', { row: n });
+  }
+
+  // CALLOUT
+  if (low.includes('callout')) return A('add_callout', { startMs, text: sayText });
+
+  // CUSTOMER CARD
+  if (low.includes('customer') || low.includes('card')) {
+    const ind = text.match(/(?:industry|sector)\s+(\w+)/i);
+    const loc = text.match(/(?:in|location|located in)\s+([A-Z]\w+)/);
+    return A('add_customer_card', { startMs, body: sayText,
+      industry: ind ? ind[1] : undefined, location: loc ? loc[1] : undefined });
+  }
+
+  // TEXT overlay
+  if (/\btext\b|\blabel\b|\bcaption\b/.test(low)) return A('add_text_overlay', { startMs, text: sayText, color });
+
+  // SHAPE
+  if (low.includes('rectangle') || low.includes('rect') || low.includes('box') || low.includes('square'))
+    return A('add_shape', { shapeType: 'rect', startMs, fill: color });
+  if (low.includes('ellipse') || low.includes('circle') || low.includes('oval'))
+    return A('add_shape', { shapeType: 'ellipse', startMs, fill: color });
+  if (low.includes('shape')) return A('add_shape', { shapeType: 'rect', startMs, fill: color });
+
+  // ZOOM
+  if (low.includes('zoom')) {
+    const center = low.includes('center') || low.includes('middle');
+    return A('add_zoom', { startMs, x: center ? CANVAS_W/2 : undefined, y: center ? CANVAS_H/2 : undefined });
+  }
+
+  // SPOTLIGHT
+  if (low.includes('spotlight') || low.includes('highlight')) return A('add_spotlight', { startMs });
+
+  // SLIDES
+  if (low.includes('intro')) return A('add_slide', { type: 'intro', startMs });
+  if (low.includes('focus')) return A('add_slide', { type: 'focus', startMs });
+  if (low.includes('key goal') || low.includes('keygoal') || low.includes('goals')) return A('add_slide', { type: 'keygoals', startMs });
+
+  // RENAME
+  if (low.includes('rename') || low.includes('call it') || low.includes('name it')) {
+    const nm = sayText || text.replace(/.*(?:rename(?:\s+(?:project|it|to))?|call it|name it)\s*/i, '').trim();
+    if (nm) return A('rename_project', { name: nm });
+  }
+
+  // DELETE
+  if (low.includes('delete') || low.includes('remove')) return A('delete_selected', {});
+
+  // SEEK
+  if ((low.includes('go to') || low.includes('seek') || low.includes('jump to')) && startMs != null)
+    return A('seek', { time: startMs });
+
+  // CLOSE GAPS
+  if (low.includes('close gap') || low.includes('gaps')) return { actions: [], _direct: closeGaps };
+
+  return null;
+}
+
+async function _aiSend() {
+  if (_aiBusy) return;
+  const input = document.getElementById('aiInput');
+  const msg = (input.value || '').trim();
+  if (!msg) return;
+  input.value = '';
+  input.style.height = 'auto';
+  _aiAppendMessage('user', escapeHtml(msg));
+
+  // v3.28b.69: try local slash-command parser FIRST — no API, instant, offline.
+  const local = _aiParseLocalCommand(msg);
+  if (local) {
+    if (local._help) { _aiAppendMessage('assistant', _AI_HELP_TEXT); return; }
+    if (local._err) { _aiAppendMessage('error', escapeHtml(local._err)); return; }
+    if (local._unknown) {
+      _aiAppendMessage('error', `Unknown command "/${local._unknown}". Type <code>/help</code> to see all commands.`);
+      return;
+    }
+    try {
+      if (local._direct) { local._direct(); _aiAppendMessage('assistant', '✓ Done'); 
+        try { scheduleAutoSave && scheduleAutoSave(); } catch(e){} return; }
+      const results = _aiExecuteActions(local.actions);
+      const items = results.map(r =>
+        `<li style="color:${r.ok ? '#86EFAC' : '#FCA5A5'}">${r.ok ? '✓' : '✗'} ${escapeHtml(r.summary)}</li>`
+      ).join('');
+      _aiAppendMessage('assistant', `<ul style="margin:0;padding-left:16px;">${items}</ul>`);
+      if (results.some(r => r.ok)) { try { scheduleAutoSave && scheduleAutoSave(); } catch(e){} }
+    } catch (e) {
+      _aiAppendMessage('error', escapeHtml('Error: ' + e.message));
+    }
+    return;
+  }
+
+  // v3.28b.70: plain text (no slash) → try the forgiving keyword parser.
+  // This is the friendly path for PMMs who don't want to learn slash syntax.
+  const kw = _aiParseKeyword(msg);
+  if (kw) {
+    if (kw._direct) { try { kw._direct(); _aiAppendMessage('assistant', '✓ Done'); try { scheduleAutoSave && scheduleAutoSave(); } catch(e){} } catch(e) { _aiAppendMessage('error', escapeHtml(e.message)); } return; }
+    if (kw.actions && kw.actions.length) {
+      try {
+        const results = _aiExecuteActions(kw.actions);
+        const items = results.map(r =>
+          `<li style="color:${r.ok ? '#86EFAC' : '#FCA5A5'}">${r.ok ? '✓' : '✗'} ${escapeHtml(r.summary)}</li>`
+        ).join('');
+        _aiAppendMessage('assistant', `<ul style="margin:0;padding-left:16px;">${items}</ul>`);
+        if (results.some(r => r.ok)) { try { scheduleAutoSave && scheduleAutoSave(); } catch(e){} }
+      } catch (e) {
+        _aiAppendMessage('error', escapeHtml('Error: ' + e.message));
+      }
+      return;
+    }
+  }
+
+  // Plain-language that keyword parser couldn't handle → needs the API.
+  if (!_AI_API_ENABLED) {
+    _aiAppendMessage('assistant',
+      `I couldn't match that to an action yet. Press <code>/</code> to see the command menu, ` +
+      `or try simpler phrasing like "add callout Hello at 14".`);
+    return;
+  }
+
+  _aiBusy = true;
+  document.getElementById('aiSendBtn').disabled = true;
+  const thinking = _aiAppendMessage('assistant', '<span class="ai-thinking"><span></span><span></span><span></span></span>');
+
+  try {
+    const parsed = await _aiCallClaude(msg, _aiHistory);
+    _aiHistory.push({ role: 'user', content: msg });
+    _aiHistory.push({ role: 'assistant', content: JSON.stringify(parsed) });
+    if (_aiHistory.length > 20) _aiHistory.splice(0, _aiHistory.length - 20);
+
+    const results = _aiExecuteActions(parsed.actions);
+    if (thinking) thinking.remove();
+
+    let html = escapeHtml(parsed.reply || 'Done.');
+    if (results.length) {
+      const items = results.map(r =>
+        `<li style="color:${r.ok ? '#86EFAC' : '#FCA5A5'}">${r.ok ? '✓' : '✗'} ${escapeHtml(r.summary)}</li>`
+      ).join('');
+      html += `<div class="ai-actions-summary"><ul style="margin:0;padding-left:16px;">${items}</ul></div>`;
+    }
+    _aiAppendMessage('assistant', html);
+
+    const anyApplied = results.some(r => r.ok);
+    if (anyApplied) { try { scheduleAutoSave && scheduleAutoSave(); } catch(e) {} }
+  } catch (e) {
+    if (thinking) thinking.remove();
+    _aiAppendMessage('error', escapeHtml('Error: ' + e.message));
+  } finally {
+    _aiBusy = false;
+    document.getElementById('aiSendBtn').disabled = false;
+    input.focus();
+  }
+}
+
+// ─── v3.28b.70: COMMAND PALETTE (the "/" menu, like Claude's) ───
+// Typing "/" shows this menu. Filter as you type. Arrow keys + Enter to pick.
+// Selecting inserts a template the user fills in.
+const _AI_PALETTE = [
+  { key: 'journey',   ic: '🧭', name: 'Journey slide',  ds: 'Add a journey slide with people/flow rows', tmpl: '/journey ', ex: '/journey Asha, Ravi, Meera' },
+  { key: 'animate',   ic: '✨', name: 'Animate row',    ds: 'Animate a flow step in the selected journey', tmpl: '/animate ', ex: '/animate 3' },
+  { key: 'callout',   ic: '💬', name: 'Callout',        ds: 'Add a callout with text', tmpl: '/callout ', ex: '/callout 0:14 "Boosted retention"' },
+  { key: 'customer',  ic: '🏢', name: 'Customer card',  ds: 'Add a customer story card', tmpl: '/customer ', ex: '/customer industry:Retail location:SG' },
+  { key: 'text',      ic: '🅣', name: 'Text overlay',   ds: 'Add floating text', tmpl: '/text ', ex: '/text 0:05 "Label"' },
+  { key: 'shape',     ic: '⬛', name: 'Shape',          ds: 'Add a rectangle or ellipse', tmpl: '/shape ', ex: '/shape rect fill:#0183FF' },
+  { key: 'zoom',      ic: '🔍', name: 'Zoom effect',    ds: 'Zoom into a point', tmpl: '/zoom ', ex: '/zoom 0:05 center' },
+  { key: 'intro',     ic: '★',  name: 'Intro slide',    ds: 'Add a title/intro slide', tmpl: '/slide intro ', ex: '/slide intro' },
+  { key: 'focus',     ic: '◫',  name: 'Focus slide',    ds: 'Add a focus-areas slide', tmpl: '/slide focus ', ex: '/slide focus' },
+  { key: 'keygoals',  ic: '◎',  name: 'Key goals slide',ds: 'Add a key-goals slide', tmpl: '/slide keygoals ', ex: '/slide keygoals' },
+  { key: 'delete',    ic: '🗑', name: 'Delete selected',ds: 'Delete the selected element', tmpl: '/delete', ex: '/delete' },
+  { key: 'rename',    ic: '✎',  name: 'Rename project', ds: 'Change the project name', tmpl: '/rename ', ex: '/rename "Q3 Showcase"' },
+  { key: 'seek',      ic: '⏱',  name: 'Go to time',     ds: 'Move playhead to a time', tmpl: '/seek ', ex: '/seek 0:20' },
+  { key: 'gaps',      ic: '⇉',  name: 'Close gaps',     ds: 'Remove gaps between clips', tmpl: '/gaps', ex: '/gaps' },
+];
+
+let _aiPalActive = 0;     // highlighted index
+let _aiPalItems = [];     // currently-filtered items
+
+function _aiPaletteEl() { return document.getElementById('aiCmdPalette'); }
+
+function _aiRenderPalette(filter) {
+  const pal = _aiPaletteEl();
+  if (!pal) return;
+  const f = (filter || '').toLowerCase();
+  _aiPalItems = _AI_PALETTE.filter(c =>
+    c.key.startsWith(f) || c.name.toLowerCase().includes(f));
+  if (!_aiPalItems.length) { pal.classList.remove('open'); return; }
+  if (_aiPalActive >= _aiPalItems.length) _aiPalActive = 0;
+  pal.innerHTML = _aiPalItems.map((c, i) =>
+    `<div class="ai-cmd-item${i === _aiPalActive ? ' active' : ''}" data-idx="${i}">
+       <div class="ic">${c.ic}</div>
+       <div class="meta">
+         <div class="nm"><span class="cmd-key">/${c.key}</span> · ${c.name}</div>
+         <div class="ds">${c.ds}</div>
+         <div class="ex">${c.ex}</div>
+       </div>
+     </div>`
+  ).join('') + `<div id="aiCmdPaletteHint">↑↓ to navigate · Enter to pick · Esc to close</div>`;
+  pal.classList.add('open');
+}
+
+function _aiClosePalette() { const p = _aiPaletteEl(); if (p) p.classList.remove('open'); }
+function _aiPaletteOpen() { const p = _aiPaletteEl(); return p && p.classList.contains('open'); }
+
+function _aiPickPaletteItem(idx) {
+  const item = _aiPalItems[idx];
+  if (!item) return;
+  const input = document.getElementById('aiInput');
+  input.value = item.tmpl;
+  input.focus();
+  // place cursor at end
+  input.setSelectionRange(input.value.length, input.value.length);
+  _aiClosePalette();
+  // commands with no args (delete/gaps) — send immediately
+  if (item.tmpl === '/delete' || item.tmpl === '/gaps') {
+    _aiSend();
+  }
+}
+
+function _aiSetupUI() {
+  const toggleBtn = document.getElementById('aiToggleBtn');
+  const panel = document.getElementById('aiPanel');
+  const closeBtn = document.getElementById('aiCloseBtn');
+  const sendBtn = document.getElementById('aiSendBtn');
+  const input = document.getElementById('aiInput');
+  if (!toggleBtn || !panel) return;
+
+  const open = () => { panel.classList.remove('hidden'); setTimeout(() => input && input.focus(), 100); };
+  const close = () => panel.classList.add('hidden');
+  toggleBtn.addEventListener('click', () => panel.classList.contains('hidden') ? open() : close());
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  if (sendBtn) sendBtn.addEventListener('click', _aiSend);
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      // v3.28b.70: palette navigation when open
+      if (_aiPaletteOpen()) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); _aiPalActive = (_aiPalActive + 1) % _aiPalItems.length; _aiRenderPalette(_aiCurrentFilter()); return; }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); _aiPalActive = (_aiPalActive - 1 + _aiPalItems.length) % _aiPalItems.length; _aiRenderPalette(_aiCurrentFilter()); return; }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); _aiPickPaletteItem(_aiPalActive); return; }
+        if (e.key === 'Escape')    { e.preventDefault(); _aiClosePalette(); return; }
+      }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _aiClosePalette(); _aiSend(); }
+    });
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(120, input.scrollHeight) + 'px';
+      // v3.28b.70: show palette when the line is "/" or "/word" (no space yet)
+      const val = input.value;
+      const slashMatch = val.match(/^\/(\w*)$/);
+      if (slashMatch) { _aiPalActive = 0; _aiRenderPalette(slashMatch[1]); }
+      else _aiClosePalette();
+    });
+    // Click a palette item to pick it
+    const pal = _aiPaletteEl();
+    if (pal) {
+      pal.addEventListener('click', (e) => {
+        const item = e.target.closest('.ai-cmd-item');
+        if (item) _aiPickPaletteItem(parseInt(item.dataset.idx, 10));
+      });
+    }
+  }
+  // helper to read the current "/filter" from the input
+  function _aiCurrentFilter() {
+    const m = (input.value || '').match(/^\/(\w*)$/);
+    return m ? m[1] : '';
+  }
+  window._aiCurrentFilter = _aiCurrentFilter;
+  // ⌘J / Ctrl+J toggle
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+      e.preventDefault();
+      panel.classList.contains('hidden') ? open() : close();
+    }
+  });
+}
+window.addEventListener('DOMContentLoaded', _aiSetupUI);
 </script>
 
   <!-- Slide picker modal -->
