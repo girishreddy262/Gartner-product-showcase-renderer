@@ -3000,7 +3000,8 @@ async function preloadAudioDurations() {
       try {
         const audio = new Audio();
         audio.preload = 'metadata';
-        audio.src = a.url;
+        audio.crossOrigin = 'anonymous';  // v3.28b.67
+        audio.src = a.url + (a.url.includes('?') ? '&' : '?') + 'cb=' + (a._cb || (a._cb = Date.now()));
         await new Promise((res, rej) => {
           audio.addEventListener('loadedmetadata', res, { once: true });
           audio.addEventListener('error', (e) => rej(new Error('Audio error: ' + (e.message || 'unknown'))), { once: true });
@@ -3041,7 +3042,11 @@ async function loadOneVideoDuration(videoId) {
       const vid = document.createElement('video');
       vid.preload = 'metadata';
       vid.muted = true;
-      vid.src = v.url;
+      // v3.28b.67: same cache-bust key as the player so we don't create a
+      // separate cached entry (and so a no-CORS metadata fetch can't poison
+      // the player's cached response).
+      vid.crossOrigin = 'anonymous';
+      vid.src = v.url + (v.url.includes('?') ? '&' : '?') + 'cb=' + (v._cb || (v._cb = Date.now()));
       await new Promise((res, rej) => {
         vid.addEventListener('loadedmetadata', () => res(), { once: true });
         vid.addEventListener('error', (e) => rej(new Error('Video error: ' + (e.message || 'unknown'))), { once: true });
@@ -5035,7 +5040,8 @@ function renderZoomThumbContent(zoomEffect) {
       const video = state.videos.find(v => v.id === seg.videoId);
       if (video) {
         const v = document.createElement('video');
-        v.src = video.url;
+        // v3.28b.67: cache-bust to avoid stale no-CORS cached response
+        v.src = video.url + (video.url.includes('?') ? '&' : '?') + 'cb=' + (video._cb || (video._cb = Date.now()));
         v.muted = true;
         v.preload = 'metadata';
         // v3.28b.18: no crossOrigin — fixes Windows preview failures
@@ -5690,12 +5696,14 @@ function renderSegmentToCanvas(seg) {
       // v3.28b.5: navy bg so scale<1.0 shows brand color, not blank
       wrap.style.background = '#002B54';
       const v = document.createElement('video');
-      v.src = video.url;
-      // v3.28b.37: source video audio via WebAudio GainNode.
-      // Native volume is capped at 1.0 by browsers. To support 0-200% in the
-      // editor preview, we route the video's audio through a GainNode whose
-      // gain.value = seg.audioVolume (0..2). The native v.volume stays at 1.0
-      // (or 0 when muted) — gain does the actual amplification.
+      // v3.28b.67: crossOrigin MUST be set BEFORE src, or the browser fires the
+      // fetch without the attribute, gets a non-CORS response, and caches it.
+      // Setting it after src is a no-op for the already-initiated request and is
+      // the root cause of the intermittent "No Access-Control-Allow-Origin" errors.
+      v.crossOrigin = 'anonymous';
+      // v3.28b.67: cache-bust so a previously-cached no-CORS response (from before
+      // this fix, or from a racing request) can't be reused.
+      v.src = video.url + (video.url.includes('?') ? '&' : '?') + 'cb=' + (video._cb || (video._cb = Date.now()));
       if (seg.muteSourceAudio !== false) {
         v.muted = true;
       } else {
@@ -5704,7 +5712,7 @@ function renderSegmentToCanvas(seg) {
       }
       v.playsInline = true;
       v.preload = 'auto';
-      v.crossOrigin = 'anonymous';  // required for WebAudio MediaElementSource on S3
+      // (crossOrigin already set before src above — v3.28b.67)
       // Hook up WebAudio gain once the video can play. Wrapped in try/catch —
       // if WebAudio fails (rare; some embed contexts), fall back to native vol.
       if (seg.muteSourceAudio === false) {
@@ -5790,9 +5798,11 @@ function renderSegmentToCanvas(seg) {
           console.warn('Video load attempt ' + v._loadAttempts + '/10 failed, retrying in ' + backoff + 'ms:', video.url);
           setTimeout(() => {
             try {
-              const currentSrc = v.src;
-              v.src = '';
-              v.src = currentSrc;
+              // v3.28b.67: fresh cache-bust on retry — forces S3 to serve a new
+              // response rather than the cached failed (no-CORS) one.
+              const base = video.url.split('?')[0];
+              const qs = video.url.includes('?') && !video.url.match(/[?&]cb=/) ? video.url.split('?')[1] + '&' : '';
+              v.src = base + '?' + qs + 'cb=' + Date.now();
               v.load();
             } catch(e) { console.warn('Video reload failed:', e); }
           }, backoff);
@@ -7540,7 +7550,8 @@ async function loadVideoDuration(v) {
         const vid = document.createElement('video');
         vid.preload = 'metadata';
         vid.muted = true;
-        vid.src = v.url;
+        vid.crossOrigin = 'anonymous';  // v3.28b.67
+        vid.src = v.url + (v.url.includes('?') ? '&' : '?') + 'cb=' + (v._cb || (v._cb = Date.now()));
         const cleanup = () => { try { vid.removeAttribute('src'); vid.load(); } catch(e) {} };
         const timer = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, 15000);
         vid.onloadedmetadata = () => {
@@ -7572,7 +7583,8 @@ async function loadAudioDuration(a) {
       const ms = await new Promise((resolve, reject) => {
         const aud = document.createElement('audio');
         aud.preload = 'metadata';
-        aud.src = a.url;
+        aud.crossOrigin = 'anonymous';  // v3.28b.67
+        aud.src = a.url + (a.url.includes('?') ? '&' : '?') + 'cb=' + (a._cb || (a._cb = Date.now()));
         const timer = setTimeout(() => reject(new Error('Timeout')), 15000);
         aud.onloadedmetadata = () => {
           clearTimeout(timer);
@@ -9301,7 +9313,10 @@ function setupAudioElements() {
     const a = state.audios.find(x => x.id === ap.audioId);
     if (!a) continue;
     const el = document.createElement('audio');
-    el.src = a.url;
+    // v3.28b.67: cache-bust + crossorigin-before-src to avoid the same
+    // intermittent CORS failures that hit video.
+    el.crossOrigin = 'anonymous';
+    el.src = a.url + (a.url.includes('?') ? '&' : '?') + 'cb=' + (a._cb || (a._cb = Date.now()));
     el.preload = 'auto';
     el.style.display = 'none';
     el.muted = false;
