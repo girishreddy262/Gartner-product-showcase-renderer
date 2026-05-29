@@ -9955,8 +9955,7 @@ const AI_COMMANDS = {
   add_journey_with_names: {
     desc: 'Add a journey slide with rows. args: {names: ["Asha","Ravi"], title?, startMs?}',
     run(args) {
-      addSlideOfType('journey', _aiParseTime(args.startMs));
-      const seg = state.segments.find(s => s.id === view.selectedId);
+      const seg = addSlideOfType('journey', _aiParseTime(args.startMs));
       if (!seg || seg.kind !== 'slide-journey') throw new Error('Could not create journey slide');
       const names = (args.names || []).map(n => String(n).trim()).filter(Boolean).slice(0, 5);
       if (names.length) {
@@ -10529,13 +10528,19 @@ function _aiSetupUI() {
   if (sendBtn) sendBtn.addEventListener('click', _aiSend);
   if (input) {
     input.addEventListener('keydown', (e) => {
-      // v3.28b.70: palette navigation when open
-      if (_aiPaletteOpen()) {
+      // v3.28b.70: palette only intercepts keys while the input is a bare
+      // "/word" with NO space yet. Once the user types a space (i.e. they're
+      // entering arguments like "/journey Asha, Ravi"), Enter must SEND, not
+      // pick a palette item.
+      const isBareSlash = /^\/\w*$/.test(input.value);
+      if (_aiPaletteOpen() && isBareSlash) {
         if (e.key === 'ArrowDown') { e.preventDefault(); _aiPalActive = (_aiPalActive + 1) % _aiPalItems.length; _aiRenderPalette(_aiCurrentFilter()); return; }
         if (e.key === 'ArrowUp')   { e.preventDefault(); _aiPalActive = (_aiPalActive - 1 + _aiPalItems.length) % _aiPalItems.length; _aiRenderPalette(_aiCurrentFilter()); return; }
         if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); _aiPickPaletteItem(_aiPalActive); return; }
         if (e.key === 'Escape')    { e.preventDefault(); _aiClosePalette(); return; }
       }
+      // Any space typed → ensure palette is closed
+      if (e.key === ' ') _aiClosePalette();
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _aiClosePalette(); _aiSend(); }
     });
     input.addEventListener('input', () => {
