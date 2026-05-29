@@ -2909,12 +2909,14 @@ function renderLeftRail() {
   } else {
     videosList.innerHTML = state.videos.map((v, i) => {
       const dur = videoDurations[v.id];
-      const durStr = dur ? fmtTime(dur) : '...';
+      const durStr = dur && dur !== DEFAULT_VIDEO_DURATION_MS ? fmtTime(dur) : '…';
+      // v3.28b.66: filename is the primary label (PMM-recognizable),
+      // internal id moves to the secondary line. Default 10s shown as "…" until real duration loads.
       return '<div class="asset-card" draggable="true" data-asset-kind="video" data-video-id="' + v.id + '">' +
         '<div class="ac-icon">' + (i+1) + '</div>' +
         '<div class="ac-text">' +
-          '<div class="ac-label">' + escapeHtml(v.id) + '</div>' +
-          '<div class="ac-desc">' + escapeHtml(v.filename || '') + '</div>' +
+          '<div class="ac-label">' + escapeHtml(v.filename || v.id) + '</div>' +
+          '<div class="ac-desc">' + escapeHtml(v.id) + '</div>' +
           '<div class="ac-duration">' + durStr + '</div>' +
         '</div>' +
         // v3.28b.33: delete button per asset
@@ -2928,12 +2930,13 @@ function renderLeftRail() {
   } else {
     audiosList.innerHTML = state.audios.map((a, i) => {
       const dur = audioDurations[a.id];
-      const durStr = dur ? fmtTime(dur) : '...';
+      const durStr = dur ? fmtTime(dur) : '…';
+      // v3.28b.66: filename primary (PMM-recognizable), id secondary
       return '<div class="asset-card" draggable="true" data-asset-kind="audio" data-audio-id="' + a.id + '">' +
         '<div class="ac-icon audio">♫</div>' +
         '<div class="ac-text">' +
-          '<div class="ac-label">' + escapeHtml(a.id) + '</div>' +
-          '<div class="ac-desc">' + escapeHtml(a.filename || '') + '</div>' +
+          '<div class="ac-label">' + escapeHtml(a.filename || a.id) + '</div>' +
+          '<div class="ac-desc">' + escapeHtml(a.id) + '</div>' +
           '<div class="ac-duration">' + durStr + '</div>' +
         '</div>' +
         '<button class="ac-delete" data-delete-audio="' + a.id + '" title="Delete this audio" aria-label="Delete">×</button>' +
@@ -7527,25 +7530,67 @@ function removeUploadToast(toast) {
 }
 
 // Load video duration helper for newly uploaded asset
-function loadVideoDuration(v) {
-  const vid = document.createElement('video');
-  // v3.28b.18: no crossOrigin — Windows Chrome fails with it intermittently
-  vid.preload = 'metadata';
-  vid.src = v.url;
-  vid.onloadedmetadata = () => {
-    videoDurations[v.id] = vid.duration * 1000;
-    renderLeftRail();
-  };
+// v3.28b.66: with retries + timeout — sometimes the freshly-uploaded S3 file
+// isn't immediately readable, especially right after the PUT completes.
+async function loadVideoDuration(v) {
+  const delays = [500, 1000, 2000, 3000, 5000];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const ms = await new Promise((resolve, reject) => {
+        const vid = document.createElement('video');
+        vid.preload = 'metadata';
+        vid.muted = true;
+        vid.src = v.url;
+        const cleanup = () => { try { vid.removeAttribute('src'); vid.load(); } catch(e) {} };
+        const timer = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, 15000);
+        vid.onloadedmetadata = () => {
+          clearTimeout(timer);
+          const result = Math.round(vid.duration * 1000);
+          cleanup();
+          resolve(result);
+        };
+        vid.onerror = (e) => { clearTimeout(timer); cleanup(); reject(new Error('Load error')); };
+      });
+      if (ms > 0) {
+        videoDurations[v.id] = ms;
+        renderLeftRail();
+        return;
+      }
+    } catch (e) {
+      // retry after backoff
+    }
+    if (attempt < 4) await new Promise(r => setTimeout(r, delays[attempt]));
+  }
+  // All attempts failed — leave at default but flag it
+  console.warn('Could not read duration for ' + v.id + ' after 5 attempts. Will retry on first drag.');
 }
-function loadAudioDuration(a) {
-  const aud = document.createElement('audio');
-  // v3.28b.18: no crossOrigin — same fix as video, prevents Windows failures
-  aud.preload = 'metadata';
-  aud.src = a.url;
-  aud.onloadedmetadata = () => {
-    audioDurations[a.id] = aud.duration * 1000;
-    renderLeftRail();
-  };
+
+async function loadAudioDuration(a) {
+  const delays = [500, 1000, 2000, 3000, 5000];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const ms = await new Promise((resolve, reject) => {
+        const aud = document.createElement('audio');
+        aud.preload = 'metadata';
+        aud.src = a.url;
+        const timer = setTimeout(() => reject(new Error('Timeout')), 15000);
+        aud.onloadedmetadata = () => {
+          clearTimeout(timer);
+          resolve(Math.round(aud.duration * 1000));
+        };
+        aud.onerror = () => { clearTimeout(timer); reject(new Error('Load error')); };
+      });
+      if (ms > 0) {
+        audioDurations[a.id] = ms;
+        renderLeftRail();
+        return;
+      }
+    } catch (e) {
+      // retry
+    }
+    if (attempt < 4) await new Promise(r => setTimeout(r, delays[attempt]));
+  }
+  console.warn('Could not read duration for ' + a.id + ' after 5 attempts. Will retry on first drag.');
 }
 
 async function approve() {
