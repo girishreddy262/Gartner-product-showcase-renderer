@@ -2267,10 +2267,16 @@ function renderJourneySVG(seg) {
     return 'inactive';
   });
 
-  // Local time within segment (only meaningful during playback)
-  const t = (view.isPlaying || _previewZoomActive) && cameraEnabled
+  // v3.28b.64: drive animation from timeline cursor.
+  // - During playback or scrub (cursor INSIDE segment): show animation at cursor time
+  // - When paused AT segment start: show final state (for editing)
+  // - When cursor outside segment: show final state (slide not active in canvas)
+  const cursorInSegment = view.curTimeMs >= seg.startMs && view.curTimeMs < seg.startMs + seg.durationMs;
+  const atSegmentStart = !view.isPlaying && Math.abs(view.curTimeMs - seg.startMs) < 50;
+  const driveAnimation = cameraEnabled && cursorInSegment && !atSegmentStart;
+  const t = driveAnimation
     ? Math.max(0, view.curTimeMs - seg.startMs)
-    : 0;
+    : (cameraEnabled ? seg.durationMs - FADE_OUT_MS - 100 : 0);  // settled final state before fade-out
 
   // Per-row glow progress
   // v3.28a.2: animating row fires at PRE_ROLL_MS regardless of row index (matches renderer)
@@ -2296,7 +2302,8 @@ function renderJourneySVG(seg) {
   // Camera transform (always-on zoom in v3.28a.2)
   let scale = 1, txCam = 0, tyCam = 0;
   let headerOpacity = 1, slideOpacity = 1;
-  if (cameraEnabled && (view.isPlaying || _previewZoomActive)) {
+  // v3.28b.64: drive camera animation from cursor when inside segment
+  if (driveAnimation) {
     // v3.28b.40: when startZoomedIn, zoom is at 1 from frame 0
     let zoomProgress = 0;
     if (startZoomedIn) {
@@ -2774,52 +2781,26 @@ function applyCanvasTransform() {
 
   // EFFECTIVE scale (with zoom contribution)
   const effectiveScale = baseScale * zoomScale;
+  // FOCAL-ANCHORED translation — focal point at viewport center at full zoom
+  const focalTx = (vpRect.width / 2) - zoomFocalX * effectiveScale;
+  const focalTy = (vpRect.height / 2) - zoomFocalY * effectiveScale;
 
-  // v3.28b.63: ZOOM TRAJECTORY FIX.
-  // Old code interpolated tx/ty between baseline and focal-anchored position,
-  // then clamped each frame. This caused two visual bugs:
-  //   1) When focal is near a corner, the unclamped focalTx is far outside
-  //      viewport bounds, so the interpolation passes through positions that
-  //      get progressively clamped — making the canvas appear to drift/curve.
-  //   2) The clamp threshold (canvasPxW >= vpW) can flip on/off mid-animation
-  //      as scale grows, causing visible discontinuities.
-  // Fix: compute the FINAL clamped position once (where canvas should land at
-  // full zoom), then interpolate the actual animation toward that point. The
-  // motion path is now a straight line from center to the final landing spot.
-  const finalScale = baseScale * (inZoomEffect ? (state.effects.find(e =>
-    e.kind === 'zoom' && view.curTimeMs >= e.startMs && view.curTimeMs < e.startMs + e.durationMs
-  )?.scale || 1.5) : 1);
-  const finalCanvasPxW = CANVAS_W * finalScale;
-  const finalCanvasPxH = CANVAS_H * finalScale;
-  // Where focal-anchored target would land at full zoom
-  let finalTargetTx = (vpRect.width / 2) - zoomFocalX * finalScale;
-  let finalTargetTy = (vpRect.height / 2) - zoomFocalY * finalScale;
-  // Clamp the TARGET (not every frame) so the trajectory is straight
-  if (inZoomEffect && finalCanvasPxW >= vpRect.width) {
-    finalTargetTx = Math.min(0, Math.max(vpRect.width - finalCanvasPxW, finalTargetTx));
-  }
-  if (inZoomEffect && finalCanvasPxH >= vpRect.height) {
-    finalTargetTy = Math.min(0, Math.max(vpRect.height - finalCanvasPxH, finalTargetTy));
-  }
+  // INTERPOLATE between baseline and focal anchor using the same progress value
+  // At progress=0, tx/ty == baseTx/baseTy exactly (no jump when zoom starts)
+  // At progress=1, tx/ty == focalTx/focalTy (fully focal-anchored)
+  let tx = baseTx + (focalTx - baseTx) * progress;
+  let ty = baseTy + (focalTy - baseTy) * progress;
 
-  // Now interpolate position based on CURRENT effective scale's progress, not the
-  // unclamped focal position. The motion path goes baseline → finalTarget directly.
-  // We also need to interpolate the SCALE-driven offset so the focal point still
-  // tracks correctly during the ramp-in. The clean approach: at progress p, the
-  // canvas should be at scale effectiveScale, positioned so that the focal point
-  // is at the linearly-interpolated screen position between baseline-center and
-  // finalTarget-anchored.
-  // Trajectory: tx(0) = baseTx, tx(1) = finalTargetTx (which is the clamped focal target)
-  let tx = baseTx + (finalTargetTx - baseTx) * progress;
-  let ty = baseTy + (finalTargetTy - baseTy) * progress;
-
-  // Safety: during the ramp, if the current-scale canvas doesn't cover viewport,
-  // we still need to keep it visible. Re-clamp only on the size where the canvas
-  // exceeds viewport, BUT only against current-frame bounds (this only matters
-  // if effectiveScale < finalScale, i.e. mid-animation).
+  // CLAMP focal-anchored position so canvas never reveals black edges in viewport.
+  // The canvas (at effectiveScale) covers a rectangle from (tx, ty) to (tx + CANVAS_W*scale, ty + CANVAS_H*scale).
+  // For viewport to be fully covered: tx <= 0 AND tx + CANVAS_W*scale >= vpW
+  //                              and: ty <= 0 AND ty + CANVAS_H*scale >= vpH
+  // Only clamp when the canvas is large enough to cover (effectiveScale >= 1/fit ⇒ scale >= 1, i.e. baseScale*zoomScale*fit >= 1).
+  // In practice: when canvas covers viewport, clamp tx,ty to keep edges off-screen.
   const canvasPxW = CANVAS_W * effectiveScale;
   const canvasPxH = CANVAS_H * effectiveScale;
   if (inZoomEffect && canvasPxW >= vpRect.width) {
+    // Canvas wider than viewport — clamp tx so left edge is <= 0 and right edge is >= vpW
     tx = Math.min(0, Math.max(vpRect.width - canvasPxW, tx));
   }
   if (inZoomEffect && canvasPxH >= vpRect.height) {
@@ -6124,6 +6105,10 @@ function tick() {
     rebuildCanvas();
   } else if (active) {
     // Same segment: just sync video time (if any) and check overlays
+    // v3.28b.64: if active segment is a journey slide, re-render its SVG every
+    // frame so the animation (zoom + tick glow) actually plays. The static
+    // overlay refresh below doesn't touch slide content.
+    if (active.kind === 'slide-journey') refreshJourneySlideIfActive(active);
     if (_activeVideoElement && _activeVideoElement.paused && view.isPlaying && !_activeVideoElement._playPending) {
       // v3.28b.58: capture element locally so .then()/.catch() don't reference null after segment change
       const ve = _activeVideoElement;
@@ -6157,6 +6142,25 @@ function tick() {
   // segment-change boundaries and stays frozen otherwise.
   applyCanvasTransform();
   _playbackHandle = requestAnimationFrame(tick);
+}
+
+// v3.28b.64: re-render journey slide SVG with current timeline position.
+// Called per-frame during playback AND on scrub events, so the user sees the
+// camera zoom + tick-mark glow animation play out in the editor canvas exactly
+// as it will in the rendered MP4. Surgical: replaces only the slide's <svg>
+// element, leaves video/audio/overlay state alone.
+function refreshJourneySlideIfActive(active) {
+  if (!active || active.kind !== 'slide-journey') return;
+  const inner = $('stageInner');
+  if (!inner) return;
+  // Slide SVGs are wrapped in <div class="canvas-slide-svg" data-seg-id="...">
+  const slideEl = inner.querySelector('.canvas-slide-svg[data-seg-id="' + active.id + '"]');
+  if (!slideEl) return;
+  try {
+    slideEl.innerHTML = renderJourneySVG(active);
+  } catch (e) {
+    // Defensive: any error here shouldn't kill playback
+  }
 }
 
 // Lightweight overlay update — show/hide callouts, spotlights, zooms based on time
@@ -7892,6 +7896,12 @@ function setupRuler() {
         try {
           _activeVideoElement.currentTime = Math.max(0, Math.min(sourceT, _activeVideoElement.duration || 0));
         } catch(err) {}
+      }
+      // v3.28b.64: journey slides — re-render with new cursor time so animation
+      // (zoom + tick glow) reflects scrub position
+      if (activeSeg && activeSeg.kind === 'slide-journey') {
+        refreshJourneySlideIfActive(activeSeg);
+        applyCanvasTransform();
       }
     };
     const onMove = (ev) => {
