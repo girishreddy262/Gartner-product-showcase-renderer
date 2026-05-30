@@ -5734,6 +5734,7 @@ function rebuildCanvas() {
     el.style.left = c.x + 'px';
     el.style.top = c.y + 'px';
     el.style.width = (c.width || CALLOUT_W) + 'px';
+    el.style.zIndex = String(c.zIndex != null ? c.zIndex : 28);  // v3.28b.74: above shapes
     el.textContent = c.text || 'Callout';
     el.dataset.id = c.id;
     el.addEventListener('mousedown', (e) => onCanvasElementMouseDown(e, c, 'callout'));
@@ -5750,6 +5751,8 @@ function rebuildCanvas() {
     el.style.fontWeight = t.fontWeight || 700;
     if (t.italic) el.style.fontStyle = 'italic';
     el.style.color = t.color || '#FFFFFF';
+    // v3.28b.74: text sits ABOVE shapes/cards
+    el.style.zIndex = String(t.zIndex != null ? t.zIndex : 30);
     el.textContent = t.text || 'Text';
     el.dataset.id = t.id;
     el.addEventListener('mousedown', (e) => onCanvasElementMouseDown(e, t, 'textOverlay'));
@@ -5776,6 +5779,7 @@ function rebuildCanvas() {
     el.style.filter = 'drop-shadow(8px 8px 0 rgba(1, 131, 255, 0.3))';
     el.style.fontFamily = 'Satoshi, sans-serif';
     el.style.boxSizing = 'border-box';
+    el.style.zIndex = String(c.zIndex != null ? c.zIndex : 26);  // v3.28b.74: above shapes
 
     // Resolve logo (prefer customerLogoId, fall back to legacy logoUrl)
     let logoUrl = null;
@@ -5838,6 +5842,9 @@ function rebuildCanvas() {
     wrapper.style.height = s.height + 'px';
     wrapper.style.cursor = 'move';
     wrapper.style.opacity = String(s.opacity != null ? s.opacity : 1);
+    // v3.28b.74: shapes are background decoration — keep them BELOW text/callouts/cards.
+    // (DOM append order put shapes last, which made them cover text.)
+    wrapper.style.zIndex = String(s.zIndex != null ? s.zIndex : 10);
     wrapper.dataset.id = s.id;
     // Build SVG
     const fillVal = s.fillEnabled ? s.fill : 'none';
@@ -10446,6 +10453,83 @@ function _aiParseKeyword(msg) {
   return null;
 }
 
+// ─── v3.28b.73: MULTI-COMMAND splitter ───
+// Lets the user chain several edits in ONE message, e.g.:
+//   /journey 3:05 alice, sam, mahesh /animate 2 /callout 3:20 "text" /customer hdfc at 4:30 add a zoom at 3:40
+// Strategy (most reliable): split on "/" boundaries first. Any leading chunk
+// with no slash is treated as one plain-language command. Commas INSIDE a
+// chunk stay as args (journey names) because we split on command boundaries,
+// not commas. An embedded "animate N" inside a /journey chunk is peeled off
+// into its own command.
+const _AI_CMD_WORDS = ['journey','animate','callout','card','customer','text','shape','zoom',
+  'spotlight','slide','intro','focus','keygoals','audio','rename','set','update','delete','del','seek','goto','gaps','help'];
+
+function _aiSplitCommands(msg) {
+  const text = msg.trim();
+  let chunks = [];
+
+  if (text.includes('/')) {
+    // Split on every "/" that begins a command word.
+    const parts = text.split(/(?=\/)/g);  // lookahead keeps the "/"
+    for (let part of parts) {
+      part = part.trim().replace(/[.;]+$/, '');  // drop trailing . or ;
+      if (!part) continue;
+      // peel embedded "animate N" out of a journey chunk
+      if (/^\/journey/i.test(part)) {
+        const am = part.match(/[, ]+animate\s+(\d+)/i);
+        if (am) {
+          part = part.replace(/[, ]+animate\s+\d+/i, '').replace(/,\s*$/, '').trim();
+          chunks.push(part);
+          chunks.push('/animate ' + am[1]);
+          continue;
+        }
+      }
+      chunks.push(part);
+    }
+    // peel a trailing plain-language command off the LAST chunk
+    // e.g. "/customer hdfc at 4:30 add a zoom at 3:40"
+    const last = chunks[chunks.length - 1];
+    if (last) {
+      const m = last.match(/^(.*?)\s+((?:add|insert|then|also)\s+.*(?:zoom|callout|card|customer|text|shape|spotlight|slide|intro|focus|journey|audio).*)$/i);
+      if (m) {
+        chunks[chunks.length - 1] = m[1].trim();
+        chunks.push(m[2].trim());
+      }
+    }
+  } else {
+    // No slashes — split plain language on command keywords + connectors.
+    const kwCount = (text.match(new RegExp('\\b(?:' + _AI_CMD_WORDS.join('|') + ')\\b', 'gi')) || []).length;
+    if (kwCount > 1) {
+      text.split(/[.;]\s+|\s+then\s+|\s+also\s+|,\s*(?=(?:add|insert)\b)/i).forEach(seg => {
+        seg = seg.trim().replace(/[.;,]+$/, '');
+        if (seg) chunks.push(seg);
+      });
+      if (chunks.length <= 1) { chunks = [text]; }
+    } else {
+      chunks = [text];
+    }
+  }
+  return chunks.filter(Boolean);
+}
+
+// Run one command chunk through slash → keyword parsers. Returns results[].
+function _aiRunOneChunk(chunk) {
+  const local = _aiParseLocalCommand(chunk);
+  if (local) {
+    if (local._help) return [{ ok: true, summary: 'Showed help', _help: true }];
+    if (local._err) return [{ ok: false, summary: local._err }];
+    if (local._unknown) return [{ ok: false, summary: `Unknown command "/${local._unknown}"` }];
+    if (local._direct) { try { local._direct(); return [{ ok: true, summary: 'Done' }]; } catch(e) { return [{ ok: false, summary: e.message }]; } }
+    return _aiExecuteActions(local.actions);
+  }
+  const kw = _aiParseKeyword(chunk);
+  if (kw) {
+    if (kw._direct) { try { kw._direct(); return [{ ok: true, summary: 'Done' }]; } catch(e) { return [{ ok: false, summary: e.message }]; } }
+    if (kw.actions && kw.actions.length) return _aiExecuteActions(kw.actions);
+  }
+  return [{ ok: false, summary: `Couldn't understand: "${truncate(chunk, 40)}"` }];
+}
+
 async function _aiSend() {
   if (_aiBusy) return;
   const input = document.getElementById('aiInput');
@@ -10455,7 +10539,26 @@ async function _aiSend() {
   input.style.height = 'auto';
   _aiAppendMessage('user', escapeHtml(msg));
 
-  // v3.28b.69: try local slash-command parser FIRST — no API, instant, offline.
+  // v3.28b.73: detect multiple commands in one message and run them in order.
+  const chunks = _aiSplitCommands(msg);
+  if (chunks.length > 1) {
+    const allResults = [];
+    for (const chunk of chunks) {
+      const res = _aiRunOneChunk(chunk);
+      // skip pure help in multi-mode
+      allResults.push(...res.filter(r => !r._help));
+    }
+    const items = allResults.map(r =>
+      `<li style="color:${r.ok ? '#86EFAC' : '#FCA5A5'}">${r.ok ? '✓' : '✗'} ${escapeHtml(r.summary)}</li>`
+    ).join('');
+    _aiAppendMessage('assistant',
+      `<div style="font-size:11.5px;color:var(--ai-tx2,#a4afbe);margin-bottom:6px;">Ran ${chunks.length} commands:</div>` +
+      `<ul style="margin:0;padding-left:16px;">${items}</ul>`);
+    if (allResults.some(r => r.ok)) { try { scheduleAutoSave && scheduleAutoSave(); } catch(e){} }
+    return;
+  }
+
+  // ── single command (original flow) ──
   const local = _aiParseLocalCommand(msg);
   if (local) {
     if (local._help) { _aiAppendMessage('assistant', _AI_HELP_TEXT); return; }
