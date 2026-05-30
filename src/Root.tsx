@@ -272,7 +272,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               durationInFrames={durFrames}
               name={`Callout: ${c.text?.substring(0, 20)}`}
             >
-              <AbsoluteFill>
+              <AbsoluteFill style={{ zIndex: 28 }}>
                 <CalloutComp callout={c} startFrame={startFrame} durationFrames={durFrames} />
               </AbsoluteFill>
             </Sequence>
@@ -289,7 +289,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               durationInFrames={durFrames}
               name={`Text: ${t.text?.substring(0, 20)}`}
             >
-              <AbsoluteFill>
+              <AbsoluteFill style={{ zIndex: 30 }}>
                 <TextOverlayComp overlay={t} startFrame={startFrame} durationFrames={durFrames} />
               </AbsoluteFill>
             </Sequence>
@@ -306,7 +306,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               durationInFrames={durFrames}
               name={`CustomerCard: ${c.employees || ''}`}
             >
-              <AbsoluteFill>
+              <AbsoluteFill style={{ zIndex: 26 }}>
                 <CustomerCardComp card={c} startFrame={startFrame} durationFrames={durFrames} />
               </AbsoluteFill>
             </Sequence>
@@ -324,7 +324,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               durationInFrames={durFrames}
               name={`Shape: ${s.shapeType}`}
             >
-              <AbsoluteFill>
+              <AbsoluteFill style={{ zIndex: 10 }}>
                 <ShapeComp shape={s} />
               </AbsoluteFill>
             </Sequence>
