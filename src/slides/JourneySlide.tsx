@@ -4,14 +4,13 @@ import { Img } from 'remotion';
 import type { JourneySegment, JourneyRow } from '../types';
 import { tokens } from '../tokens';
 import { getPersonaById } from '../assets';
-import { GlowTick, InactiveTick } from './Icons';
 
 /**
  * Journey slide — pixel-accurate match to the design SVG, WITH camera animation.
  *
  * Canvas: 1920×1080.
  *
- * v3.28b.81: Re-inlined the camera (zoom + pan) animation that was lost in an
+ * v3.28b.82: Re-inlined the camera (zoom + pan) animation that was lost in an
  * earlier commit, causing rendered MP4s to be static. The camera math is a
  * 1:1 port of the editor preview (renderJourneySVG in editor.html), so the MP4
  * matches the timeline preview frame-for-frame.
@@ -356,11 +355,41 @@ const JourneyRowComp: React.FC<{
         <RowSingleAvatar id={ids[0]} y={y} />
       )}
 
-      {/* Tick mark — glow or inactive (glow animates via halo radius/opacity) */}
-      {glow
-        ? <GlowTick cx={TICK_X} cy={y} haloRadius={65 * Math.max(0.001, glowProgress)} />
-        : <InactiveTick cx={TICK_X} cy={y} />
-      }
+      {/* Tick mark — editor-accurate two-layer glow:
+          (1) always-on inactive ring as the base
+          (2) animated glow overlay on top, opacity + scale tied to glowProgress.
+          When glowProgress is 0, only the inactive ring shows — so the glow
+          animates IN per row instead of being statically lit. */}
+      <circle cx={TICK_X} cy={y} r={19.92} fill="#032444" stroke="#7ABEFF" strokeWidth={4} />
+      {glow && glowProgress > 0.001 && (() => {
+        const haloR = 65 * glowProgress;
+        const innerS = 0.6 + 0.4 * glowProgress;
+        const haloId = `halo-${TICK_X}-${y}`.replace(/\./g, '_');
+        return (
+          <g>
+            <defs>
+              <radialGradient id={haloId} cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#7ABEFF" stopOpacity="0.7" />
+                <stop offset="35%" stopColor="#7ABEFF" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#7ABEFF" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+            <circle cx={TICK_X} cy={y} r={haloR} fill={`url(#${haloId})`} />
+            <g
+              transform={`translate(${TICK_X} ${y}) scale(${innerS}) translate(${-TICK_X} ${-y})`}
+              opacity={glowProgress}
+            >
+              <circle cx={TICK_X} cy={y} r={19.92} fill="#0183FF" stroke="#7ABEFF" strokeWidth={4} />
+              <circle cx={TICK_X} cy={y} r={14.39} fill="white" />
+              <path
+                d={`M${TICK_X + 5.78},${y - 3.32} L${TICK_X - 0.86},${y + 3.35} L${TICK_X - 3.87},${y + 0.33}`}
+                stroke="black" strokeWidth={3} fill="none"
+                strokeLinecap="round" strokeLinejoin="round"
+              />
+            </g>
+          </g>
+        );
+      })()}
 
       {/* Description text */}
       {row.description && (
