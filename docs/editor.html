@@ -3596,11 +3596,46 @@ function closeGaps() {
   pushHistory();
   const sorted = [...state.segments].sort((a,b) => (a.startMs||0) - (b.startMs||0));
   let cursor = 0, movedCount = 0;
+
+  // v3.28b.76: when a segment shifts, move everything that lives WITHIN that
+  // segment's time range by the same delta, so audio/callouts/text/cards/effects
+  // stay aligned with their clip. We capture each segment's old range first,
+  // compute its shift, then move overlaps by that shift.
+  const shifts = [];  // { oldStart, oldEnd, delta }
   for (const seg of sorted) {
-    if (Math.abs(seg.startMs - cursor) > 0) { seg.startMs = cursor; movedCount++; }
+    const oldStart = seg.startMs || 0;
+    const oldEnd = oldStart + (seg.durationMs || 0);
+    const newStart = cursor;
+    const delta = newStart - oldStart;
+    if (delta !== 0) { seg.startMs = newStart; movedCount++; }
+    if (delta !== 0) shifts.push({ oldStart, oldEnd, delta });
     cursor += seg.durationMs || 0;
   }
-  if (movedCount > 0) { showToast('Closed ' + movedCount + ' gap' + (movedCount === 1 ? '' : 's')); rebuildAll(); }
+
+  // Apply the shifts to attached overlays/audio. An item "belongs" to a segment
+  // if its start falls within that segment's OLD range. Process in order; each
+  // item moves by the delta of the segment it sat on.
+  function shiftAttached(arr) {
+    if (!arr) return;
+    for (const item of arr) {
+      const s = item.startMs || 0;
+      // find the segment whose old range contains this item's start
+      for (const sh of shifts) {
+        if (s >= sh.oldStart && s < sh.oldEnd) { item.startMs = s + sh.delta; break; }
+      }
+    }
+  }
+  shiftAttached(state.callouts);
+  shiftAttached(state.textOverlays);
+  shiftAttached(state.customerCards);
+  shiftAttached(state.effects);
+  shiftAttached(state.audioPlacements);
+
+  if (movedCount > 0) {
+    showToast('Closed ' + movedCount + ' gap' + (movedCount === 1 ? '' : 's') + ' (audio + overlays moved too)');
+    setupAudioElements();  // re-sync audio element timing
+    rebuildAll();
+  }
   else showToast('No gaps to close');
 }
 
