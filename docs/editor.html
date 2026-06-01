@@ -2514,7 +2514,9 @@ function renderJourneySVG(seg) {
     if (t > seg.durationMs - FADE_OUT_MS) {
       slideOpacity = Math.max(0, (seg.durationMs - t) / FADE_OUT_MS);
     }
-    const minCp = Nrows >= 3 ? 1 : 0;
+    // v3.28b.86: 2 rows must frame like 3+ (focal on row 1, not row 0) so the
+    // top connector line is not pushed down during zoom (was leaving a gap above it).
+    const minCp = Nrows >= 2 ? 1 : 0;
     const maxCp = Nrows >= 3 ? Nrows - 2 : Math.max(0, Nrows - 1);
     // v3.28a.2: camera focal uses animateOrdinal (matches renderer)
     const cpAt = (time) => {
@@ -2600,7 +2602,7 @@ function renderJourneySVG(seg) {
 
   // Header (title + footer card + RRIVE logo) — fades with headerOpacity
   svg += '<g opacity="' + headerOpacity.toFixed(3) + '">';
-  // v3.28b.85: optional uploaded logo/image on the slide (left, free position).
+  // v3.28b.86: optional uploaded logo/image on the slide (left, free position).
   // Inside the header group so it fades out on zoom like the title.
   if (seg.slideImage && seg.slideImage.url) {
     const si = seg.slideImage;
@@ -2656,7 +2658,7 @@ function renderJourneySVG(seg) {
       });
     }
 
-    // v3.28b.85: per-slide toggle to hide persona avatars. When seg.hideAvatars
+    // v3.28b.86: per-slide toggle to hide persona avatars. When seg.hideAvatars
     // is true, skip drawing the avatar circles/images entirely. Names,
     // designations, ticks and descriptions are unaffected.
     if (seg.hideAvatars) {
@@ -3403,7 +3405,7 @@ function addSlideOfType(type, startMs) {
       ],
       highlightUpToRow: 1,
       endJourney: false,
-      slideImage: null, // v3.28b.85: optional {url,x,y,width,height} logo/image on left; fades with header on zoom
+      slideImage: null, // v3.28b.86: optional {url,x,y,width,height} logo/image on left; fades with header on zoom
       footerCard: { enabled: false, label: 'Model 2', body: 'Darwinbox (Complete ESS)\nPartner (Processing)', showRriveLogo: false },
       journeyZoom: { enabled: true }, // v3.28a.2: ignored by renderer (always on), kept for legacy file compat
       textStyles: {},
@@ -4106,11 +4108,11 @@ function renderJourneyEditUI(seg) {
   html += '<div class="form-row"><label class="checkbox-label">';
   html += '<input type="checkbox" id="seg-end-journey"' + (seg.endJourney ? ' checked' : '') + '>';
   html += ' End of journey (no line after last row)</label></div>';
-  // v3.28b.85: Hide persona avatars toggle (some users don't want avatars in journey)
+  // v3.28b.86: Hide persona avatars toggle (some users don't want avatars in journey)
   html += '<div class="form-row"><label class="checkbox-label">';
   html += '<input type="checkbox" id="seg-hide-avatars"' + (seg.hideAvatars ? ' checked' : '') + '>';
   html += ' Hide persona avatars</label></div>';
-  // v3.28b.85: Slide image/logo upload (left, free position, fades on zoom)
+  // v3.28b.86: Slide image/logo upload (left, free position, fades on zoom)
   html += '<div class="align-section">';
   html += '<div class="align-label">Slide image / logo</div>';
   if (seg.slideImage && seg.slideImage.url) {
@@ -4119,7 +4121,7 @@ function renderJourneyEditUI(seg) {
     html += '<img src="' + escapeHtml(si.url) + '" style="width:48px;height:48px;border-radius:6px;object-fit:contain;background:#1a2332;" alt="">';
     html += '<button class="btn-sm" id="seg-slideimg-remove">Remove</button>';
     html += '</div>';
-    // v3.28b.85: sliders for scale + position (easier than typing numbers)
+    // v3.28b.86: sliders for scale + position (easier than typing numbers)
     const curScale = si.scale != null ? si.scale : 100;  // percent
     html += '<div class="form-row" style="flex-direction:column;align-items:stretch;gap:2px;">';
     html += '<label style="font-size:11px;opacity:.7;">Size <span id="seg-slideimg-scale-val">' + curScale + '%</span></label>';
@@ -4754,12 +4756,12 @@ function wireJourneyEditUI(seg) {
   if (ejEl) {
     ejEl.addEventListener('change', (e) => { pushHistory(); seg.endJourney = e.target.checked; rebuildCanvas(); });
   }
-  // v3.28b.85: hide persona avatars toggle
+  // v3.28b.86: hide persona avatars toggle
   const haEl = $('seg-hide-avatars');
   if (haEl) {
     haEl.addEventListener('change', (e) => { pushHistory(); seg.hideAvatars = e.target.checked; rebuildCanvas(); });
   }
-  // v3.28b.85: slide image/logo upload + position
+  // v3.28b.86: slide image/logo upload + position
   const siFile = $('seg-slideimg-file');
   const siUploadBtn = $('seg-slideimg-upload');
   if (siUploadBtn && siFile) {
@@ -4772,7 +4774,7 @@ function wireJourneyEditUI(seg) {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const url = ev.target.result;
-        // v3.28b.85: capture natural dimensions so scale slider keeps aspect ratio.
+        // v3.28b.86: capture natural dimensions so scale slider keeps aspect ratio.
         const probe = new Image();
         probe.onload = () => {
           pushHistory();
@@ -4798,7 +4800,7 @@ function wireJourneyEditUI(seg) {
   if (siRemove) {
     siRemove.addEventListener('click', () => { pushHistory(); seg.slideImage = null; rebuildCanvas(); renderEditPanel(); });
   }
-  // v3.28b.85: scale slider — recompute W/H from base, preserve aspect ratio
+  // v3.28b.86: scale slider — recompute W/H from base, preserve aspect ratio
   const siScale = $('seg-slideimg-scale');
   if (siScale) {
     let _scalePushed = false;
@@ -4816,7 +4818,7 @@ function wireJourneyEditUI(seg) {
     });
     siScale.addEventListener('change', () => { _scalePushed = false; });
   }
-  // v3.28b.85: position sliders (live drag)
+  // v3.28b.86: position sliders (live drag)
   [['x', 'seg-slideimg-x', 'seg-slideimg-x-val'], ['y', 'seg-slideimg-y', 'seg-slideimg-y-val']].forEach(([dim, id, valId]) => {
     const el = $(id);
     if (!el) return;
@@ -5775,7 +5777,7 @@ function onBlockMouseDown(e, item, kind) {
     }
   } else {
     movers = [{ obj: item, startMs0: item.startMs || 0 }];
-    // v3.28b.85: if dragging a SEGMENT, carry everything attached to it (audio,
+    // v3.28b.86: if dragging a SEGMENT, carry everything attached to it (audio,
     // callouts, text, cards, effects, shapes whose start falls within the
     // segment's time range) so the whole composition shifts together.
     if (kind === 'segment') {
@@ -9459,7 +9461,7 @@ function swapSelectedWithNeighbor(direction) {
 }
 
 // v3.28b.16: Fine-nudge selected segment by ±100ms (Shift+arrow).
-// v3.28b.85: also carries attachments (audio/callouts/text/cards/effects/shapes
+// v3.28b.86: also carries attachments (audio/callouts/text/cards/effects/shapes
 // within the segment's time range), matching the mouse-drag behavior.
 function nudgeSelectedSegment(deltaMs) {
   if (view.selectedKind !== 'segment') return;
