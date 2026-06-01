@@ -2600,6 +2600,12 @@ function renderJourneySVG(seg) {
 
   // Header (title + footer card + RRIVE logo) — fades with headerOpacity
   svg += '<g opacity="' + headerOpacity.toFixed(3) + '">';
+  // v3.28b.84: optional uploaded logo/image on the slide (left, free position).
+  // Inside the header group so it fades out on zoom like the title.
+  if (seg.slideImage && seg.slideImage.url) {
+    const si = seg.slideImage;
+    svg += '<image x="' + (si.x || 100) + '" y="' + (si.y || 600) + '" width="' + (si.width || 300) + '" height="' + (si.height || 120) + '" href="' + svgEsc(si.url) + '" preserveAspectRatio="xMidYMid meet"/>';
+  }
   titleLines.forEach((line, i) => {
     svg += '<text x="100" y="' + (titleStartY + i * titleLH) + '" fill="white" font-family="Satoshi" font-size="64" font-weight="700">' + svgEsc(line) + '</text>';
   });
@@ -2650,7 +2656,7 @@ function renderJourneySVG(seg) {
       });
     }
 
-    // v3.28b.80: per-slide toggle to hide persona avatars. When seg.hideAvatars
+    // v3.28b.84: per-slide toggle to hide persona avatars. When seg.hideAvatars
     // is true, skip drawing the avatar circles/images entirely. Names,
     // designations, ticks and descriptions are unaffected.
     if (seg.hideAvatars) {
@@ -3397,6 +3403,7 @@ function addSlideOfType(type, startMs) {
       ],
       highlightUpToRow: 1,
       endJourney: false,
+      slideImage: null, // v3.28b.84: optional {url,x,y,width,height} logo/image on left; fades with header on zoom
       footerCard: { enabled: false, label: 'Model 2', body: 'Darwinbox (Complete ESS)\nPartner (Processing)', showRriveLogo: false },
       journeyZoom: { enabled: true }, // v3.28a.2: ignored by renderer (always on), kept for legacy file compat
       textStyles: {},
@@ -4099,10 +4106,27 @@ function renderJourneyEditUI(seg) {
   html += '<div class="form-row"><label class="checkbox-label">';
   html += '<input type="checkbox" id="seg-end-journey"' + (seg.endJourney ? ' checked' : '') + '>';
   html += ' End of journey (no line after last row)</label></div>';
-  // v3.28b.80: Hide persona avatars toggle (some users don't want avatars in journey)
+  // v3.28b.84: Hide persona avatars toggle (some users don't want avatars in journey)
   html += '<div class="form-row"><label class="checkbox-label">';
   html += '<input type="checkbox" id="seg-hide-avatars"' + (seg.hideAvatars ? ' checked' : '') + '>';
   html += ' Hide persona avatars</label></div>';
+  // v3.28b.84: Slide image/logo upload (left, free position, fades on zoom)
+  html += '<div class="align-section">';
+  html += '<div class="align-label">Slide image / logo</div>';
+  if (seg.slideImage && seg.slideImage.url) {
+    html += '<div class="form-row" style="align-items:center;gap:8px;">';
+    html += '<img src="' + escapeHtml(seg.slideImage.url) + '" style="width:48px;height:48px;border-radius:6px;object-fit:contain;background:#1a2332;" alt="">';
+    html += '<button class="btn-sm" id="seg-slideimg-remove">Remove</button>';
+    html += '</div>';
+    html += '<div class="form-row"><label style="font-size:11px;opacity:.7;">X</label><input type="number" id="seg-slideimg-x" value="' + (seg.slideImage.x || 100) + '" style="width:64px;">';
+    html += '<label style="font-size:11px;opacity:.7;">Y</label><input type="number" id="seg-slideimg-y" value="' + (seg.slideImage.y || 600) + '" style="width:64px;">';
+    html += '<label style="font-size:11px;opacity:.7;">W</label><input type="number" id="seg-slideimg-w" value="' + (seg.slideImage.width || 300) + '" style="width:64px;">';
+    html += '<label style="font-size:11px;opacity:.7;">H</label><input type="number" id="seg-slideimg-h" value="' + (seg.slideImage.height || 120) + '" style="width:64px;"></div>';
+  } else {
+    html += '<div class="form-row"><button class="btn-sm" id="seg-slideimg-upload">Upload image</button></div>';
+  }
+  html += '<input type="file" id="seg-slideimg-file" accept="image/*" style="display:none;">';
+  html += '</div>';
   // Footer card toggle (note card under title)
   const fc = seg.footerCard || {};
   html += '<div class="align-section">';
@@ -4719,11 +4743,50 @@ function wireJourneyEditUI(seg) {
   if (ejEl) {
     ejEl.addEventListener('change', (e) => { pushHistory(); seg.endJourney = e.target.checked; rebuildCanvas(); });
   }
-  // v3.28b.80: hide persona avatars toggle
+  // v3.28b.84: hide persona avatars toggle
   const haEl = $('seg-hide-avatars');
   if (haEl) {
     haEl.addEventListener('change', (e) => { pushHistory(); seg.hideAvatars = e.target.checked; rebuildCanvas(); });
   }
+  // v3.28b.84: slide image/logo upload + position
+  const siFile = $('seg-slideimg-file');
+  const siUploadBtn = $('seg-slideimg-upload');
+  if (siUploadBtn && siFile) {
+    siUploadBtn.addEventListener('click', () => siFile.click());
+  }
+  if (siFile) {
+    siFile.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        pushHistory();
+        seg.slideImage = { url: ev.target.result, x: 100, y: 600, width: 300, height: 120 };
+        rebuildCanvas();
+        renderEditPanel();
+      };
+      reader.readAsDataURL(f);
+    });
+  }
+  const siRemove = $('seg-slideimg-remove');
+  if (siRemove) {
+    siRemove.addEventListener('click', () => { pushHistory(); seg.slideImage = null; rebuildCanvas(); renderEditPanel(); });
+  }
+  ['x','y','w','h'].forEach((dim) => {
+    const el = $('seg-slideimg-' + dim);
+    if (el) {
+      el.addEventListener('change', (e) => {
+        if (!seg.slideImage) return;
+        pushHistory();
+        const v = parseInt(e.target.value, 10) || 0;
+        if (dim === 'x') seg.slideImage.x = v;
+        else if (dim === 'y') seg.slideImage.y = v;
+        else if (dim === 'w') seg.slideImage.width = v;
+        else if (dim === 'h') seg.slideImage.height = v;
+        rebuildCanvas();
+      });
+    }
+  });
   // v3.28b.40: "Start already zoomed in" toggle
   const azEl = $('seg-journey-already-zoomed');
   if (azEl) {
@@ -5668,6 +5731,27 @@ function onBlockMouseDown(e, item, kind) {
     }
   } else {
     movers = [{ obj: item, startMs0: item.startMs || 0 }];
+    // v3.28b.84: if dragging a SEGMENT, carry everything attached to it (audio,
+    // callouts, text, cards, effects, shapes whose start falls within the
+    // segment's time range) so the whole composition shifts together.
+    if (kind === 'segment') {
+      const segStart = item.startMs || 0;
+      const segEnd = segStart + (item.durationMs || 0);
+      const attach = (arr) => {
+        if (!arr) return;
+        for (const it of arr) {
+          if (it.id === item.id) continue;
+          const s = it.startMs || 0;
+          if (s >= segStart && s < segEnd) movers.push({ obj: it, startMs0: s });
+        }
+      };
+      attach(state.callouts);
+      attach(state.textOverlays);
+      attach(state.customerCards);
+      attach(state.effects);
+      attach(state.audioPlacements);
+      attach(state.shapes);
+    }
   }
 
   const onMove = (ev) => {
@@ -5685,7 +5769,7 @@ function onBlockMouseDown(e, item, kind) {
   const onUp = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
-    if (dragged) renderEditPanel();
+    if (dragged) { setupAudioElements(); renderEditPanel(); }
   };
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
@@ -9330,14 +9414,37 @@ function swapSelectedWithNeighbor(direction) {
   rebuildCanvas();
 }
 
-// v3.28b.16: Fine-nudge selected segment by ±100ms (Shift+arrow). Recording only.
+// v3.28b.16: Fine-nudge selected segment by ±100ms (Shift+arrow).
+// v3.28b.84: also carries attachments (audio/callouts/text/cards/effects/shapes
+// within the segment's time range), matching the mouse-drag behavior.
 function nudgeSelectedSegment(deltaMs) {
   if (view.selectedKind !== 'segment') return;
   const sel = state.segments.find(s => s.id === view.selectedId);
   if (!sel) return;
   pushHistory();
-  sel.startMs = Math.max(0, sel.startMs + deltaMs);
+  const segStart = sel.startMs || 0;
+  const segEnd = segStart + (sel.durationMs || 0);
+  // clamp so the segment can't go below 0 (and attachments move by the same delta)
+  let d = deltaMs;
+  if (segStart + d < 0) d = -segStart;
+  const shiftIn = (arr) => {
+    if (!arr) return;
+    for (const it of arr) {
+      if (it.id === sel.id) continue;
+      const s = it.startMs || 0;
+      if (s >= segStart && s < segEnd) it.startMs = Math.max(0, s + d);
+    }
+  };
+  shiftIn(state.callouts);
+  shiftIn(state.textOverlays);
+  shiftIn(state.customerCards);
+  shiftIn(state.effects);
+  shiftIn(state.audioPlacements);
+  shiftIn(state.shapes);
+  sel.startMs = Math.max(0, segStart + d);
+  setupAudioElements();
   rebuildTimeline();
+  rebuildCanvas();
 }
 
 // v3.28b.17: Nudge every item in the multi-select by ±deltaMs.
