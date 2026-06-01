@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Showcase Studio — Script Editor (Beta)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-0:#0a0d12; --bg-1:#0f131a; --bg-2:#161b24; --bg-3:#1d242f; --bg-4:#28313e;
+  --line:#28313e; --line-soft:#1b2129;
+  --tx-1:#f3f6fb; --tx-2:#a4afbe; --tx-3:#697585; --tx-4:#48515e;
+  --ac:#0B6FFF; --ac-bright:#3D8BFF; --ac-deep:#0052CC;
+  --ac-glow:rgba(11,111,255,.18); --ac-line:rgba(11,111,255,.36);
+  --ai:#7B61FF; --ai-bright:#9D8AFF; --ai-deep:#5B3FE8; --ai-glow:rgba(123,97,255,.18); --ai-line:rgba(123,97,255,.36);
+  --sync:#33B6FF; --sync-bg:rgba(51,182,255,.14); --sync-line:rgba(51,182,255,.42);
+  --ok:#22C55E; --magnet:#22C55E; --magnet-glow:rgba(34,197,94,.22);
+  --warn:#FFC93D; --warn-bg:rgba(255,201,61,.10); --warn-line:rgba(255,201,61,.45);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:var(--bg-0);color:var(--tx-1);font-family:'Geist',-apple-system,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
+.mono{font-family:'JetBrains Mono',monospace}
+body::before{content:'';position:fixed;top:-30%;left:50%;transform:translateX(-50%);width:900px;height:600px;border-radius:50%;background:radial-gradient(ellipse at center,rgba(11,111,255,.12),transparent 65%);filter:blur(40px);pointer-events:none;z-index:0}
+.app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+.workspace{flex:1;display:flex;min-height:0;position:relative}
+button{font-family:inherit;cursor:pointer}
+
+/* TOP BAR */
+.top{flex:0 0 52px;display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(22,27,36,.7),rgba(15,19,26,.7));backdrop-filter:blur(12px);position:relative;z-index:3}
+.brand{display:flex;align-items:center;gap:9px;padding-right:14px;border-right:1px solid var(--line);height:30px}
+.bmark{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:linear-gradient(135deg,var(--ac),var(--ac-deep));box-shadow:0 2px 8px var(--ac-glow),inset 0 1px 0 rgba(255,255,255,.25)}
+.bmark svg{width:14px;height:14px}
+.bname{font-weight:600;font-size:13px}
+.bsub{font-size:10px;color:var(--tx-3);font-weight:500;letter-spacing:.05em;text-transform:uppercase}
+.proj{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 12px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);font-size:12px;font-weight:500}
+.proj:hover{background:var(--bg-3)}
+.proj .chev{color:var(--tx-3);width:12px;height:12px;margin-left:2px}
+.spc{flex:1}
+.save{display:flex;align-items:center;gap:6px;color:var(--tx-3);font-size:12px}
+.sd{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px rgba(34,197,94,.5)}
+.sd.dirty{background:var(--warn);box-shadow:0 0 6px rgba(255,201,61,.5)}
+.btn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--tx-1);font-size:12.5px;font-weight:500}
+.btn svg{width:14px;height:14px}
+.btn:hover{background:var(--bg-3)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:linear-gradient(135deg,var(--ac),var(--ac-deep));border-color:var(--ac-deep);color:#fff;font-weight:600;box-shadow:0 2px 10px var(--ac-glow),inset 0 1px 0 rgba(255,255,255,.18)}
+.btn.primary:hover{filter:brightness(1.08)}
+.ibtn{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--tx-2)}
+.ibtn svg{width:15px;height:15px}
+.ibtn:hover{background:var(--bg-3);color:var(--tx-1)}
+.ibtn:disabled{opacity:.35;cursor:not-allowed}
+
+/* LEFT RAIL */
+.rail{flex:0 0 232px;border-right:1px solid var(--line);background:var(--bg-1);display:flex;flex-direction:column;min-height:0}
+.rail-head{padding:12px 14px 8px;display:flex;align-items:center;justify-content:space-between}
+.r-title{font-size:10.5px;font-weight:600;color:var(--tx-3);letter-spacing:.06em;text-transform:uppercase}
+.r-tabs{display:flex;gap:3px;padding:0 11px 10px;border-bottom:1px solid var(--line-soft)}
+.r-tab{flex:1;text-align:center;padding:6px;border-radius:6px;font-size:11.5px;font-weight:500;color:var(--tx-3)}
+.r-tab.on{background:var(--bg-3);color:var(--tx-1)}
+.r-scroll{flex:1;overflow-y:auto;padding:11px}
+.uz{border:1.5px dashed var(--line);border-radius:9px;padding:16px 11px;text-align:center;color:var(--tx-3);margin-bottom:12px}
+.uz:hover{border-color:var(--ac-line);background:var(--ac-glow);color:var(--tx-2)}
+.uz.drag{border-color:var(--ac);background:var(--ac-glow);color:var(--tx-1)}
+.uz svg{width:20px;height:20px;opacity:.7;margin-bottom:6px}
+.uz .big{display:block;font-size:11.5px;font-weight:500;color:var(--tx-2);margin-bottom:2px}
+.uz .small{font-size:10.5px}
+.mg{font-size:10px;font-weight:600;color:var(--tx-4);letter-spacing:.05em;text-transform:uppercase;margin:6px 2px 7px}
+.m-item{display:flex;align-items:center;gap:9px;padding:7px;border-radius:6px;cursor:grab;margin-bottom:2px}
+.m-item:hover{background:var(--bg-2)}
+.m-item.sel{background:var(--bg-3);box-shadow:inset 0 0 0 1px var(--ac-line)}
+.m-thumb{width:42px;height:26px;border-radius:4px;background:linear-gradient(135deg,#1c2430,#13181f);border:1px solid var(--line);display:grid;place-items:center;position:relative;overflow:hidden;flex:0 0 auto}
+.m-thumb.vid::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(11,111,255,.18),rgba(51,182,255,.12))}
+.m-thumb svg{width:12px;height:12px;color:var(--tx-2);position:relative;z-index:1}
+.m-meta{min-width:0;flex:1}
+.m-nm{font-size:11.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-dur{font-size:10px;color:var(--tx-3)}
+.empty-hint{color:var(--tx-4);font-size:11px;text-align:center;padding:10px 6px;font-style:italic}
+
+/* CENTER STAGE */
+.stage{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg-0)}
+.canvas-area{flex:1;display:flex;align-items:center;justify-content:center;padding:22px;min-height:0;position:relative}
+.canvas{position:relative;width:100%;max-width:780px;aspect-ratio:16/9;border-radius:11px;background:#000;border:1px solid var(--line);box-shadow:0 16px 40px rgba(0,0,0,.5);overflow:hidden}
+.c-bg{position:absolute;inset:0;background:radial-gradient(120% 120% at 30% 20%,#162338,#0b1018 60%)}
+.c-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none}
+.c-video.show{display:block}
+.c-grid{position:absolute;inset:0;opacity:.4;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:34px 34px}
+.c-badge{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:6px;background:rgba(10,13,18,.72);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--tx-2);backdrop-filter:blur(8px);z-index:5}
+.c-badge .d{width:6px;height:6px;border-radius:50%;background:var(--ac);box-shadow:0 0 6px var(--ac)}
+.c-res{position:absolute;top:12px;right:12px;font-family:'JetBrains Mono';font-size:10px;color:var(--tx-3);background:rgba(10,13,18,.72);border:1px solid var(--line);padding:3px 7px;border-radius:5px;z-index:5}
+.c-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62%;background:rgba(15,19,26,.88);border:1px solid var(--ac-line);border-radius:10px;padding:16px 18px;backdrop-filter:blur(6px);box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:4;transition:opacity .2s}
+.c-card .k{font-size:10px;color:var(--ac-bright);font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.c-card .v{font-size:15px;font-weight:600;color:#eef;line-height:1.35}
+.c-sync{position:absolute;width:26px;height:26px;border-radius:50%;border:2px solid var(--sync);display:grid;place-items:center;background:var(--sync-bg);backdrop-filter:blur(4px);box-shadow:0 0 0 3px rgba(51,182,255,.12),0 0 14px rgba(51,182,255,.38);z-index:6;transition:transform .15s}
+.c-sync.fired{transform:scale(1.25);box-shadow:0 0 0 5px rgba(51,182,255,.18),0 0 20px rgba(51,182,255,.6)}
+.c-sync .n{font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#cfe6ff}
+.c-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--tx-3);gap:10px;z-index:3}
+.c-empty svg{width:34px;height:34px;opacity:.5}
+.c-empty .t{font-size:13px}
+
+/* ============ TIMELINE ============ */
+.timeline{flex:0 0 254px;border-top:1px solid var(--line);background:var(--bg-1);display:flex;flex-direction:column;width:100%}
+.tl-head{flex:0 0 46px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line-soft);overflow:hidden}
+.tl-controls{display:flex;align-items:center;gap:4px;flex:0 0 auto}
+.tnsp{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;background:transparent;color:var(--tx-2);border:none}
+.tnsp:hover{background:var(--bg-3);color:var(--tx-1)}
+.tnsp svg{width:13px;height:13px}
+.tnsp.play{width:32px;height:32px;background:linear-gradient(135deg,var(--ac),var(--ac-deep));color:#fff;box-shadow:0 1px 8px var(--ac-glow);border-radius:8px}
+.tl-time{font-family:'JetBrains Mono';font-size:12px;color:var(--tx-2);margin:0 8px;font-variant-numeric:tabular-nums;flex:0 0 auto}
+.tl-time .cur{color:var(--tx-1);font-weight:500}
+.tdiv{width:1px;height:20px;background:var(--line);flex:0 0 auto;margin:0 4px}
+.tb-grp{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+.tb{width:30px;height:30px;display:grid;place-items:center;border-radius:7px;background:transparent;border:1px solid transparent;color:var(--tx-2);position:relative}
+.tb svg{width:14px;height:14px}
+.tb:hover{background:var(--bg-3);color:var(--tx-1)}
+.tb.on{background:var(--bg-3);color:var(--ac-bright);border-color:var(--ac-line)}
+.tb.on::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);width:14px;height:2px;background:var(--ac);border-radius:1px}
+.tb.magnet.on{color:var(--magnet);border-color:rgba(34,197,94,.42);background:var(--magnet-glow)}
+.tb.magnet.on::after{background:var(--magnet)}
+.tb:disabled{opacity:.35}
+.tb[data-kbd]:hover::before{content:attr(data-kbd);position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono';font-size:9.5px;color:var(--tx-3);background:var(--bg-4);border:1px solid var(--line);padding:1px 5px;border-radius:4px;white-space:nowrap;z-index:5}
+.cg-grp{display:flex;align-items:stretch;background:var(--bg-2);border:1px solid var(--line);border-radius:7px;overflow:hidden;height:30px;flex:0 0 auto}
+.cg-btn{display:flex;align-items:center;gap:6px;padding:0 10px;color:var(--tx-2);font-size:11.5px;font-weight:500}
+.cg-btn:hover{background:var(--bg-3);color:var(--tx-1)}
+.cg-btn svg{width:13px;height:13px}
+.cg-chev{padding:0 6px;display:grid;place-items:center;color:var(--tx-3);border-left:1px solid var(--line)}
+.cg-chev:hover{background:var(--bg-3);color:var(--tx-1)}
+.cg-chev svg{width:11px;height:11px}
+.tl-spc{flex:1}
+.tl-zoom{display:flex;align-items:center;gap:7px;color:var(--tx-3);font-size:11px;flex:0 0 auto}
+.tl-zoom-bar{width:84px;height:4px;background:var(--bg-3);border-radius:2px;position:relative;cursor:pointer}
+.tl-zoom-fill{position:absolute;left:0;top:0;bottom:0;width:45%;background:var(--tx-2);border-radius:2px}
+.tl-zoom-knob{position:absolute;top:50%;left:45%;transform:translate(-50%,-50%);width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+
+.tl-tracks{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.ruler{flex:0 0 24px;background:var(--bg-2);border-bottom:1px solid var(--line-soft);position:relative;font-family:'JetBrains Mono';font-size:10px;color:var(--tx-3);overflow:hidden;cursor:pointer}
+.tick{position:absolute;top:6px;font-variant-numeric:tabular-nums}
+.tick::before{content:'';position:absolute;left:0;top:-6px;width:1px;height:5px;background:var(--line)}
+.trk{flex:1;display:flex;border-bottom:1px solid var(--line-soft);position:relative;min-height:0}
+.trk-lbl{flex:0 0 96px;display:flex;align-items:center;padding:0 12px;background:var(--bg-2);border-right:1px solid var(--line-soft);font-size:11px;color:var(--tx-2);font-weight:500;justify-content:space-between;gap:4px}
+.trk-lbl .nm{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.trk-lbl svg.ic{width:12px;height:12px;color:var(--tx-3);flex:0 0 auto}
+.trk-lbl .plus{width:18px;height:18px;display:grid;place-items:center;border-radius:5px;color:var(--tx-3);flex:0 0 auto}
+.trk-lbl .plus:hover{background:var(--bg-3);color:var(--ac-bright)}
+.trk-lbl .plus svg{width:11px;height:11px}
+.trk-body{flex:1;position:relative;padding:5px 0;overflow:hidden}
+
+.clip{position:absolute;top:5px;bottom:5px;border-radius:5px;display:flex;align-items:center;padding:0 10px;font-size:10.5px;font-weight:600;overflow:hidden;cursor:pointer;user-select:none}
+.clip:hover{filter:brightness(1.12)}
+.clip.selected{box-shadow:0 0 0 2px var(--ac),0 4px 14px rgba(11,111,255,.32);z-index:2}
+.clip.aud{background:linear-gradient(90deg,rgba(123,97,255,.30),rgba(123,97,255,.10));border:1px solid var(--ai-line);color:var(--ai-bright)}
+.clip.aud::after{content:'';position:absolute;inset:6px 10px;background-image:repeating-linear-gradient(90deg,rgba(157,138,255,.45) 0 1.5px,transparent 1.5px 4px);mask-image:linear-gradient(180deg,transparent 0%,#000 30%,#000 70%,transparent 100%);pointer-events:none}
+.clip.vid{background:linear-gradient(90deg,rgba(51,182,255,.30),rgba(51,182,255,.12));border:1px solid var(--sync-line);color:#bfe0ff;padding:0}
+.vid-thumbs{display:flex;height:100%;width:100%}
+.vid-thumb{flex:1;border-right:1px solid rgba(0,0,0,.4);background:linear-gradient(135deg,#1a2738,#10161f);position:relative}
+.vid-thumb:last-child{border-right:none}
+.vid-thumb::after{content:'';position:absolute;inset:3px;background:repeating-linear-gradient(45deg,rgba(255,255,255,.05) 0 4px,transparent 4px 8px);border-radius:2px}
+.vid-lbl{position:absolute;left:8px;top:5px;font-size:9.5px;color:#bfe0ff;font-weight:600;z-index:1;pointer-events:none}
+.clip.eff{background:rgba(123,97,255,.18);border:1px solid var(--ai-line);color:var(--ai-bright)}
+.clip.cal{background:rgba(34,197,94,.18);border:1px solid rgba(34,197,94,.38);color:#7eecae}
+.gap{position:absolute;top:9px;bottom:9px;border:1px dashed var(--warn-line);background:var(--warn-bg);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--warn);font-family:'JetBrains Mono';font-size:9.5px;font-weight:600}
+.gap:hover{background:rgba(255,201,61,.18);border-color:var(--warn)}
+.gap-ic{width:12px;height:12px;margin-right:5px}
+.sp-tick{position:absolute;top:0;bottom:0;width:2px;background:var(--sync);box-shadow:0 0 8px var(--sync);z-index:3;pointer-events:none}
+.sp-tick::before{content:'';position:absolute;top:-3px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--sync)}
+.ph{position:absolute;top:0;bottom:0;width:1.5px;background:var(--tx-1);z-index:4;box-shadow:0 0 8px rgba(255,255,255,.5);pointer-events:none;left:0}
+.ph::before{content:'';position:absolute;top:-4px;left:-4px;width:9px;height:9px;border-radius:2px;background:var(--tx-1);transform:rotate(45deg)}
+
+/* RIGHT PANEL */
+.right{flex:0 0 360px;border-left:1px solid var(--line);background:var(--bg-1);display:flex;flex-direction:column;min-height:0}
+.r-tabstrip{flex:0 0 38px;display:flex;align-items:center;padding:0 6px;border-bottom:1px solid var(--line);gap:1px}
+.r-tabb{display:flex;align-items:center;gap:6px;padding:9px 12px 8px;font-size:12px;color:var(--tx-3);border-bottom:2px solid transparent;font-weight:500;margin-bottom:-1px}
+.r-tabb svg{width:13px;height:13px}
+.r-tabb:hover{color:var(--tx-1)}
+.r-tabb.on{color:var(--tx-1);border-bottom-color:var(--ai)}
+.r-tabb.on svg{color:var(--ai-bright)}
+.r-tabb .new{font-size:9px;font-weight:700;letter-spacing:.05em;color:#0a0d12;background:linear-gradient(135deg,var(--ai-bright),var(--ai));padding:1px 5px;border-radius:4px;margin-left:1px}
+.tabpane{flex:1;display:none;flex-direction:column;min-height:0}
+.tabpane.on{display:flex}
+
+/* Script pane */
+.s-head{padding:11px 13px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:9px;flex:0 0 auto}
+.s-trow{display:flex;align-items:center;justify-content:space-between}
+.s-title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600}
+.s-title svg{width:14px;height:14px;color:var(--ai-bright)}
+.search{display:flex;align-items:center;gap:8px;height:34px;padding:0 11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--tx-3)}
+.search svg{width:14px;height:14px}
+.search input{flex:1;background:none;border:none;outline:none;color:var(--tx-1);font-family:inherit;font-size:12.5px}
+.search input::placeholder{color:var(--tx-3)}
+.blocks{flex:1;overflow-y:auto;padding:9px 11px 4px}
+.block{position:relative;margin-bottom:5px;border-radius:12px}
+.bin{background:var(--bg-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px 12px}
+.block.active .bin{border-color:var(--ai-line);box-shadow:0 0 0 1px var(--ai-line),0 4px 14px rgba(0,0,0,.4)}
+.bhd{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bnum{display:flex;align-items:center;gap:5px;background:var(--bg-3);border:1px solid var(--line);border-radius:6px;padding:2px 7px 2px 6px;font-size:11px}
+.bnum .n{font-family:'JetBrains Mono';font-weight:600;color:var(--tx-3)}
+.bnum select{background:none;border:none;color:var(--tx-2);font-family:inherit;font-size:11px;font-weight:500;outline:none}
+.bnum select option{background:var(--bg-3)}
+.voice{display:flex;align-items:center;gap:6px;background:var(--bg-3);border:1px solid var(--line);border-radius:6px;padding:2px 6px 2px 6px}
+.voice:hover{border-color:var(--ai-line)}
+.voice-ic{width:13px;height:13px;display:grid;place-items:center;color:var(--ai-bright)}
+.voice-ic svg{width:12px;height:12px}
+.voice select{background:none;border:none;color:var(--tx-1);font-size:10px;font-weight:600;letter-spacing:.04em;outline:none}
+.voice select option{background:var(--bg-3);letter-spacing:0}
+.bwave{width:24px;height:22px;display:grid;place-items:center;border-radius:5px;border:1px solid var(--line);background:var(--bg-3);color:var(--tx-2)}
+.bwave:hover{color:var(--ai-bright);border-color:var(--ai-line)}
+.bwave svg{width:12px;height:12px}
+.bwave.gen{color:var(--ai-bright);border-color:var(--ai-line)}
+.bsp{flex:1}
+.bact{display:flex;gap:3px;opacity:0;transition:.15s}
+.block:hover .bact,.block.active .bact{opacity:1}
+.bact .ib{width:22px;height:22px;display:grid;place-items:center;border-radius:5px;color:var(--tx-3)}
+.bact .ib:hover{background:var(--bg-3);color:var(--tx-1)}
+.bact .ib.del:hover{color:#ff6b6b}
+.bact .ib svg{width:12px;height:12px}
+.bbd{margin-top:9px;font-size:13.5px;line-height:1.65;color:var(--tx-1);outline:none;min-height:22px;white-space:pre-wrap}
+.bbd:empty:before{content:attr(data-ph);color:var(--tx-3);font-size:12.5px}
+.bbd[contenteditable]:focus{}
+.bmeta{margin-top:8px;display:flex;align-items:center;gap:10px;font-size:10px;color:var(--tx-3);font-family:'JetBrains Mono'}
+.bmeta .dot{width:3px;height:3px;border-radius:50%;background:var(--tx-4)}
+.spchip{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;background:var(--sync-bg);border:1px solid var(--sync-line);border-radius:6px;padding:1px 7px 1px 3px;margin:0 2px;font-size:11.5px;font-weight:600;color:#bfe0ff;line-height:1.3;user-select:none;cursor:pointer}
+.spchip:hover{background:rgba(51,182,255,.24)}
+.spchip.fired{box-shadow:0 0 0 2px var(--sync)}
+.spthumb{width:18px;height:13px;border-radius:3px;background:linear-gradient(135deg,#23364d,#161f2c);border:1px solid var(--sync-line);flex:0 0 auto}
+.spchip .lbl{font-family:'JetBrains Mono';font-size:10px}
+.bdiv{display:flex;align-items:center;justify-content:center;height:18px;position:relative;opacity:0}
+.block:hover + .bdiv,.bdiv:hover{opacity:1}
+.bdiv::before{content:'';position:absolute;left:13px;right:13px;height:1px;background:repeating-linear-gradient(90deg,var(--line) 0 4px,transparent 4px 8px)}
+.add{position:relative;z-index:1;width:20px;height:20px;border-radius:50%;background:var(--bg-3);border:1px solid var(--line);color:var(--tx-2);display:grid;place-items:center}
+.add:hover{background:var(--ai);border-color:var(--ai);color:#fff}
+.add svg{width:12px;height:12px}
+.s-foot{flex:0 0 auto;padding:9px 11px;border-top:1px solid var(--line);display:flex;align-items:center;gap:7px}
+.chip-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:7px;border:1px solid var(--line);background:var(--bg-2);color:var(--tx-1);font-size:11.5px;font-weight:500}
+.chip-btn svg{width:13px;height:13px}
+.chip-btn.ai svg{color:var(--ai-bright)}
+.chip-btn:hover{background:var(--bg-3)}
+.regen{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:7px;background:#f3f6fb;color:#0a0d12;font-weight:600;font-size:12px;border:none;box-shadow:0 2px 8px rgba(0,0,0,.4);margin-left:auto}
+.regen:hover{background:#fff}
+.regen svg{width:13px;height:13px;color:var(--ai-deep)}
+.regen.busy{opacity:.6;pointer-events:none}
+
+/* Home/Inspect pane */
+.panel{flex:1;overflow-y:auto;padding:14px}
+.p-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.p-title{font-size:13px;font-weight:600}
+.p-sub{font-size:10px;color:var(--tx-3);letter-spacing:.04em;text-transform:uppercase;font-family:'JetBrains Mono'}
+.fld-grp{margin-bottom:18px}
+.fld-grp-lbl{font-size:10px;font-weight:600;color:var(--tx-3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
+.fld{margin-bottom:10px}
+.fld-l{font-size:11px;color:var(--tx-3);margin-bottom:5px;display:flex;justify-content:space-between}
+.fld-l .v{color:var(--tx-2);font-family:'JetBrains Mono'}
+.fld-i{display:flex;align-items:center;gap:6px;background:var(--bg-2);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font-size:12px}
+.fld-i input{flex:1;background:none;border:none;outline:none;color:var(--tx-1);font-family:inherit;font-size:12px}
+.placeholder-pane{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--tx-3);gap:10px;padding:30px;text-align:center}
+.placeholder-pane svg{width:32px;height:32px;opacity:.5}
+
+/* toast */
+.toast-wrap{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:100;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:9px;background:var(--bg-4);border:1px solid var(--line);color:var(--tx-1);font-size:12.5px;box-shadow:0 8px 28px rgba(0,0,0,.5);animation:toastIn .25s ease;max-width:420px}
+.toast svg{width:15px;height:15px;flex:0 0 auto}
+.toast.ok svg{color:var(--ok)}.toast.info svg{color:var(--ac-bright)}.toast.warn svg{color:var(--warn)}.toast.ai svg{color:var(--ai-bright)}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* render overlay */
+.render-ov{position:fixed;inset:0;z-index:200;background:rgba(10,13,18,.82);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center}
+.render-ov.show{display:flex}
+.render-card{width:420px;background:var(--bg-2);border:1px solid var(--line);border-radius:16px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.rc-title{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;margin-bottom:18px}
+.rc-title .spin{width:18px;height:18px;border:2px solid var(--ac-line);border-top-color:var(--ac);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.rc-step{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:12.5px;color:var(--tx-3)}
+.rc-step .ic{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;flex:0 0 auto}
+.rc-step .ic svg{width:11px;height:11px}
+.rc-step.done{color:var(--tx-1)}
+.rc-step.done .ic{background:var(--ok);border-color:var(--ok);color:#0a0d12}
+.rc-step.active{color:var(--tx-1)}
+.rc-step.active .ic{border-color:var(--ac);color:var(--ac)}
+.rc-bar{margin-top:16px;height:6px;background:var(--bg-4);border-radius:3px;overflow:hidden}
+.rc-fill{height:100%;width:0;background:linear-gradient(90deg,var(--ac),var(--ac-bright));border-radius:3px;transition:width .3s}
+.rc-done-actions{margin-top:18px;display:none;gap:8px}
+.rc-done-actions.show{display:flex}
+
+/* ===== AI CHAT PANE ===== */
+.chat{flex:1;display:flex;flex-direction:column;min-height:0}
+.chat-head{padding:11px 13px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.chat-head .ic{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--ai),var(--ai-deep));display:grid;place-items:center;box-shadow:0 2px 8px var(--ai-glow)}
+.chat-head .ic svg{width:14px;height:14px}
+.chat-head .t{font-size:13px;font-weight:600}
+.chat-head .sub{font-size:10px;color:var(--tx-3)}
+.chat-log{flex:1;overflow-y:auto;padding:14px 13px;display:flex;flex-direction:column;gap:12px}
+.msg{display:flex;gap:9px;max-width:100%}
+.msg .av{width:24px;height:24px;border-radius:7px;flex:0 0 auto;display:grid;place-items:center}
+.msg.user{flex-direction:row-reverse}
+.msg.user .av{background:var(--bg-4);color:var(--tx-2)}
+.msg.ai .av{background:linear-gradient(135deg,var(--ai),var(--ai-deep));color:#fff}
+.msg .av svg{width:13px;height:13px}
+.msg .bub{padding:9px 12px;border-radius:11px;font-size:12.5px;line-height:1.55;max-width:84%}
+.msg.user .bub{background:var(--ac);color:#fff;border-bottom-right-radius:4px}
+.msg.ai .bub{background:var(--bg-2);border:1px solid var(--line-soft);color:var(--tx-1);border-bottom-left-radius:4px}
+.msg.ai .bub .did{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+.did-row{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--tx-2);background:var(--bg-3);border:1px solid var(--line-soft);border-radius:7px;padding:6px 9px}
+.did-row svg{width:13px;height:13px;color:var(--ok);flex:0 0 auto}
+.chat-thinking{display:flex;gap:9px}
+.chat-thinking .av{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--ai),var(--ai-deep));display:grid;place-items:center;flex:0 0 auto}
+.chat-thinking .av svg{width:13px;height:13px}
+.dots{display:flex;gap:4px;align-items:center;padding:11px 12px;background:var(--bg-2);border:1px solid var(--line-soft);border-radius:11px;border-bottom-left-radius:4px}
+.dots span{width:6px;height:6px;border-radius:50%;background:var(--ai-bright);animation:dotPulse 1.2s ease-in-out infinite}
+.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+@keyframes dotPulse{0%,60%,100%{opacity:.3;transform:scale(.8)}30%{opacity:1;transform:scale(1)}}
+.chat-suggest{padding:0 13px 10px;display:flex;flex-wrap:wrap;gap:6px;flex:0 0 auto}
+.sug{font-size:11px;color:var(--tx-2);background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:5px 11px}
+.sug:hover{background:var(--bg-3);border-color:var(--ai-line);color:var(--tx-1)}
+.chat-input{flex:0 0 auto;padding:11px 13px;border-top:1px solid var(--line)}
+.ci-box{display:flex;align-items:flex-end;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:11px;padding:8px 8px 8px 12px}
+.ci-box:focus-within{border-color:var(--ai-line);box-shadow:0 0 0 1px var(--ai-line)}
+.ci-box textarea{flex:1;background:none;border:none;outline:none;color:var(--tx-1);font-family:inherit;font-size:12.5px;resize:none;max-height:90px;line-height:1.5;padding:3px 0}
+.ci-box textarea::placeholder{color:var(--tx-3)}
+.ci-send{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--ai),var(--ai-deep));border:none;display:grid;place-items:center;color:#fff;flex:0 0 auto;box-shadow:0 2px 8px var(--ai-glow)}
+.ci-send:hover{filter:brightness(1.1)}
+.ci-send:disabled{opacity:.4}
+.ci-send svg{width:15px;height:15px}
+
+/* Journey slide on canvas */
+.c-journey{position:absolute;inset:16% 8%;display:flex;align-items:stretch;gap:14px;z-index:4}
+.jstep{flex:1;background:rgba(15,19,26,.9);border:1px solid var(--ac-line);border-radius:10px;padding:13px 11px;display:flex;flex-direction:column;gap:5px;position:relative;backdrop-filter:blur(6px)}
+.jstep .jn{position:absolute;top:-9px;left:11px;width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,var(--ac),var(--ac-deep));color:#fff;font-family:'JetBrains Mono';font-size:10px;font-weight:600;display:grid;place-items:center;box-shadow:0 2px 8px var(--ac-glow)}
+.jstep .jname{font-size:13px;font-weight:700;color:#eef;margin-top:6px}
+.jstep .jrole{font-size:9px;color:var(--ac-bright);font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.jstep .jact{font-size:10.5px;color:var(--tx-2);line-height:1.4;margin-top:2px}
+.jstep .jarrow{position:absolute;right:-14px;top:50%;transform:translateY(-50%);color:var(--tx-3);z-index:5}
+.jstep .jarrow svg{width:14px;height:14px}
+.jstep:last-child .jarrow{display:none}
+.clip.journey{background:rgba(11,111,255,.22);border:1px solid var(--ac-line);color:#bcd9ff}
+
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg-4);border-radius:6px;border:3px solid var(--bg-1)}
+::-webkit-scrollbar-thumb:hover{background:#39414f}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOP BAR -->
+  <div class="top">
+    <div class="brand">
+      <div class="bmark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h10M4 18h7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="18" cy="15.5" r="3.2" fill="#fff"/></svg></div>
+      <div><div class="bname">Showcase Studio</div><div class="bsub">Script Editor</div></div>
+    </div>
+    <div class="proj"><span id="projName">Untitled Showcase</span><svg class="chev" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="spc"></div>
+    <div class="save"><span class="sd" id="saveDot"></span><span id="saveText">All changes saved</span></div>
+    <button class="ibtn" id="undoBtn" title="Undo (⌘Z)"><svg viewBox="0 0 24 24" fill="none"><path d="M9 14L4 9l5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h11a5 5 0 0 1 0 10h-1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    <button class="ibtn" id="redoBtn" title="Redo (⇧⌘Z)"><svg viewBox="0 0 24 24" fill="none"><path d="M15 14l5-5-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 9H9a5 5 0 0 0 0 10h1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    <button class="btn primary" id="renderBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M5 3l14 9-14 9V3z" fill="#fff"/></svg>Render Video</button>
+  </div>
+
+  <div class="workspace">
+    <!-- LEFT RAIL -->
+    <aside class="rail">
+      <div class="rail-head"><span class="r-title">Media</span></div>
+      <div class="r-tabs"><div class="r-tab on">Clips</div><div class="r-tab">Audio</div></div>
+      <div class="r-scroll">
+        <label class="uz" id="uploadZone">
+          <input type="file" id="fileInput" accept="video/*,audio/*" multiple style="display:none">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L8 8m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="big">Drop files or browse</span>
+          <span class="small">MP4, MOV, MP3</span>
+        </label>
+        <div class="mg">Media</div>
+        <div id="mediaList"><div class="empty-hint">No media yet. Upload a clip to attach to a block.</div></div>
+      </div>
+    </aside>
+
+    <!-- CENTER STAGE -->
+    <main class="stage">
+      <div class="canvas-area">
+        <div class="canvas" id="canvas">
+          <div class="c-bg"></div>
+          <video class="c-video" id="previewVideo" playsinline muted></video>
+          <div class="c-grid"></div>
+          <div class="c-badge"><span class="d"></span><span id="canvasBadge">No block</span></div>
+          <div class="c-res mono">1920 × 1080</div>
+          <div class="c-empty" id="canvasEmpty">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h12M4 18h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <div class="t">Write a script block to begin</div>
+          </div>
+          <!-- card + sync markers injected here -->
+          <div id="canvasOverlay"></div>
+        </div>
+      </div>
+
+      <!-- TIMELINE -->
+      <div class="timeline">
+        <div class="tl-head">
+          <div class="tl-controls">
+            <button class="tnsp" id="toStart" data-kbd="Home"><svg viewBox="0 0 24 24" fill="none"><path d="M19 20L9 12l10-8v16zM5 19V5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="tnsp play" id="playBtn" data-kbd="Space"><svg id="playIcon" viewBox="0 0 24 24" fill="none"><path d="M6 4l14 8-14 8V4z" fill="#fff"/></svg></button>
+            <button class="tnsp" id="toEnd" data-kbd="End"><svg viewBox="0 0 24 24" fill="none"><path d="M5 4l10 8-10 8V4zM19 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+          <div class="tl-time"><span class="cur" id="curTime">00:00</span> / <span id="totTime">00:00</span></div>
+          <div class="tdiv"></div>
+          <div class="tb-grp">
+            <button class="tb on" id="snapBtn" data-kbd="S" title="Snap"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12h6m4 0h6M12 4v6m0 4v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/></svg></button>
+            <button class="tb magnet on" id="magnetBtn" data-kbd="M" title="Magnetic timeline"><svg viewBox="0 0 24 24" fill="none"><path d="M6 4v6a6 6 0 0 0 12 0V4M6 4h4M14 4h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 14v3M18 14v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+          </div>
+          <div class="tdiv"></div>
+          <div class="cg-grp" title="Close gaps"><span class="cg-btn" id="closeGapBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12h6m4 0h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 8l4 4-4 4M14 8l-4 4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Close gaps</span></div>
+          <div class="tl-spc"></div>
+          <div class="tl-zoom"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><div class="tl-zoom-bar" id="zoomBar"><div class="tl-zoom-fill" id="zoomFill"></div><div class="tl-zoom-knob" id="zoomKnob"></div></div><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+        </div>
+        <div class="tl-tracks" id="tlTracks">
+          <div class="ruler" id="ruler"></div>
+          <div class="trk" data-track="cards"><div class="trk-lbl"><span class="nm"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" stroke="currentColor" stroke-width="1.8"/></svg>Cards</span></div><div class="trk-body" id="trkCards"></div></div>
+          <div class="trk" data-track="effects"><div class="trk-lbl"><span class="nm"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M12 3l1.6 5L19 9.5l-4.5 3L16 18l-4-3-4 3 1.5-5.5L5 9.5 10.4 8 12 3z" fill="currentColor"/></svg>Effects</span></div><div class="trk-body" id="trkEffects"></div></div>
+          <div class="trk" data-track="video"><div class="trk-lbl"><span class="nm"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M16 10l5-3v10l-5-3" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Video</span></div><div class="trk-body" id="trkVideo"></div></div>
+          <div class="trk" data-track="audio"><div class="trk-lbl"><span class="nm"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M4 12h2l2-5 3 10 2-6 2 3h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Audio</span></div><div class="trk-body" id="trkAudio"></div></div>
+          <div class="ph" id="playhead"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL -->
+    <aside class="right">
+      <div class="r-tabstrip">
+        <div class="r-tabb" data-pane="home"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V10" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Home</div>
+        <div class="r-tabb" data-pane="script"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h12M4 18h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Script</div>
+        <div class="r-tabb on" data-pane="ai"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.6 5L19 9.5l-4.5 3L16 18l-4-3-4 3 1.5-5.5L5 9.5 10.4 8 12 3z" fill="currentColor"/></svg>Assistant <span class="new">AI</span></div>
+      </div>
+
+      <!-- HOME pane -->
+      <div class="tabpane" data-pane="home">
+        <div class="placeholder-pane" id="homePane">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 7 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15H4.5a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 6 9.4l-.33-.31a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 11.4 5h.1a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 2.4 1.51l.31-.33a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V11a2 2 0 0 1 0 4h-.09z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <div>Select a clip or card on the timeline to edit its properties here.</div>
+        </div>
+      </div>
+
+      <!-- SCRIPT pane -->
+      <div class="tabpane" data-pane="script">
+        <div class="s-head">
+          <div class="s-trow">
+            <div class="s-title"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h12M4 18h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Script</div>
+            <span class="r-title" id="scriptMeta">0 blocks · 00:00</span>
+          </div>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input placeholder="Search in transcript" id="scriptSearch">
+          </div>
+        </div>
+        <div class="blocks" id="blocksContainer"></div>
+        <div class="s-foot">
+          <button class="chip-btn" id="addBlockBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Add block</button>
+          <button class="chip-btn ai" id="aiRewriteBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.6 5L19 9.5l-4.5 3L16 18l-4-3-4 3 1.5-5.5L5 9.5 10.4 8 12 3z" fill="currentColor"/></svg>AI Rewrite</button>
+          <button class="regen" id="regenBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h2l1.5-4 3 9 2-5 1.5 2H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Regenerate speech</button>
+        </div>
+      </div>
+
+      <!-- AI ASSISTANT pane -->
+      <div class="tabpane on" data-pane="ai">
+        <div class="chat">
+          <div class="chat-head">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.6 5L19 9.5l-4.5 3L16 18l-4-3-4 3 1.5-5.5L5 9.5 10.4 8 12 3z" fill="#fff"/></svg></div>
+            <div><div class="t">AI Assistant</div><div class="sub">Edit your showcase with plain language</div></div>
+          </div>
+          <div class="chat-log" id="chatLog"></div>
+          <div class="chat-suggest" id="chatSuggest">
+            <button class="sug">Add a journey slide with 4 flows</button>
+            <button class="sug">Add an intro block</button>
+            <button class="sug">Change all voices to NOVA</button>
+            <button class="sug">Add a sync point to block 2</button>
+          </div>
+          <div class="chat-input">
+            <div class="ci-box">
+              <textarea id="chatInput" rows="1" placeholder="e.g. Add a journey slide: 4 personas — Anita (CHRO, approves leave), Raj (Manager, reviews), …"></textarea>
+              <button class="ci-send" id="chatSend"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- RENDER OVERLAY -->
+<div class="render-ov" id="renderOverlay">
+  <div class="render-card">
+    <div class="rc-title"><span class="spin" id="rcSpin"></span><span id="rcTitle">Rendering video…</span></div>
+    <div id="rcSteps">
+      <div class="rc-step" data-step="0"><span class="ic"></span>Preparing assets</div>
+      <div class="rc-step" data-step="1"><span class="ic"></span>Compiling timeline</div>
+      <div class="rc-step" data-step="2"><span class="ic"></span>Rendering frames</div>
+      <div class="rc-step" data-step="3"><span class="ic"></span>Applying effects &amp; sync points</div>
+      <div class="rc-step" data-step="4"><span class="ic"></span>Finalizing MP4</div>
+    </div>
+    <div class="rc-bar"><div class="rc-fill" id="rcFill"></div></div>
+    <div class="rc-done-actions" id="rcDoneActions">
+      <button class="btn primary" id="rcDownload" style="flex:1;justify-content:center"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 9l4 4 4-4M12 3v10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Download MP4</button>
+      <button class="btn" id="rcClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   SHOWCASE STUDIO — Script Editor (Beta)  ·  Slice 1
+   Isolated test editor. No production dependencies. Stubs for TTS/render.
+   Module sections: CONFIG · STUBS · STATE · HISTORY · COMPILE · RENDER(ui)
+                    · BLOCKS · TIMELINE · CANVAS · PLAYBACK · EVENTS · INIT
+   ===================================================================== */
+
+/* ===== CONFIG ===== */
+const CFG = {
+  fps: 30,
+  pxPerSec: 22,          // timeline scale (zoom multiplies this)
+  introDur: 4,           // seconds for Intro/Outro blocks
+  wpm: 165,              // words-per-minute for stubbed TTS duration estimate
+  voices: ['CASSIDY','ERIC'],   // PHASE 1: 2 real ElevenLabs test voices
+  blockTypes: ['Intro','Video','Outro','Journey'],
+  journeyDur: 6,   // seconds a journey slide holds
+  storageKey: 'pstest.autosave.local',   // ISOLATED test namespace
+};
+
+/* ===== STUBS (swap these for real APIs at launch) =====
+   Each stub returns the same shape the real API will, behind a clean
+   interface, so the editor code never changes when we go live. */
+
+/* PHASE 1: TTS is now REAL via the isolated test Worker.
+   Set this to your deployed worker URL. The 2 test voices come from /voices. */
+const TTS_WORKER_URL = 'https://showcase-tts-test.girishreddy262.workers.dev';
+let TEST_VOICES = [ {name:'CASSIDY',voiceId:'56AoDkrOh6qfVPDXZ7Pt'}, {name:'ERIC',voiceId:'cjVigY5qzO86Huf0OWal'} ];
+
+const Stub = {
+  // PHASE 1 — REAL TTS: calls the isolated worker, returns a playable mp3 blob URL.
+  async generateSpeech(text, voiceName){
+    const words = (text.trim().match(/\S+/g) || []).length;
+    const estDur = Math.max(1.2, (words / CFG.wpm) * 60);
+    try{
+      const res = await fetch(TTS_WORKER_URL + '/tts', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text, voiceName })
+      });
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.error||('HTTP '+res.status)); }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      // probe real duration from the returned mp3
+      const realDur = await new Promise(r=>{ const a=new Audio(); a.preload='metadata'; a.src=url; a.onloadedmetadata=()=>r(a.duration||estDur); a.onerror=()=>r(estDur); setTimeout(()=>r(estDur),4000); });
+      return { url, durationSec: realDur, voiceId: voiceName, stub:false };
+    }catch(err){
+      console.warn('[TTS] worker call failed, falling back to silent estimate:', err.message);
+      toast('warn','TTS unavailable ('+err.message+') — using estimated timing');
+      return { url:null, durationSec: estDur, voiceId: voiceName, stub:true };
+    }
+  },
+  // Upload: hold file in-browser, return an object URL (real = presigned S3 PUT).
+  async uploadMedia(file){
+    await new Promise(r => setTimeout(r, 250));
+    return { url: URL.createObjectURL(file), name: file.name, stub: true };
+  },
+  // Render: simulate the pipeline; real = dispatch render-test.yml → Lambda.
+  async render(payload, onProgress){
+    for(let p=0; p<=100; p+=4){
+      await new Promise(r => setTimeout(r, 90));
+      onProgress(p);
+    }
+    return { mp4Url: '#stub-render', stub: true };
+  },
+  // AI rewrite: trivial transform (real = Claude API via Worker).
+  async aiRewrite(text){
+    await new Promise(r => setTimeout(r, 600));
+    return text; // no-op in stub
+  }
+};
+
+/* ===== STATE ===== */
+let state = {
+  projectName: 'Untitled Showcase',
+  blocks: [],     // {id, type, voice, html, text, durationSec, mediaId, syncPoints:[{id,label,atSec}]}
+  media: [],      // {id, name, url, type, durationSec}
+  ui: { activeBlockId: null, selectedClip: null, magnet:true, snap:true, zoom:1, pane:'script' },
+};
+let view = { isPlaying:false, curSec:0, rafId:null, lastTs:0 };
+let dirty = false;
+
+const uid = (p='id') => p + '_' + Math.random().toString(36).slice(2,9);
+
+/* ===== HISTORY (undo/redo) ===== */
+const History = {
+  past: [], future: [],
+  snapshot(){ return JSON.stringify({projectName:state.projectName, blocks:state.blocks, media:state.media}); },
+  push(){ this.past.push(this.snapshot()); if(this.past.length>50) this.past.shift(); this.future=[]; updateHistoryButtons(); },
+  undo(){ if(!this.past.length) return; this.future.push(this.snapshot()); const s=JSON.parse(this.past.pop()); restore(s); },
+  redo(){ if(!this.future.length) return; this.past.push(this.snapshot()); const s=JSON.parse(this.future.pop()); restore(s); },
+};
+function restore(s){
+  state.projectName = s.projectName; state.blocks = s.blocks; state.media = s.media;
+  renderAll(); markDirty(); updateHistoryButtons();
+}
+function updateHistoryButtons(){
+  document.getElementById('undoBtn').disabled = History.past.length===0;
+  document.getElementById('redoBtn').disabled = History.future.length===0;
+}
+
+/* ===== COMPILE: blocks → timeline clips (the heart of script-native) =====
+   Each block becomes a contiguous time segment. Block duration = its TTS
+   audio length (or intro/outro default). Sync points map to absolute time
+   within the block based on word-offset of the chip in the text. */
+function compile(){
+  let t = 0;
+  const segments = [];     // per-block {block, startSec, durSec}
+  for(const b of state.blocks){
+    const dur = blockDuration(b);
+    segments.push({ block:b, startSec:t, durSec:dur });
+    t += dur;
+  }
+  return { segments, totalSec: t };
+}
+function blockDuration(b){
+  if(b.type === 'Intro' || b.type === 'Outro') return CFG.introDur;
+  if(b.type === 'Journey') return CFG.journeyDur;
+  // Video block: duration is its TTS length (estimated), min 1.5s
+  return Math.max(1.5, b.durationSec || estimateDur(b.text));
+}
+function estimateDur(text){
+  const words = (text.trim().match(/\S+/g) || []).length;
+  return Math.max(1.2, (words / CFG.wpm) * 60);
+}
+// absolute time of a sync point: block start + fraction through the block by word offset
+function syncAbsTime(seg, sp){
+  const words = (seg.block.text.trim().match(/\S+/g) || []).length || 1;
+  const frac = Math.min(1, (sp.wordOffset || 0) / words);
+  return seg.startSec + frac * seg.durSec;
+}
+
+/* ===== STUB media helper ===== */
+function mediaById(id){ return state.media.find(m=>m.id===id); }
+
+/* ===== BLOCK RENDERING ===== */
+function renderBlocks(){
+  const c = document.getElementById('blocksContainer');
+  c.innerHTML = '';
+  if(!state.blocks.length){
+    c.innerHTML = '<div class="empty-hint" style="margin-top:20px">No blocks yet.<br>Click “Add block” to start your script.</div>';
+    return;
+  }
+  state.blocks.forEach((b, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'block' + (b.id===state.ui.activeBlockId ? ' active' : '');
+    wrap.dataset.id = b.id;
+    const voiceOpts = CFG.voices.map(v=>`<option ${v===b.voice?'selected':''}>${v}</option>`).join('');
+    const typeOpts = CFG.blockTypes.map(t=>`<option ${t===b.type?'selected':''}>${t}</option>`).join('');
+
+    let bodyHtml;
+    if(b.type==='Journey'){
+      const steps=(b.journey||[]).map((s,si)=>`<div class="did-row"><span style="font-family:'JetBrains Mono';color:var(--ac-bright);font-weight:600">${si+1}</span> <b style="color:var(--tx-1)">${escapeHtml(s.name||'Persona')}</b> <span style="color:var(--tx-3)">·</span> ${escapeHtml(s.role||'')}</div>`).join('');
+      bodyHtml=`<div class="bmeta" style="margin-top:9px"><span style="color:var(--ac-bright)">Journey · ${(b.journey||[]).length} steps</span></div><div class="did" style="margin-top:8px;display:flex;flex-direction:column;gap:5px">${steps}</div>`;
+    } else {
+      bodyHtml=`<div class="bbd" contenteditable="true" data-ph="${b.type==='Video'?'Type narration… use the ◎ button to drop a sync point':'Start typing or press “/” for commands…'}">${b.html||''}</div>
+        <div class="bmeta"><span>${blockDuration(b).toFixed(1)}s</span><span class="dot"></span><span>${(b.text.trim().match(/\S+/g)||[]).length} words</span>${b.syncPoints.length?`<span class="dot"></span><span style="color:var(--sync)">${b.syncPoints.length} sync</span>`:''}</div>`;
+    }
+
+    wrap.innerHTML = `
+      <div class="bin">
+        <div class="bhd">
+          <span class="bnum"><span class="n">${i+1}</span><select class="typeSel" title="Block type">${typeOpts}</select></span>
+          ${b.type==='Journey'?'':`<span class="voice"><span class="voice-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span><select class="voiceSel">${voiceOpts}</select></span>
+          <span class="bwave ${b.generated?'gen':''}" title="${b.generated?'Speech generated':'No speech yet'}"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12h2l2-5 3 10 2-6 2 3h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`}
+          <span class="bsp"></span>
+          <span class="bact">
+            ${b.type==='Video'?'<span class="ib addSync" title="Insert sync point at cursor"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6"/></svg></span>':''}
+            <span class="ib del" title="Delete block"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </span>
+        </div>
+        ${bodyHtml}
+      </div>`;
+    c.appendChild(wrap);
+
+    // divider with add button
+    const div = document.createElement('div');
+    div.className = 'bdiv';
+    div.innerHTML = `<span class="add" data-after="${b.id}"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>`;
+    c.appendChild(div);
+  });
+  wireBlockEvents();
+}
+
+function wireBlockEvents(){
+  document.querySelectorAll('.block').forEach(el => {
+    const id = el.dataset.id;
+    const b = state.blocks.find(x=>x.id===id);
+    el.addEventListener('mousedown', () => setActiveBlock(id));
+    el.querySelector('.typeSel').addEventListener('change', e => { History.push(); b.type=e.target.value; recompute(); });
+    const vs = el.querySelector('.voiceSel');
+    if(vs) vs.addEventListener('change', e => { History.push(); b.voice=e.target.value; b.generated=false; renderBlocks(); markDirty(); });
+    el.querySelector('.del').addEventListener('click', e => { e.stopPropagation(); deleteBlock(id); });
+    const as = el.querySelector('.addSync');
+    if(as) as.addEventListener('click', e => { e.stopPropagation(); insertSyncAtCursor(id); });
+    const bd = el.querySelector('.bbd');
+    if(bd){
+      bd.addEventListener('input', () => { b.html = bd.innerHTML; b.text = bd.textContent; b.generated=false; syncFromDOM(b, bd); recompute(); });
+      bd.addEventListener('focus', () => setActiveBlock(id));
+    }
+  });
+  document.querySelectorAll('.add[data-after]').forEach(el=>{
+    el.addEventListener('click', e=>{ e.stopPropagation(); addBlock(el.dataset.after); });
+  });
+  // sync chip click → jump playhead there
+  document.querySelectorAll('.spchip').forEach(chip=>{
+    chip.addEventListener('click', e=>{
+      e.stopPropagation();
+      const spId = chip.dataset.sp;
+      const {segments} = compile();
+      for(const seg of segments){
+        const sp = seg.block.syncPoints.find(s=>s.id===spId);
+        if(sp){ seekTo(syncAbsTime(seg, sp)); break; }
+      }
+    });
+  });
+}
+
+// rebuild a block's syncPoints array from chips currently in its DOM, preserving order + word offsets
+function syncFromDOM(b, bd){
+  const chips = [...bd.querySelectorAll('.spchip')];
+  const newSync = [];
+  chips.forEach((chip, i) => {
+    const id = chip.dataset.sp || uid('sp');
+    chip.dataset.sp = id;
+    // word offset = number of words in text before this chip
+    let off = 0, node = bd.firstChild;
+    const range = document.createRange(); range.setStart(bd,0); range.setEndBefore(chip);
+    off = (range.toString().trim().match(/\S+/g)||[]).length;
+    const existing = b.syncPoints.find(s=>s.id===id);
+    newSync.push({ id, label:'Sync '+(i+1), wordOffset: off, mediaId: existing?existing.mediaId:null });
+  });
+  b.syncPoints = newSync;
+}
+
+function insertSyncAtCursor(blockId){
+  const el = document.querySelector(`.block[data-id="${blockId}"] .bbd`);
+  if(!el) return;
+  el.focus();
+  const sel = window.getSelection();
+  const b = state.blocks.find(x=>x.id===blockId);
+  History.push();
+  const chip = document.createElement('span');
+  chip.className = 'spchip'; chip.contentEditable = 'false';
+  chip.dataset.sp = uid('sp');
+  chip.innerHTML = `<span class="spthumb"></span><span class="lbl">Sync</span>`;
+  if(sel.rangeCount && el.contains(sel.anchorNode)){
+    const range = sel.getRangeAt(0); range.collapse(false);
+    range.insertNode(chip);
+    range.setStartAfter(chip); range.collapse(true);
+    sel.removeAllRanges(); sel.addRange(range);
+  } else {
+    el.appendChild(chip);
+  }
+  b.html = el.innerHTML; b.text = el.textContent;
+  syncFromDOM(b, el);
+  recompute();
+  toast('ai','Sync point added — it pins this moment to the video');
+}
+
+function addBlock(afterId){
+  History.push();
+  const nb = { id:uid('blk'), type:'Video', voice:CFG.voices[1], html:'', text:'', durationSec:0, mediaId:null, generated:false, syncPoints:[], journey:null };
+  if(afterId){
+    const idx = state.blocks.findIndex(b=>b.id===afterId);
+    state.blocks.splice(idx+1, 0, nb);
+  } else state.blocks.push(nb);
+  state.ui.activeBlockId = nb.id;
+  recompute();
+  setTimeout(()=>{ const el=document.querySelector(`.block[data-id="${nb.id}"] .bbd`); if(el) el.focus(); }, 30);
+}
+function deleteBlock(id){
+  History.push();
+  state.blocks = state.blocks.filter(b=>b.id!==id);
+  if(state.ui.activeBlockId===id) state.ui.activeBlockId = state.blocks[0]?.id || null;
+  recompute();
+}
+function setActiveBlock(id){
+  if(state.ui.activeBlockId===id) return;
+  state.ui.activeBlockId = id;
+  document.querySelectorAll('.block').forEach(el=>el.classList.toggle('active', el.dataset.id===id));
+  // jump playhead to the block start
+  const {segments} = compile();
+  const seg = segments.find(s=>s.block.id===id);
+  if(seg) seekTo(seg.startSec);
+}
+
+/* ===== TIMELINE RENDERING ===== */
+function pxPerSec(){ return CFG.pxPerSec * state.ui.zoom; }
+function renderTimeline(){
+  const { segments, totalSec } = compile();
+  const pps = pxPerSec();
+  const totalPx = Math.max(totalSec*pps, 400);
+
+  // ruler
+  const ruler = document.getElementById('ruler');
+  ruler.innerHTML = '';
+  const step = totalSec > 60 ? 10 : 5;
+  for(let s=0; s<=Math.ceil(totalSec/step)*step; s+=step){
+    const tk = document.createElement('span');
+    tk.className='tick'; tk.style.left=(s*pps)+'px';
+    tk.textContent = fmt(s);
+    ruler.appendChild(tk);
+  }
+
+  // tracks
+  const trkVideo = document.getElementById('trkVideo');
+  const trkAudio = document.getElementById('trkAudio');
+  const trkCards = document.getElementById('trkCards');
+  const trkEffects = document.getElementById('trkEffects');
+  [trkVideo,trkAudio,trkCards,trkEffects].forEach(t=>t.innerHTML='');
+
+  segments.forEach((seg, i) => {
+    const x = seg.startSec*pps, w = seg.durSec*pps;
+    // VIDEO clip (only for Video blocks with media; else show placeholder strip)
+    if(seg.block.type==='Video'){
+      const m = mediaById(seg.block.mediaId);
+      const v = document.createElement('div');
+      v.className='clip vid'; v.style.left=x+'px'; v.style.width=w+'px';
+      v.dataset.block = seg.block.id;
+      const nThumbs = Math.max(2, Math.round(w/70));
+      v.innerHTML = `<div class="vid-thumbs">${Array(nThumbs).fill('<div class="vid-thumb"></div>').join('')}</div><span class="vid-lbl">${m?m.name:'no clip — drag one here'}</span>`;
+      trkVideo.appendChild(v);
+      // sync ticks for this block
+      seg.block.syncPoints.forEach(sp=>{
+        const at = syncAbsTime(seg, sp);
+        const tick = document.createElement('div');
+        tick.className='sp-tick'; tick.style.left=(at*pps)+'px'; tick.dataset.sp=sp.id;
+        trkVideo.appendChild(tick);
+      });
+    }
+    // JOURNEY clip on the video track
+    if(seg.block.type==='Journey'){
+      const j=document.createElement('div');
+      j.className='clip journey'; j.style.left=x+'px'; j.style.width=w+'px';
+      j.dataset.block=seg.block.id;
+      j.textContent=`Journey · ${(seg.block.journey||[]).length} steps`;
+      trkVideo.appendChild(j);
+    }
+    // AUDIO clip (TTS) spanning the block
+    const a = document.createElement('div');
+    a.className='clip aud'; a.style.left=x+'px'; a.style.width=w+'px';
+    a.textContent = seg.block.voice + (seg.block.generated?' · TTS':' · (ungenerated)');
+    trkAudio.appendChild(a);
+  });
+
+  // CARDS track: one card per Video block (representing the customer card / callout)
+  segments.filter(s=>s.block.type==='Video').forEach(seg=>{
+    const x=seg.startSec*pps, w=Math.min(seg.durSec*pps, 90);
+    const card = document.createElement('div');
+    card.className='clip cal'; card.style.left=x+'px'; card.style.width=w+'px';
+    card.dataset.block=seg.block.id; card.textContent='Card';
+    trkCards.appendChild(card);
+  });
+
+  // sizing
+  document.getElementById('tlTracks').querySelectorAll('.trk-body').forEach(tb=>tb.style.minWidth=totalPx+'px');
+
+  // total time + meta
+  document.getElementById('totTime').textContent = fmt(totalSec);
+  document.getElementById('scriptMeta').textContent = `${state.blocks.length} block${state.blocks.length===1?'':'s'} · ${fmt(totalSec)}`;
+
+  updatePlayhead();
+  wireClipEvents();
+}
+function wireClipEvents(){
+  document.querySelectorAll('.clip').forEach(c=>{
+    c.addEventListener('click', ()=>{
+      document.querySelectorAll('.clip').forEach(x=>x.classList.remove('selected'));
+      c.classList.add('selected');
+      state.ui.selectedClip = c.dataset.block || null;
+      if(c.dataset.block) setActiveBlock(c.dataset.block);
+    });
+  });
+}
+
+/* ===== CANVAS ===== */
+function renderCanvas(){
+  const { segments, totalSec } = compile();
+  const overlay = document.getElementById('canvasOverlay');
+  const empty = document.getElementById('canvasEmpty');
+  const badge = document.getElementById('canvasBadge');
+  overlay.innerHTML='';
+  if(!segments.length){ empty.style.display='flex'; badge.textContent='No block'; return; }
+  empty.style.display='none';
+
+  // which segment is the playhead in?
+  const seg = segments.find(s=>view.curSec>=s.startSec && view.curSec < s.startSec+s.durSec) || segments[0];
+  const idx = segments.indexOf(seg)+1;
+  badge.textContent = `Block ${idx} · ${seg.block.type}`;
+
+  // video element
+  const vid = document.getElementById('previewVideo');
+  const m = seg.block.type==='Video' ? mediaById(seg.block.mediaId) : null;
+  if(m && m.url){
+    if(vid.src!==m.url){ vid.src=m.url; }
+    vid.classList.add('show');
+    const localT = view.curSec - seg.startSec;
+    if(!view.isPlaying && Math.abs(vid.currentTime-localT)>0.2) { try{vid.currentTime=Math.max(0,localT);}catch(e){} }
+  } else {
+    vid.classList.remove('show'); vid.removeAttribute('src');
+  }
+
+  // customer card for Video blocks
+  if(seg.block.type==='Video'){
+    const card=document.createElement('div'); card.className='c-card';
+    const firstLine = (seg.block.text.trim().split('\n')[0]||'').slice(0,80) || 'Customer Card';
+    card.innerHTML=`<div class="k">${seg.block.voice}</div><div class="v">${escapeHtml(firstLine)}</div>`;
+    overlay.appendChild(card);
+    // sync markers
+    seg.block.syncPoints.forEach((sp,i)=>{
+      const at = syncAbsTime(seg, sp);
+      const marker=document.createElement('div');
+      marker.className='c-sync'+(Math.abs(view.curSec-at)<0.25?' fired':'');
+      marker.style.top = (28+i*16)+'%'; marker.style.left=(20+i*22)+'%';
+      marker.innerHTML=`<span class="n">${i+1}</span>`;
+      overlay.appendChild(marker);
+    });
+  }
+
+  // JOURNEY slide: horizontal persona steps
+  if(seg.block.type==='Journey'){
+    const steps = seg.block.journey || [];
+    const jwrap = document.createElement('div'); jwrap.className='c-journey';
+    steps.forEach((st,i)=>{
+      const el=document.createElement('div'); el.className='jstep';
+      el.innerHTML=`<span class="jn">${i+1}</span>
+        <div class="jname">${escapeHtml(st.name||'Persona')}</div>
+        <div class="jrole">${escapeHtml(st.role||'Role')}</div>
+        <div class="jact">${escapeHtml(st.action||'')}</div>
+        <span class="jarrow"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+      jwrap.appendChild(el);
+    });
+    overlay.appendChild(jwrap);
+  }
+}
+function escapeHtml(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ===== PLAYBACK ===== */
+function fmt(sec){ sec=Math.max(0,sec); const m=Math.floor(sec/60), s=Math.floor(sec%60); return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`; }
+function updatePlayhead(){
+  const pps=pxPerSec();
+  const ph=document.getElementById('playhead');
+  const trackLblW = 96;
+  ph.style.left = (trackLblW + view.curSec*pps) + 'px';
+  document.getElementById('curTime').textContent = fmt(view.curSec);
+}
+function seekTo(sec){
+  const {totalSec}=compile();
+  view.curSec = Math.max(0, Math.min(sec, totalSec));
+  updatePlayhead(); renderCanvas(); highlightActiveByTime();
+}
+function highlightActiveByTime(){
+  const {segments}=compile();
+  const seg=segments.find(s=>view.curSec>=s.startSec && view.curSec<s.startSec+s.durSec);
+  if(seg && seg.block.id!==state.ui.activeBlockId){
+    state.ui.activeBlockId=seg.block.id;
+    document.querySelectorAll('.block').forEach(el=>el.classList.toggle('active', el.dataset.id===seg.block.id));
+  }
+  // fire sync chips near playhead
+  const allSp = {};
+  segments.forEach(s=>s.block.syncPoints.forEach(sp=>{ allSp[sp.id]=Math.abs(view.curSec-syncAbsTime(s,sp))<0.3; }));
+  document.querySelectorAll('.spchip').forEach(chip=>chip.classList.toggle('fired', !!allSp[chip.dataset.sp]));
+}
+function play(){
+  const {totalSec}=compile();
+  if(totalSec<=0) return;
+  if(view.curSec>=totalSec) view.curSec=0;
+  view.isPlaying=true; view.lastTs=performance.now();
+  document.getElementById('playIcon').innerHTML='<rect x="6" y="4" width="4" height="16" rx="1" fill="#fff"/><rect x="14" y="4" width="4" height="16" rx="1" fill="#fff"/>';
+  const vid=document.getElementById('previewVideo');
+  if(vid.src) vid.play().catch(()=>{});
+  syncNarration();
+  tick();
+}
+// PHASE 1: play the generated TTS mp3 for whichever block the playhead is in
+let _narrAudio = null, _narrBlockId = null;
+function syncNarration(){
+  const {segments}=compile();
+  const seg=segments.find(s=>view.curSec>=s.startSec && view.curSec<s.startSec+s.durSec);
+  const b = seg && seg.block;
+  if(!b || !b.audioUrl){ if(_narrAudio){ _narrAudio.pause(); _narrBlockId=null; } return; }
+  if(_narrBlockId!==b.id){
+    if(_narrAudio) _narrAudio.pause();
+    _narrAudio = new Audio(b.audioUrl);
+    _narrBlockId = b.id;
+    _narrAudio.currentTime = Math.max(0, view.curSec - seg.startSec);
+    if(view.isPlaying) _narrAudio.play().catch(()=>{});
+  }
+}
+function pause(){
+  view.isPlaying=false;
+  if(view.rafId) cancelAnimationFrame(view.rafId);
+  document.getElementById('playIcon').innerHTML='<path d="M6 4l14 8-14 8V4z" fill="#fff"/>';
+  document.getElementById('previewVideo').pause();
+  if(_narrAudio) _narrAudio.pause();
+}
+function tick(){
+  if(!view.isPlaying) return;
+  const now=performance.now(), dt=(now-view.lastTs)/1000; view.lastTs=now;
+  view.curSec+=dt;
+  const {totalSec}=compile();
+  if(view.curSec>=totalSec){ view.curSec=totalSec; pause(); updatePlayhead(); renderCanvas(); return; }
+  updatePlayhead(); renderCanvas(); highlightActiveByTime(); syncNarration();
+  view.rafId=requestAnimationFrame(tick);
+}
+
+/* ===== TTS regenerate (stub) ===== */
+async function regenerateSpeech(){
+  const btn=document.getElementById('regenBtn');
+  const ungenerated = state.blocks.filter(b=>b.text.trim() && !b.generated);
+  if(!ungenerated.length){ toast('info','All blocks already have generated speech'); return; }
+  btn.classList.add('busy'); btn.querySelector('svg').style.opacity='.5';
+  for(const b of ungenerated){
+    const res = await Stub.generateSpeech(b.text, b.voice);
+    b.durationSec = res.durationSec; b.generated=true; b.audioUrl = res.url || null;
+  }
+  btn.classList.remove('busy'); btn.querySelector('svg').style.opacity='1';
+  recompute();
+  const realCount = ungenerated.filter(b=>b.audioUrl).length;
+  toast('ai',`Generated speech for ${ungenerated.length} block${ungenerated.length===1?'':'s'}${realCount?' ('+realCount+' with audio)':''}`);
+}
+
+/* ===== RENDER (stubbed pipeline) ===== */
+async function startRender(){
+  const {segments,totalSec}=compile();
+  if(totalSec<=0){ toast('warn','Add at least one block before rendering'); return; }
+  const ov=document.getElementById('renderOverlay'); ov.classList.add('show');
+  document.getElementById('rcTitle').textContent='Rendering video…';
+  document.getElementById('rcSpin').style.display='block';
+  document.getElementById('rcDoneActions').classList.remove('show');
+  document.querySelectorAll('.rc-step').forEach(s=>s.classList.remove('done','active'));
+  const payload = buildRenderPayload();
+  console.log('[render payload]', payload);
+  await Stub.render(payload, (p)=>{
+    document.getElementById('rcFill').style.width=p+'%';
+    const stepIdx = Math.min(4, Math.floor(p/20));
+    document.querySelectorAll('.rc-step').forEach((s,i)=>{
+      s.classList.toggle('done', i<stepIdx);
+      s.classList.toggle('active', i===stepIdx);
+    });
+  });
+  document.querySelectorAll('.rc-step').forEach(s=>{s.classList.remove('active');s.classList.add('done');});
+  document.getElementById('rcSpin').style.display='none';
+  document.getElementById('rcTitle').textContent='Render complete (stub)';
+  document.getElementById('rcDoneActions').classList.add('show');
+}
+function buildRenderPayload(){
+  const {segments,totalSec}=compile();
+  return {
+    schema:'showcase-script-v1',
+    projectName: state.projectName,
+    durationSec: totalSec, fps: CFG.fps,
+    blocks: segments.map((seg,i)=>({
+      index:i, type:seg.block.type, voice:seg.block.voice,
+      text:seg.block.text, startSec:seg.startSec, durSec:seg.durSec,
+      mediaId:seg.block.mediaId,
+      syncPoints: seg.block.syncPoints.map(sp=>({ id:sp.id, atSec:syncAbsTime(seg,sp), mediaId:sp.mediaId }))
+    })),
+    media: state.media.map(m=>({id:m.id,name:m.name,url:m.url})),
+  };
+}
+
+/* ===== MEDIA ===== */
+async function handleFiles(files){
+  for(const f of files){
+    const res = await Stub.uploadMedia(f);
+    const type = f.type.startsWith('audio') ? 'audio' : 'video';
+    const m = { id:uid('med'), name:res.name, url:res.url, type, durationSec:0 };
+    // probe duration
+    await probeDuration(m);
+    state.media.push(m);
+    // auto-attach to active Video block if it has none
+    const ab = state.blocks.find(b=>b.id===state.ui.activeBlockId);
+    if(type==='video' && ab && ab.type==='Video' && !ab.mediaId){ ab.mediaId=m.id; }
+  }
+  renderMedia(); recompute();
+  toast('ok',`Added ${files.length} file${files.length===1?'':'s'}`);
+}
+function probeDuration(m){
+  return new Promise(res=>{
+    const el=document.createElement(m.type==='audio'?'audio':'video');
+    el.preload='metadata'; el.src=m.url;
+    el.onloadedmetadata=()=>{ m.durationSec=el.duration||0; res(); };
+    el.onerror=()=>res();
+    setTimeout(res,1500);
+  });
+}
+function renderMedia(){
+  const list=document.getElementById('mediaList');
+  if(!state.media.length){ list.innerHTML='<div class="empty-hint">No media yet. Upload a clip to attach to a block.</div>'; return; }
+  list.innerHTML='';
+  state.media.forEach(m=>{
+    const it=document.createElement('div'); it.className='m-item'; it.draggable=true; it.dataset.id=m.id;
+    it.innerHTML=`<div class="m-thumb ${m.type==='video'?'vid':''}">${m.type==='video'?'<svg viewBox="0 0 24 24" fill="none"><path d="M8 6l10 6-10 6V6z" fill="currentColor"/></svg>':'<svg viewBox="0 0 24 24" fill="none"><path d="M4 12h2l2-6 4 14 3-9 2 3h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'}</div><div class="m-meta"><div class="m-nm">${m.name}</div><div class="m-dur mono">${fmt(m.durationSec||0)}</div></div>`;
+    it.addEventListener('click', ()=>{
+      // attach to active video block
+      const ab=state.blocks.find(b=>b.id===state.ui.activeBlockId);
+      if(ab && ab.type==='Video'){ History.push(); ab.mediaId=m.id; recompute(); toast('ok',`Attached ${m.name} to Block`); }
+      else toast('warn','Select a Video block first, then click a clip to attach it');
+    });
+    list.appendChild(it);
+  });
+}
+
+/* ===== TOAST ===== */
+function toast(kind, msg){
+  const icons={ok:'<path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    info:'<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v5M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    warn:'<path d="M12 3l9 16H3L12 3z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    ai:'<path d="M12 3l1.6 5L19 9.5l-4.5 3L16 18l-4-3-4 3 1.5-5.5L5 9.5 10.4 8 12 3z" fill="currentColor"/>'};
+  const t=document.createElement('div'); t.className='toast '+kind;
+  t.innerHTML=`<svg viewBox="0 0 24 24" fill="none">${icons[kind]||icons.info}</svg><span>${msg}</span>`;
+  document.getElementById('toastWrap').appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 2600);
+}
+
+/* ===== DIRTY / AUTOSAVE (local, isolated namespace) ===== */
+function markDirty(){
+  dirty=true;
+  document.getElementById('saveDot').classList.add('dirty');
+  document.getElementById('saveText').textContent='Saving…';
+  clearTimeout(window._saveT);
+  window._saveT=setTimeout(saveLocal, 800);
+}
+function saveLocal(){
+  try{ /* localStorage unavailable in this sandbox; in real editor this persists */ }catch(e){}
+  dirty=false;
+  document.getElementById('saveDot').classList.remove('dirty');
+  document.getElementById('saveText').textContent='All changes saved';
+}
+
+/* ===== RECOMPUTE (single re-render entry) ===== */
+function recompute(){ renderBlocks(); renderTimeline(); renderCanvas(); markDirty(); }
+function renderAll(){ renderMedia(); renderBlocks(); renderTimeline(); renderCanvas(); }
+
+/* ===== AI ASSISTANT =====
+   Architecture: chat instruction → AiBrain.interpret() → array of ACTIONS →
+   ActionExecutor runs each against real state. The brain is stubbed (keyword
+   parser); swapping it for the real Claude API means replacing ONE function
+   (AiBrain.interpret) — the executor and chat UI never change. */
+
+// The action vocabulary the AI can call — same mutations the UI buttons do.
+const ActionExecutor = {
+  run(actions){
+    History.push();
+    const done = [];
+    for(const a of actions){
+      try{ const label = this[a.action] ? this[a.action](a) : null; if(label) done.push(label); }
+      catch(e){ console.warn('action failed', a, e); }
+    }
+    recompute();
+    return done;
+  },
+  addBlock(a){
+    const nb={ id:uid('blk'), type:a.type||'Video', voice:a.voice||CFG.voices[1], html:a.text?escapeHtml(a.text):'', text:a.text||'', durationSec:0, mediaId:null, generated:false, syncPoints:[], journey:null };
+    state.blocks.push(nb); state.ui.activeBlockId=nb.id;
+    return `Added ${nb.type} block`;
+  },
+  addJourney(a){
+    const steps=(a.steps||[]).map(s=>({name:s.name||'Persona',role:s.role||'',action:s.action||''}));
+    const nb={ id:uid('blk'), type:'Journey', voice:CFG.voices[1], html:'', text:'', durationSec:0, mediaId:null, generated:false, syncPoints:[], journey:steps };
+    state.blocks.push(nb); state.ui.activeBlockId=nb.id;
+    return `Added Journey slide with ${steps.length} step${steps.length===1?'':'s'}`;
+  },
+  setAllVoices(a){
+    state.blocks.forEach(b=>{ if(b.type!=='Journey'){ b.voice=a.voice; b.generated=false; } });
+    return `Set all voices to ${a.voice}`;
+  },
+  addSyncToBlock(a){
+    const idx=(a.blockIndex!=null?a.blockIndex:state.blocks.length-1);
+    const b=state.blocks[idx];
+    if(b && b.type==='Video'){
+      const words=(b.text.trim().match(/\S+/g)||[]).length;
+      const sp={id:uid('sp'),label:'Sync',wordOffset:Math.floor(words/2),mediaId:null};
+      b.syncPoints.push(sp);
+      // also drop a chip into the html (append a marker at end)
+      b.html = (b.html||'') + ` <span class="spchip" contenteditable="false" data-sp="${sp.id}"><span class="spthumb"></span><span class="lbl">Sync</span></span>`;
+      return `Added a sync point to block ${idx+1}`;
+    }
+    return null;
+  },
+  setProjectName(a){ state.projectName=a.name; document.getElementById('projName').textContent=a.name; return `Renamed project to “${a.name}”`; },
+};
+
+// Stubbed brain: keyword + pattern parser. Returns {reply, actions}.
+const AiBrain = {
+  async interpret(text){
+    await new Promise(r=>setTimeout(r, 650)); // simulate latency
+    const t = text.toLowerCase();
+    const actions=[]; let reply='';
+
+    // JOURNEY slide
+    if(/journey/.test(t)){
+      const steps = parsePersonas(text);
+      // infer flow count
+      const flowM = t.match(/(\d+)\s*(flows?|steps?|personas?|stages?)/);
+      const n = flowM ? parseInt(flowM[1]) : (steps.length || 4);
+      while(steps.length < n) steps.push({name:`Persona ${steps.length+1}`, role:'Role', action:''});
+      if(steps.length > n) steps.length = n;
+      actions.push({action:'addJourney', steps});
+      reply = `Added a Journey slide with ${steps.length} steps. I pulled persona details where you gave them — click the block to fine-tune names, roles, and actions.`;
+    }
+    // change all voices
+    else if(/(all voices?|change.*voice|switch.*voice|use voice)/.test(t)){
+      const v = CFG.voices.find(vc=>t.includes(vc.toLowerCase())) || CFG.voices.find(vc=>t.includes(vc.split(' ')[0].toLowerCase()));
+      if(v){ actions.push({action:'setAllVoices', voice:v}); reply=`Switched every narration block to ${v}.`; }
+      else reply=`Which voice? Options are ${CFG.voices.join(', ')}.`;
+    }
+    // add intro/outro/video block
+    else if(/\b(intro)\b/.test(t)){ actions.push({action:'addBlock', type:'Intro'}); reply='Added an Intro block at the end.'; }
+    else if(/\b(outro)\b/.test(t)){ actions.push({action:'addBlock', type:'Outro'}); reply='Added an Outro block at the end.'; }
+    else if(/add.*(video|narration|block)/.test(t)){
+      const q = text.match(/saying ["“](.+?)["”]/i) || text.match(/:\s*(.+)$/);
+      actions.push({action:'addBlock', type:'Video', text:q?q[1]:''});
+      reply = q ? `Added a Video block with that narration.` : 'Added a blank Video block.';
+    }
+    // sync point
+    else if(/sync/.test(t)){
+      const m=t.match(/block\s*(\d+)/);
+      actions.push({action:'addSyncToBlock', blockIndex: m?parseInt(m[1])-1:null});
+      reply = m?`Added a sync point to block ${m[1]}.`:'Added a sync point to the last video block.';
+    }
+    // rename
+    else if(/(rename|call it|name it|title)/.test(t)){
+      const m=text.match(/(?:rename|call it|name it|title)\s+(?:to\s+)?["“]?(.+?)["”]?$/i);
+      if(m){ actions.push({action:'setProjectName', name:m[1].trim()}); reply=`Renamed the project.`; }
+      else reply='What should I name it?';
+    }
+    else {
+      reply = `I can add blocks (intro/outro/video), build a journey slide, drop sync points, change voices, or rename the project. Try: “add a journey slide with 4 flows, first persona Anita, CHRO, approves leave”.`;
+    }
+    return { reply, actions };
+  }
+};
+
+// pull persona name/role/action triples from free text
+function parsePersonas(text){
+  const steps=[];
+  // pattern A: "persona X, role Y, action Z" repeated, or "X (role, action)"
+  // try "Name (Role, action...)"
+  const paren = [...text.matchAll(/([A-Z][a-zA-Z]+)\s*\(([^,)]+)(?:,\s*([^)]+))?\)/g)];
+  if(paren.length){
+    paren.forEach(m=>steps.push({name:m[1].trim(), role:(m[2]||'').trim(), action:(m[3]||'').trim()}));
+    return steps;
+  }
+  // try "first/second/... persona is NAME, role ROLE, action ACTION"
+  const segs = text.split(/(?:,\s*)?(?:\d(?:st|nd|rd|th)?|first|second|third|fourth|fifth)\s+persona/i).slice(1);
+  segs.forEach(seg=>{
+    const nameM = seg.match(/(?:name\s+is\s+|is\s+|:\s*)?([A-Z][a-zA-Z]+)/);
+    const roleM = seg.match(/role\s+(?:is\s+)?([a-zA-Z /]+?)(?:,|and|action|$)/i);
+    const actM = seg.match(/action\s+(?:is\s+)?(.+?)(?:,?\s*(?:and\s+)?(?:\d|first|second|third|fourth|fifth)\s+persona|$)/i);
+    if(nameM) steps.push({name:nameM[1].trim(), role:roleM?roleM[1].trim():'', action:actM?actM[1].trim():''});
+  });
+  return steps;
+}
+
+/* ===== CHAT UI ===== */
+let chatBusy=false;
+function chatAdd(role, text, didActions){
+  const log=document.getElementById('chatLog');
+  const m=document.createElement('div'); m.className='msg '+role;
+  const av = role==='ai'
+    ? '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.6 5L19 9.5l-4.5 3L16 18l-4-3-4 3 1.5-5.5L5 9.5 10.4 8 12 3z" fill="#fff"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="2"/><path d="M5 20a7 7 0 0 1 14 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  let didHtml='';
+  if(didActions && didActions.length){
+    didHtml=`<div class="did">${didActions.map(d=>`<div class="did-row"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>${escapeHtml(d)}</div>`).join('')}</div>`;
+  }
+  m.innerHTML=`<div class="av">${av}</div><div class="bub">${escapeHtml(text)}${didHtml}</div>`;
+  log.appendChild(m); log.scrollTop=log.scrollHeight;
+}
+function chatThinking(on){
+  const log=document.getElementById('chatLog');
+  let t=document.getElementById('chatThinking');
+  if(on && !t){
+    t=document.createElement('div'); t.id='chatThinking'; t.className='chat-thinking';
+    t.innerHTML=`<div class="av"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.6 5L19 9.5l-4.5 3L16 18l-4-3-4 3 1.5-5.5L5 9.5 10.4 8 12 3z" fill="#fff"/></svg></div><div class="dots"><span></span><span></span><span></span></div>`;
+    log.appendChild(t); log.scrollTop=log.scrollHeight;
+  } else if(!on && t){ t.remove(); }
+}
+async function sendChat(text){
+  if(chatBusy || !text.trim()) return;
+  chatBusy=true;
+  chatAdd('user', text);
+  document.getElementById('chatInput').value='';
+  document.getElementById('chatSuggest').style.display='none';
+  chatThinking(true);
+  const { reply, actions } = await AiBrain.interpret(text);
+  chatThinking(false);
+  const done = actions.length ? ActionExecutor.run(actions) : [];
+  chatAdd('ai', reply, done);
+  // jump to script tab so they see the result? keep on AI but flash toast
+  if(done.length) toast('ai', done[0]);
+  chatBusy=false;
+}
+function wireChat(){
+  const input=document.getElementById('chatInput');
+  const send=document.getElementById('chatSend');
+  send.addEventListener('click', ()=>sendChat(input.value));
+  input.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendChat(input.value); }
+  });
+  input.addEventListener('input', ()=>{ input.style.height='auto'; input.style.height=Math.min(90,input.scrollHeight)+'px'; });
+  document.querySelectorAll('#chatSuggest .sug').forEach(s=>{
+    s.addEventListener('click', ()=>sendChat(s.textContent));
+  });
+  // greeting
+  chatAdd('ai', "Hi! I'm your showcase assistant. Tell me what to build and I'll edit the timeline for you — add blocks, journey slides, sync points, swap voices, and more.");
+}
+
+/* ===== EVENTS ===== */
+function wireGlobalEvents(){
+  // transport
+  document.getElementById('playBtn').addEventListener('click', ()=> view.isPlaying?pause():play());
+  document.getElementById('toStart').addEventListener('click', ()=>seekTo(0));
+  document.getElementById('toEnd').addEventListener('click', ()=>{ const {totalSec}=compile(); seekTo(totalSec); });
+  // ruler scrub
+  document.getElementById('ruler').addEventListener('click', e=>{
+    const rect=e.currentTarget.getBoundingClientRect();
+    seekTo((e.clientX-rect.left)/pxPerSec());
+  });
+  // toolbar toggles
+  document.getElementById('snapBtn').addEventListener('click', e=>{ state.ui.snap=!state.ui.snap; e.currentTarget.classList.toggle('on',state.ui.snap); toast('info','Snap '+(state.ui.snap?'on':'off')); });
+  document.getElementById('magnetBtn').addEventListener('click', e=>{ state.ui.magnet=!state.ui.magnet; e.currentTarget.classList.toggle('on',state.ui.magnet); toast('info','Magnetic timeline '+(state.ui.magnet?'on':'off')); });
+  document.getElementById('closeGapBtn').addEventListener('click', ()=> toast('info','Close gaps — wired in next slice (needs draggable clips)'));
+  // zoom
+  const zb=document.getElementById('zoomBar');
+  zb.addEventListener('click', e=>{
+    const rect=zb.getBoundingClientRect(); const frac=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+    state.ui.zoom = 0.4 + frac*2.6;
+    document.getElementById('zoomFill').style.width=(frac*100)+'%';
+    document.getElementById('zoomKnob').style.left=(frac*100)+'%';
+    renderTimeline();
+  });
+  // history
+  document.getElementById('undoBtn').addEventListener('click', ()=>History.undo());
+  document.getElementById('redoBtn').addEventListener('click', ()=>History.redo());
+  // script footer
+  document.getElementById('addBlockBtn').addEventListener('click', ()=>addBlock(null));
+  document.getElementById('regenBtn').addEventListener('click', regenerateSpeech);
+  document.getElementById('aiRewriteBtn').addEventListener('click', ()=> toast('ai','AI Rewrite — wired to Claude API at launch (stub)'));
+  document.getElementById('renderBtn').addEventListener('click', startRender);
+  // render overlay
+  document.getElementById('rcClose').addEventListener('click', ()=>document.getElementById('renderOverlay').classList.remove('show'));
+  document.getElementById('rcDownload').addEventListener('click', ()=>toast('info','Download wired to S3 output at launch'));
+  // right tabs
+  document.querySelectorAll('.r-tabb').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      const pane=tab.dataset.pane;
+      document.querySelectorAll('.r-tabb').forEach(t=>t.classList.toggle('on',t===tab));
+      document.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.dataset.pane===pane));
+      state.ui.pane=pane;
+    });
+  });
+  // upload
+  const fi=document.getElementById('fileInput'), uz=document.getElementById('uploadZone');
+  fi.addEventListener('change', e=>{ if(e.target.files.length) handleFiles([...e.target.files]); e.target.value=''; });
+  ['dragenter','dragover'].forEach(ev=>uz.addEventListener(ev,e=>{e.preventDefault();uz.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>uz.addEventListener(ev,e=>{e.preventDefault();uz.classList.remove('drag');}));
+  uz.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) handleFiles([...e.dataTransfer.files]); });
+  // keyboard
+  document.addEventListener('keydown', e=>{
+    const editing = e.target.isContentEditable || e.target.tagName==='INPUT' || e.target.tagName==='SELECT';
+    if((e.metaKey||e.ctrlKey) && e.key==='z' && !e.shiftKey){ e.preventDefault(); History.undo(); return; }
+    if((e.metaKey||e.ctrlKey) && (e.key==='y' || (e.key==='z'&&e.shiftKey))){ e.preventDefault(); History.redo(); return; }
+    if(editing) return;
+    if(e.code==='Space'){ e.preventDefault(); view.isPlaying?pause():play(); }
+    if(e.key==='Home'){ seekTo(0); }
+    if(e.key==='End'){ const {totalSec}=compile(); seekTo(totalSec); }
+  });
+}
+
+/* ===== INIT ===== */
+function seedDemo(){
+  state.blocks=[
+    {id:uid('blk'),type:'Intro',voice:'CASSIDY',html:'',text:'',durationSec:0,mediaId:null,generated:false,syncPoints:[]},
+    {id:uid('blk'),type:'Video',voice:'CASSIDY',
+      html:'From a standing start, this organization had <span class="spchip" contenteditable="false" data-sp="sp_demo1"><span class="spthumb"></span><span class="lbl">Sync</span></span> separate systems, processes, and procedures in each country, deeply embedded in <span class="spchip" contenteditable="false" data-sp="sp_demo2"><span class="spthumb"></span><span class="lbl">Sync</span></span> every location.',
+      text:'From a standing start, this organization had separate systems, processes, and procedures in each country, deeply embedded in every location.',
+      durationSec:0,mediaId:null,generated:false,
+      syncPoints:[{id:'sp_demo1',label:'Sync 1',wordOffset:6,mediaId:null},{id:'sp_demo2',label:'Sync 2',wordOffset:16,mediaId:null}]},
+    {id:uid('blk'),type:'Outro',voice:'CASSIDY',html:'',text:'',durationSec:0,mediaId:null,generated:false,syncPoints:[]},
+  ];
+  state.ui.activeBlockId=state.blocks[1].id;
+}
+async function init(){
+  seedDemo();
+  wireGlobalEvents();
+  wireChat();
+  renderAll();
+  updateHistoryButtons();
+  seekTo(0);
+  // PHASE 1: try to load the real voice list from the test worker
+  try{
+    const r = await fetch(TTS_WORKER_URL + '/voices');
+    if(r.ok){ const d = await r.json(); if(d.voices && d.voices.length){ TEST_VOICES = d.voices; CFG.voices = d.voices.map(v=>v.name); renderBlocks(); } }
+  }catch(e){ /* worker not deployed yet — keep defaults, TTS will fall back to estimate */ }
+}
+init();
+</script>
+</body>
+</html>
