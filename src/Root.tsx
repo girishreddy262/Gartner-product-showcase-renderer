@@ -213,7 +213,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
       return true;
     }
   );
-  const { scale, originX, originY } = useZoomTransform(zoomEffects, frame, fps);
+  const { scale, tx, ty } = useZoomTransform(zoomEffects, frame, fps);
 
   const activeSpotlights = (payload.effects || []).filter(
     (e): e is SpotlightEffect =>
@@ -232,8 +232,8 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         width: tokens.canvasW,
         height: tokens.canvasH,
         position: 'relative',
-        transform: scale !== 1 ? `scale(${scale})` : 'none',
-        transformOrigin: `${originX}px ${originY}px`,
+        transform: scale !== 1 ? `translate(${tx}px, ${ty}px) scale(${scale})` : 'none',
+        transformOrigin: '0 0',
       }}>
         {payload.segments.map(seg => {
           const startFrame = msToFrames(seg.startMs);
