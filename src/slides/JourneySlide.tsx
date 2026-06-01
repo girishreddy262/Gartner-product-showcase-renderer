@@ -204,6 +204,18 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment; headerOpacity?: nu
           {/* Header group (title + footer card + RRIVE logo) — fades with zoom */}
           {showHeader && (
             <g opacity={headerOpacity}>
+              {/* v3.28b.84: optional uploaded slide image/logo (left, free position).
+                  Inside the header group so it fades out on zoom like the title. */}
+              {seg.slideImage && seg.slideImage.url && (
+                <image
+                  x={seg.slideImage.x ?? 100}
+                  y={seg.slideImage.y ?? 600}
+                  width={seg.slideImage.width ?? 300}
+                  height={seg.slideImage.height ?? 120}
+                  href={seg.slideImage.url}
+                  preserveAspectRatio="xMidYMid meet"
+                />
+              )}
               {titleLines.map((line, idx) => (
                 <text
                   key={idx}

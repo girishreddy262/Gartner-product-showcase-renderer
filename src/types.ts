@@ -105,6 +105,7 @@ export interface JourneySegment extends BaseSegment {
   footerCard?: JourneyFooterCard;
   hideHeader?: boolean; // when true, title + footer card + RRIVE logo are hidden (use during zoom effects)
   hideAvatars?: boolean; // v3.28b.80: when true, persona avatars are not drawn in journey rows
+  slideImage?: { url: string; x?: number; y?: number; width?: number; height?: number } | null; // v3.28b.84: optional logo/image on left, fades with header on zoom
   textStyles: TextStyles;
 }
 
