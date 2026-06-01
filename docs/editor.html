@@ -3365,7 +3365,11 @@ function getAppendStartMs() {
 // Add a slide of a given type — replaces old addSlideSegment
 function addSlideOfType(type, startMs) {
   pushHistory();
-  if (startMs == null) startMs = getAppendStartMs();
+  // v3.28b.78: default insertion point is the PLAYHEAD (not the end of the
+  // timeline), so slides appear where the user is working. If the playhead is
+  // past the end, it naturally appends. Explicit startMs (e.g. from AI) is honored.
+  const _wasExplicit = (typeof startMs === 'number');
+  if (startMs == null) startMs = Math.round(view.curTimeMs || 0);
   let seg;
   if (type === 'intro') {
     seg = {
@@ -3466,6 +3470,33 @@ function addSlideOfType(type, startMs) {
     };
   } else {
     return;
+  }
+  // v3.28b.78: INSERT at playhead and push everything after it to the right.
+  // When startMs wasn't explicitly passed, insert at the current playhead
+  // (not the end of the timeline). Then shift every segment/overlay/audio that
+  // starts at or after the insertion point right by the new slide's duration,
+  // so the new slide makes room instead of overlapping. (Delete still leaves a
+  // gap — only insert shifts, per v3.28b.75.)
+  const insertAt = Math.round(seg.startMs || 0);
+  const insertDur = seg.durationMs || DEFAULT_SLIDE_DURATION_MS;
+  const wasExplicit = _wasExplicit;
+  // Only ripple-insert when dropping at the playhead inside existing content
+  // (not when appending past the end, and not for AI calls that gave an explicit time).
+  const timelineEnd = getAppendStartMs();
+  if (!wasExplicit && insertAt < timelineEnd) {
+    const shiftAfter = (arr) => {
+      if (!arr) return;
+      for (const it of arr) {
+        if ((it.startMs || 0) >= insertAt && it.id !== seg.id) it.startMs = (it.startMs || 0) + insertDur;
+      }
+    };
+    shiftAfter(state.segments);
+    shiftAfter(state.callouts);
+    shiftAfter(state.textOverlays);
+    shiftAfter(state.customerCards);
+    shiftAfter(state.effects);
+    shiftAfter(state.audioPlacements);
+    shiftAfter(state.shapes);
   }
   state.segments.push(seg);
   setSelected(seg.id, 'segment');
@@ -5609,7 +5640,8 @@ function onBlockMouseDown(e, item, kind) {
   // For multi-drag, gather every selected item across all collections.
   const collectionByKind = {
     segment: state.segments, callout: state.callouts, audio: state.audioPlacements,
-    effect: state.effects, textOverlay: state.textOverlays, customerCard: state.customerCards
+    effect: state.effects, textOverlay: state.textOverlays, customerCard: state.customerCards,
+    shape: state.shapes  // v3.28b.78: shapes were missing — now drag with the group
   };
   let movers;
   if (inMulti) {
@@ -8504,7 +8536,13 @@ function pasteClipboardAtPlayhead() {
     return;
   }
   pushHistory();
-  const dropMs = Math.round(view.curTimeMs || 0);
+  // v3.28b.78: paste lands RIGHT AFTER the original item (original start + its
+  // duration), so the copy doesn't stack exactly on top of the source at the
+  // same time/layer. Falls back to playhead if the original has no timing.
+  const orig = _clipboard.data || {};
+  const origStart = orig.startMs || 0;
+  const origDur = orig.durationMs || 0;
+  const dropMs = (origDur > 0) ? Math.round(origStart + origDur) : Math.round(view.curTimeMs || 0);
   const fresh = JSON.parse(JSON.stringify(_clipboard.data));
   const idPrefix = _clipboard.kind === 'segment' ? 'seg'
     : (_clipboard.kind === 'callout' ? 'co'
