@@ -2514,7 +2514,7 @@ function renderJourneySVG(seg) {
     if (t > seg.durationMs - FADE_OUT_MS) {
       slideOpacity = Math.max(0, (seg.durationMs - t) / FADE_OUT_MS);
     }
-    // v3.28b.86: 2 rows must frame like 3+ (focal on row 1, not row 0) so the
+    // v3.28b.87: 2 rows must frame like 3+ (focal on row 1, not row 0) so the
     // top connector line is not pushed down during zoom (was leaving a gap above it).
     const minCp = Nrows >= 2 ? 1 : 0;
     const maxCp = Nrows >= 3 ? Nrows - 2 : Math.max(0, Nrows - 1);
@@ -2556,6 +2556,10 @@ function renderJourneySVG(seg) {
       }
     }
     scale = 1 + (ZOOM_SCALE - 1) * zoomProgress;
+    // v3.28b.87: pin the focal to at least row 1's Y so the top connector line never
+    // gets pushed down during zoom. Covers 1-row (and any count) the same way 2+ already
+    // are via the minCp clamp. ROW_YS[1] = 398.592 keeps top line at its un-zoomed spot.
+    if (focalY < ROW_YS[1]) focalY = ROW_YS[1];
     const screenFx = (1 - zoomProgress) * FOCAL_X + zoomProgress * (CW / 2);
     const screenFy = (1 - zoomProgress) * focalY + zoomProgress * (CH / 2);
     txCam = screenFx - FOCAL_X * scale;
@@ -2602,7 +2606,7 @@ function renderJourneySVG(seg) {
 
   // Header (title + footer card + RRIVE logo) — fades with headerOpacity
   svg += '<g opacity="' + headerOpacity.toFixed(3) + '">';
-  // v3.28b.86: optional uploaded logo/image on the slide (left, free position).
+  // v3.28b.87: optional uploaded logo/image on the slide (left, free position).
   // Inside the header group so it fades out on zoom like the title.
   if (seg.slideImage && seg.slideImage.url) {
     const si = seg.slideImage;
@@ -2658,7 +2662,7 @@ function renderJourneySVG(seg) {
       });
     }
 
-    // v3.28b.86: per-slide toggle to hide persona avatars. When seg.hideAvatars
+    // v3.28b.87: per-slide toggle to hide persona avatars. When seg.hideAvatars
     // is true, skip drawing the avatar circles/images entirely. Names,
     // designations, ticks and descriptions are unaffected.
     if (seg.hideAvatars) {
@@ -3405,7 +3409,7 @@ function addSlideOfType(type, startMs) {
       ],
       highlightUpToRow: 1,
       endJourney: false,
-      slideImage: null, // v3.28b.86: optional {url,x,y,width,height} logo/image on left; fades with header on zoom
+      slideImage: null, // v3.28b.87: optional {url,x,y,width,height} logo/image on left; fades with header on zoom
       footerCard: { enabled: false, label: 'Model 2', body: 'Darwinbox (Complete ESS)\nPartner (Processing)', showRriveLogo: false },
       journeyZoom: { enabled: true }, // v3.28a.2: ignored by renderer (always on), kept for legacy file compat
       textStyles: {},
@@ -4108,11 +4112,11 @@ function renderJourneyEditUI(seg) {
   html += '<div class="form-row"><label class="checkbox-label">';
   html += '<input type="checkbox" id="seg-end-journey"' + (seg.endJourney ? ' checked' : '') + '>';
   html += ' End of journey (no line after last row)</label></div>';
-  // v3.28b.86: Hide persona avatars toggle (some users don't want avatars in journey)
+  // v3.28b.87: Hide persona avatars toggle (some users don't want avatars in journey)
   html += '<div class="form-row"><label class="checkbox-label">';
   html += '<input type="checkbox" id="seg-hide-avatars"' + (seg.hideAvatars ? ' checked' : '') + '>';
   html += ' Hide persona avatars</label></div>';
-  // v3.28b.86: Slide image/logo upload (left, free position, fades on zoom)
+  // v3.28b.87: Slide image/logo upload (left, free position, fades on zoom)
   html += '<div class="align-section">';
   html += '<div class="align-label">Slide image / logo</div>';
   if (seg.slideImage && seg.slideImage.url) {
@@ -4121,7 +4125,7 @@ function renderJourneyEditUI(seg) {
     html += '<img src="' + escapeHtml(si.url) + '" style="width:48px;height:48px;border-radius:6px;object-fit:contain;background:#1a2332;" alt="">';
     html += '<button class="btn-sm" id="seg-slideimg-remove">Remove</button>';
     html += '</div>';
-    // v3.28b.86: sliders for scale + position (easier than typing numbers)
+    // v3.28b.87: sliders for scale + position (easier than typing numbers)
     const curScale = si.scale != null ? si.scale : 100;  // percent
     html += '<div class="form-row" style="flex-direction:column;align-items:stretch;gap:2px;">';
     html += '<label style="font-size:11px;opacity:.7;">Size <span id="seg-slideimg-scale-val">' + curScale + '%</span></label>';
@@ -4756,12 +4760,12 @@ function wireJourneyEditUI(seg) {
   if (ejEl) {
     ejEl.addEventListener('change', (e) => { pushHistory(); seg.endJourney = e.target.checked; rebuildCanvas(); });
   }
-  // v3.28b.86: hide persona avatars toggle
+  // v3.28b.87: hide persona avatars toggle
   const haEl = $('seg-hide-avatars');
   if (haEl) {
     haEl.addEventListener('change', (e) => { pushHistory(); seg.hideAvatars = e.target.checked; rebuildCanvas(); });
   }
-  // v3.28b.86: slide image/logo upload + position
+  // v3.28b.87: slide image/logo upload + position
   const siFile = $('seg-slideimg-file');
   const siUploadBtn = $('seg-slideimg-upload');
   if (siUploadBtn && siFile) {
@@ -4774,7 +4778,7 @@ function wireJourneyEditUI(seg) {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const url = ev.target.result;
-        // v3.28b.86: capture natural dimensions so scale slider keeps aspect ratio.
+        // v3.28b.87: capture natural dimensions so scale slider keeps aspect ratio.
         const probe = new Image();
         probe.onload = () => {
           pushHistory();
@@ -4800,7 +4804,7 @@ function wireJourneyEditUI(seg) {
   if (siRemove) {
     siRemove.addEventListener('click', () => { pushHistory(); seg.slideImage = null; rebuildCanvas(); renderEditPanel(); });
   }
-  // v3.28b.86: scale slider — recompute W/H from base, preserve aspect ratio
+  // v3.28b.87: scale slider — recompute W/H from base, preserve aspect ratio
   const siScale = $('seg-slideimg-scale');
   if (siScale) {
     let _scalePushed = false;
@@ -4818,7 +4822,7 @@ function wireJourneyEditUI(seg) {
     });
     siScale.addEventListener('change', () => { _scalePushed = false; });
   }
-  // v3.28b.86: position sliders (live drag)
+  // v3.28b.87: position sliders (live drag)
   [['x', 'seg-slideimg-x', 'seg-slideimg-x-val'], ['y', 'seg-slideimg-y', 'seg-slideimg-y-val']].forEach(([dim, id, valId]) => {
     const el = $(id);
     if (!el) return;
@@ -5777,7 +5781,7 @@ function onBlockMouseDown(e, item, kind) {
     }
   } else {
     movers = [{ obj: item, startMs0: item.startMs || 0 }];
-    // v3.28b.86: if dragging a SEGMENT, carry everything attached to it (audio,
+    // v3.28b.87: if dragging a SEGMENT, carry everything attached to it (audio,
     // callouts, text, cards, effects, shapes whose start falls within the
     // segment's time range) so the whole composition shifts together.
     if (kind === 'segment') {
@@ -5800,6 +5804,31 @@ function onBlockMouseDown(e, item, kind) {
     }
   }
 
+  // v3.28b.87: MAGNETIC SNAP targets. While dragging, the group's leading edge
+  // (earliest start) and trailing edge (latest end) snap to nearby neighbor edges
+  // on the SAME kind/track, so clips lock end-to-end with no gap and no overlap.
+  // Build the snap-point list once (neighbors are everything NOT being moved).
+  const moverIds = new Set(movers.map(m => m.obj.id));
+  const SNAP_PX = 10; // pixels of magnetic pull
+  const snapKinds = inMulti
+    ? [...new Set(view.multiSelect.map(s => s.kind))]
+    : [kind];
+  const snapPoints = [];
+  for (const k of snapKinds) {
+    const coll = collectionByKind[k];
+    if (!coll) continue;
+    for (const it of coll) {
+      if (moverIds.has(it.id)) continue;
+      const s = it.startMs || 0;
+      const e2 = s + (it.durationMs || 0);
+      snapPoints.push(s, e2);
+    }
+  }
+  snapPoints.push(0); // timeline origin is always a snap target
+  // Group geometry relative to its own earliest start, so we can test both edges.
+  const groupStart0 = Math.min(...movers.map(m => m.startMs0));
+  const groupEnd0 = Math.max(...movers.map(m => (m.startMs0 + (m.obj.durationMs || 0))));
+
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
     if (Math.abs(dx) > 3 && !_historyPushed) { pushHistory(); _historyPushed = true; dragged = true; }
@@ -5807,6 +5836,19 @@ function onBlockMouseDown(e, item, kind) {
     // clamp so the earliest-starting mover can't go below 0 (keeps group intact)
     const minStart = Math.min(...movers.map(m => m.startMs0));
     if (minStart + deltaMs < 0) deltaMs = -minStart;
+    // v3.28b.87: magnetic snap. Tentative leading + trailing edges after the raw drag.
+    const snapMs = SNAP_PX / px;
+    const leadEdge = groupStart0 + deltaMs;
+    const trailEdge = groupEnd0 + deltaMs;
+    let bestAdjust = null, bestDist = snapMs;
+    for (const sp of snapPoints) {
+      const dl = Math.abs(leadEdge - sp);
+      if (dl < bestDist) { bestDist = dl; bestAdjust = sp - leadEdge; }
+      const dt = Math.abs(trailEdge - sp);
+      if (dt < bestDist) { bestDist = dt; bestAdjust = sp - trailEdge; }
+    }
+    if (bestAdjust !== null) deltaMs += Math.round(bestAdjust);
+    if (minStart + deltaMs < 0) deltaMs = -minStart; // re-clamp after snap
     for (const m of movers) {
       m.obj.startMs = Math.max(0, m.startMs0 + deltaMs);
     }
@@ -6183,6 +6225,11 @@ function renderSegmentToCanvas(seg) {
       v.style.objectFit = 'contain';
       // Track this so we can clean up if needed
       _activeVideoElement = v;
+      // v3.28b.87: remember the source video + segment this element is bound to,
+      // so tick() can REUSE it across a cut/speed-change boundary (same source)
+      // instead of rebuilding (which causes a black flash while the new element loads).
+      _activeVideoElement._videoId = seg.videoId;
+      _activeVideoElement._segId = seg.id;
       // Apply playback speed (default 1.0)
       v.playbackRate = seg.speed || 1.0;
       v.addEventListener('loadedmetadata', () => {
@@ -6566,9 +6613,42 @@ function tick() {
   const active = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
   const activeId = active ? active.id : null;
   if (activeId !== _lastActiveSegmentId) {
-    // Segment changed: rebuild canvas (creates new video element)
     _lastActiveSegmentId = activeId;
-    rebuildCanvas();
+    // v3.28b.87: SEAMLESS cut/speed-change. If the new active segment is a video
+    // from the SAME source video as the element we already have playing, do NOT
+    // rebuild (which destroys/recreates the <video>, causing a black flash while it
+    // reloads + seeks). Instead reuse the existing element: just re-point the binding,
+    // re-apply speed, and re-seek to the new segment's source offset. This is how
+    // Clueso-style editors keep adjacent clips from the same source seamless.
+    const reuse = active && _activeVideoElement && isRecordingSegment(active)
+      && _activeVideoElement._videoId === active.videoId
+      && _activeVideoElement.readyState >= 2;
+    if (reuse) {
+      const v = _activeVideoElement;
+      v._segId = active.id;
+      // update the wrapper's dataset so selection/UI still maps to the new segment
+      try {
+        const wrap = v.closest('.canvas-segment');
+        if (wrap) wrap.dataset.id = active.id;
+      } catch(_) {}
+      const localSec = Math.max(0, (view.curTimeMs - active.startMs) / 1000);
+      const spd = active.speed || 1.0;
+      const srcStartSec = (active.sourceStartMs || 0) / 1000;
+      const targetT = srcStartSec + (localSec * spd);
+      // Only hard-seek if the source time actually jumps (a cut to a different part
+      // of the source). If it's a pure speed change at a continuous point, the source
+      // time is already ~correct, so skip the seek to avoid a visible re-decode hitch.
+      const drift = Math.abs((v.currentTime || 0) - targetT);
+      v.playbackRate = spd;
+      if (drift > 0.05) {
+        try { v.currentTime = clamp(targetT, 0, v.duration || 0); } catch(_) {}
+      }
+      // overlays still need refreshing for the new segment context
+      updateCanvasOverlays();
+    } else {
+      // Segment changed to a different source (or a slide): full rebuild.
+      rebuildCanvas();
+    }
   } else if (active) {
     // Same segment: just sync video time (if any) and check overlays
     // v3.28b.64: if active segment is a journey slide, re-render its SVG every
@@ -9461,7 +9541,7 @@ function swapSelectedWithNeighbor(direction) {
 }
 
 // v3.28b.16: Fine-nudge selected segment by ±100ms (Shift+arrow).
-// v3.28b.86: also carries attachments (audio/callouts/text/cards/effects/shapes
+// v3.28b.87: also carries attachments (audio/callouts/text/cards/effects/shapes
 // within the segment's time range), matching the mouse-drag behavior.
 function nudgeSelectedSegment(deltaMs) {
   if (view.selectedKind !== 'segment') return;
