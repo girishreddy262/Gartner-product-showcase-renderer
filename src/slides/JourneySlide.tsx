@@ -148,6 +148,9 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment; headerOpacity?: nu
   }
 
   scale = 1 + (ZOOM_SCALE - 1) * zoomProgress;
+  // v3.28b.87: pin focal to at least row 1's Y so the top connector line is not pushed
+  // down during zoom (covers 1-row; matches editor preview).
+  if (focalY < ROW_YS[1]) focalY = ROW_YS[1];
   const screenFx = (1 - zoomProgress) * FOCAL_X + zoomProgress * (CW / 2);
   const screenFy = (1 - zoomProgress) * focalY + zoomProgress * (CH / 2);
   txCam = screenFx - FOCAL_X * scale;
