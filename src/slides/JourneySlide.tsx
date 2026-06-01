@@ -106,7 +106,9 @@ export const JourneySlideNew: React.FC<{ seg: JourneySegment; headerOpacity?: nu
   }
 
   // focal row index over time
-  const minCp = Nrows >= 3 ? 1 : 0;
+  // v3.28b.86: 2 rows frame like 3+ (focal on row 1, not row 0) so the top
+  // connector line is not pushed down during zoom (was leaving a gap above it).
+  const minCp = Nrows >= 2 ? 1 : 0;
   const maxCp = Nrows >= 3 ? Nrows - 2 : Math.max(0, Nrows - 1);
   const cpAt = (time: number) => {
     let last = 0;
