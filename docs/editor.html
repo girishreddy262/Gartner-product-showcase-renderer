@@ -3809,13 +3809,21 @@ function toggleMultiSelectItem(id, kind) {
   }
   const idx = view.multiSelect.findIndex(s => s.id === id);
   if (idx >= 0) {
+    // v3.28b.77: REMOVING from selection. Previously we still set
+    // selectedId = id below, which made the item keep its "selected" highlight
+    // (line: selectedId === item.id) even though it was removed — so deselect
+    // appeared not to work. Now, when removing, point selectedId at another
+    // still-selected item (or clear it) instead of the one we just removed.
     view.multiSelect.splice(idx, 1);
+    const next = view.multiSelect[view.multiSelect.length - 1];
+    view.selectedId = next ? next.id : null;
+    view.selectedKind = next ? next.kind : null;
   } else {
     view.multiSelect.push({ id, kind });
+    // Keep edit panel showing the last-clicked (newly added) item
+    view.selectedId = id;
+    view.selectedKind = kind;
   }
-  // Keep edit panel showing the *last clicked* item for context
-  view.selectedId = id;
-  view.selectedKind = kind;
   rebuildTimeline();
   renderEditPanel();
 }
@@ -5582,16 +5590,49 @@ function onBlockMouseDown(e, item, kind) {
     rangeSelectInTimeline(item.id, kind);
     return;
   }
-  setSelected(item.id, kind);
+  // v3.28b.77: if the clicked item is part of a multi-selection, drag ALL
+  // selected items together (don't collapse to single-select). Otherwise
+  // behave as before — single select + drag just this one.
+  const inMulti = view.multiSelect && view.multiSelect.length > 1 &&
+                  view.multiSelect.some(s => s.id === item.id);
+
+  if (!inMulti) {
+    setSelected(item.id, kind);
+  }
+
   let _historyPushed = false;
   const startX = e.clientX;
-  const startMs0 = item.startMs;
   const px = getEffectivePxPerMs();
   let dragged = false;
+
+  // Build the set of items to move + their original starts.
+  // For multi-drag, gather every selected item across all collections.
+  const collectionByKind = {
+    segment: state.segments, callout: state.callouts, audio: state.audioPlacements,
+    effect: state.effects, textOverlay: state.textOverlays, customerCard: state.customerCards
+  };
+  let movers;
+  if (inMulti) {
+    movers = [];
+    for (const sel of view.multiSelect) {
+      const coll = collectionByKind[sel.kind];
+      const obj = coll && coll.find(x => x.id === sel.id);
+      if (obj) movers.push({ obj, startMs0: obj.startMs || 0 });
+    }
+  } else {
+    movers = [{ obj: item, startMs0: item.startMs || 0 }];
+  }
+
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
     if (Math.abs(dx) > 3 && !_historyPushed) { pushHistory(); _historyPushed = true; dragged = true; }
-    item.startMs = Math.max(0, Math.round(startMs0 + dx / px));
+    let deltaMs = Math.round(dx / px);
+    // clamp so the earliest-starting mover can't go below 0 (keeps group intact)
+    const minStart = Math.min(...movers.map(m => m.startMs0));
+    if (minStart + deltaMs < 0) deltaMs = -minStart;
+    for (const m of movers) {
+      m.obj.startMs = Math.max(0, m.startMs0 + deltaMs);
+    }
     rebuildTimeline();
   };
   const onUp = () => {
