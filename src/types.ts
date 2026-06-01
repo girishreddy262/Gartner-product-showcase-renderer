@@ -63,18 +63,13 @@ export interface RecordingSegment extends BaseSegment {
   sourceStartMs: number;
   muteSourceAudio: boolean;
   showFrame: boolean;
-  videoScale?: number;  // v3.28b.5: scale factor 0.5–1.5, default 1.0
-  audioVolume?: number; // v3.28b.20: 0..1 (or higher) when source audio is on
-  // v3.28b.25: per-side crop as 0..1 ratios of source video dimensions
-  crop?: { top: number; right: number; bottom: number; left: number };
 }
 
 export interface IntroSegment extends BaseSegment {
   kind: 'slide-intro';
   title: string;
   subtitle: string;
-  moduleIconId: string | null;          // legacy (v3.27 and earlier) — kept for back-compat
-  moduleSlideId?: string | null;        // v3.28b: id of intro module slide design (from intro-modules.ts)
+  moduleIconId: string | null;
   textStyles: TextStyles;
 }
 
@@ -101,19 +96,6 @@ export interface JourneyFooterCard {
   showRriveLogo: boolean;
 }
 
-// Native zoom owned by a Journey segment. Replaces the generic ZoomEffect for this slide.
-// Timing is deterministic: ramps in over first RAMP_MS, holds, ramps out over last RAMP_MS.
-// Header (title + footer card + RRIVE logo) opacity is tied to the same zoom progress.
-export interface JourneyNativeZoom {
-  enabled: boolean;
-  focalX: number;   // canvas x (default 1260 — over the ticks column)
-  focalY: number;   // canvas y (default 543 — middle row)
-  scale: number;    // 1.0 – 2.0 (default 1.4)
-  // v3.28b.40: when true, start at full zoom from frame 0 (no zoom-in animation).
-  // Tick marks still animate normally — they just start firing immediately.
-  startZoomedIn?: boolean;
-}
-
 export interface JourneySegment extends BaseSegment {
   kind: 'slide-journey';
   title: string;
@@ -122,7 +104,7 @@ export interface JourneySegment extends BaseSegment {
   endJourney: boolean; // when true, last connector segment doesn't extend below last tick
   footerCard?: JourneyFooterCard;
   hideHeader?: boolean; // when true, title + footer card + RRIVE logo are hidden (use during zoom effects)
-  journeyZoom?: JourneyNativeZoom; // v3.21: native zoom replaces generic Zoom for this slide
+  hideAvatars?: boolean; // v3.28b.80: when true, persona avatars are not drawn in journey rows
   textStyles: TextStyles;
 }
 
@@ -180,40 +162,15 @@ export interface EmptySegment extends BaseSegment {
   textStyles: TextStyles;
 }
 
-// v3.28b.2: Divider slide — icon + subtitle (Bold 60 #0183FF) + title (Bold 116 #003B73)
-// on #EDF6FF background. Hiding subtitle or title auto-fits the layout.
-// All icons share the same baseline (bottom edge).
-export interface DividerSegment extends BaseSegment {
-  kind: 'slide-divider';
-  title: string;          // multi-line OK (use \n)
-  subtitle: string;       // optional — empty hides
-  iconId: string;         // ID from DIVIDER_ICONS library
-  textStyles: TextStyles;
-}
-
-
-// v3.28b.5: full-bleed image slide — uploaded JPEG/PNG fills the 1920x1080 canvas
-// with a simple fade-in animation.
-// v3.28b.51: + optional navy frame overlay + scale slider (50-150%)
-export interface ImageSegment extends BaseSegment {
-  kind: 'slide-image';
-  imageUrl: string;
-  filename?: string;
-  showFrame?: boolean;     // default false; user toggles in edit panel
-  imageScale?: number;     // 0.5-1.5 (50-150%); default 1.0
-}
-
 export type Segment =
   | RecordingSegment
   | IntroSegment
   | JourneySegment
   | FocusSegment
   | KeyGoalsSegment
-  | EmptySegment
-  | DividerSegment
-  | ImageSegment;
+  | EmptySegment;
 
-export type SlideSegment = Exclude<Segment, RecordingSegment | ImageSegment>;
+export type SlideSegment = Exclude<Segment, RecordingSegment>;
 
 // --- Overlays ---
 
@@ -223,8 +180,6 @@ export interface AudioPlacement {
   startMs: number;
   durationMs: number;
   volume: number;
-  // v3.28b.50: offset into the source audio file (set when a placement is sliced)
-  sourceStartMs?: number;
 }
 
 export interface Callout {
@@ -266,8 +221,7 @@ export interface CustomerCardOverlay {
   y: number;
   startMs: number;
   durationMs: number;
-  logoUrl?: string | null;       // legacy (v3.27 and earlier) — explicit URL string
-  customerLogoId?: string | null; // v3.28b: id from customer-logos.ts library (preferred)
+  logoUrl?: string | null;
   employees: string;     // e.g. "1.5K+"
   industry: string;      // e.g. "Data Solutions & Analytics"
   location: string;      // e.g. "USA"
@@ -302,25 +256,6 @@ export interface SpotlightEffect {
 
 export type Effect = ZoomEffect | SpotlightEffect;
 
-// v3.28b.53: Shape overlays (rectangle + ellipse) with fill/stroke/opacity
-export interface ShapeOverlay {
-  id: string;
-  shapeType: 'rect' | 'ellipse';
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  startMs: number;
-  durationMs: number;
-  fill?: string;
-  fillEnabled?: boolean;
-  stroke?: string;
-  strokeEnabled?: boolean;
-  strokeWidth?: number;
-  opacity?: number;
-  cornerRadius?: number;  // rect only
-}
-
 // --- Full Payload ---
 
 export interface ShowcasePayload {
@@ -333,7 +268,6 @@ export interface ShowcasePayload {
   effects: Effect[];
   textOverlays: TextOverlay[];
   customerCards?: CustomerCardOverlay[];
-  shapes?: ShapeOverlay[];
   frameUrl?: string;
   jobId: string;
 }
