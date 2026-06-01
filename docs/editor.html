@@ -3652,35 +3652,12 @@ function deleteSelected() {
   pushHistory();
   const id = view.selectedId;
   if (view.selectedKind === 'segment') {
-    // v3.28b.16: Ripple delete — close the gap left by the deleted segment.
-    // All segments that started AFTER this one shift left by its duration so
-    // there's no empty time in the timeline.
-    const removed = state.segments.find(s => s.id === id);
-    if (removed) {
-      const removedEndMs = removed.startMs + removed.durationMs;
-      const removedDur = removed.durationMs;
-      state.segments = state.segments.filter(s => s.id !== id);
-      for (const s of state.segments) {
-        if (s.startMs >= removedEndMs) s.startMs -= removedDur;
-      }
-      for (const c of state.callouts || []) {
-        if (c.startMs >= removedEndMs) c.startMs -= removedDur;
-      }
-      for (const e of state.effects || []) {
-        if (e.startMs >= removedEndMs) e.startMs -= removedDur;
-      }
-      for (const t of state.textOverlays || []) {
-        if (t.startMs >= removedEndMs) t.startMs -= removedDur;
-      }
-      for (const cc of state.customerCards || []) {
-        if (cc.startMs >= removedEndMs) cc.startMs -= removedDur;
-      }
-      for (const ap of state.audioPlacements || []) {
-        if (ap.startMs >= removedEndMs) ap.startMs -= removedDur;
-      }
-    } else {
-      state.segments = state.segments.filter(s => s.id !== id);
-    }
+    // v3.28b.75: NO auto-shift on delete. Removing a segment leaves a gap where
+    // it was — other segments stay put. Gaps are only closed when the user
+    // explicitly clicks "Close Gaps" or uses Snap. (Previously this did a
+    // "ripple delete" that magnetically slid everything left, which the user
+    // did not want.)
+    state.segments = state.segments.filter(s => s.id !== id);
   }
   else if (view.selectedKind === 'callout') state.callouts = state.callouts.filter(c => c.id !== id);
   else if (view.selectedKind === 'audio') state.audioPlacements = state.audioPlacements.filter(a => a.id !== id);
