@@ -65,16 +65,10 @@ const RecordingComp: React.FC<{
             transformOrigin: 'center center',
           }}
         />
-        {seg.showFrame && (
-          <Img
-            src={ASSETS.videoFrame}
-            style={{
-              position: 'absolute', inset: 0,
-              width: '100%', height: '100%', objectFit: 'fill',
-              pointerEvents: 'none',
-            }}
-          />
-        )}
+        {/* v3.28b.XX: frame moved OUT of this wrap, rendered as a sibling of
+            the zoom-transform canvas in ProductShowcase below. Matches editor's
+            stageFrameLayer design (editor.html line 5962-5978, v3.28b.13) so
+            the frame stays at canvas dimensions when zoom effects fire. */}
       </div>
     </AbsoluteFill>
   );
@@ -268,6 +262,44 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           <SpotlightComp key={sp.id} spotlight={sp} />
         ))}
       </div>
+
+      {/* === RECORDING FRAME OVERLAYS — siblings of the zoom wrap, NEVER
+          transformed. Mirrors editor.html stageFrameLayer (v3.28b.13): "Frame
+          overlay goes to the FRAME LAYER (sibling of stage-inner) so the
+          playback zoom effect that transforms stage-inner doesn't scale the
+          frame — frame stays at canvas dimensions." Each frame is gated by
+          its own Sequence so it appears only during that recording segment.
+          Full canvas dims (1920×1080) regardless of segment box size, matching
+          editor.html lines 5970-5973. === */}
+      {payload.segments.map(seg => {
+        if (seg.kind !== 'recording') return null;
+        const r = seg as RecordingSegment;
+        if (r.showFrame === false) return null;
+        const startFrame = msToFrames(seg.startMs);
+        const durFrames = msToFrames(seg.durationMs);
+        return (
+          <Sequence
+            key={`frame-${seg.id}`}
+            from={startFrame}
+            durationInFrames={durFrames}
+            name={`Frame: ${seg.id}`}
+          >
+            <AbsoluteFill style={{ pointerEvents: 'none' }}>
+              <Img
+                src={ASSETS.videoFrame}
+                style={{
+                  position: 'absolute',
+                  left: 0, top: 0,
+                  width: tokens.canvasW,
+                  height: tokens.canvasH,
+                  objectFit: 'fill',
+                  pointerEvents: 'none',
+                }}
+              />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
 
       {/* === AUDIO PLACEMENTS === */}
       {payload.audioPlacements.map(ap => {
