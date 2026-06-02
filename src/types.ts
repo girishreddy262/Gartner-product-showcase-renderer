@@ -185,6 +185,11 @@ export interface AudioPlacement {
   startMs: number;
   durationMs: number;
   volume: number;
+  // v3.28b.XX: when an audio clip is cut into halves, the second half gets
+  // a sourceStartMs offset so playback continues from where the first half
+  // ended. Editor sets this in cutAudioPlacement (editor.html line 9418);
+  // renderer reads it in Root.tsx Audio block via startFrom.
+  sourceStartMs?: number;
 }
 
 export interface Callout {

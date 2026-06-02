@@ -305,6 +305,14 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
       {payload.audioPlacements.map(ap => {
         const audioMeta = payload.audios.find(a => a.id === ap.audioId);
         if (!audioMeta) return null;
+        // v3.28b.XX: honor ap.sourceStartMs so cut audio halves play from
+        // the correct source offset (mirrors editor.html line 10008
+        // syncAudioPlayback: `const sourceOffsetMs = ap.sourceStartMs || 0`).
+        // Without this, the second half of any cut audio replays from second 0
+        // of the source — sounds like the first half repeating in the render
+        // even though the timeline shows two distinct clips.
+        const sourceStartSec = (ap.sourceStartMs || 0) / 1000;
+        const audioStartFromFrames = Math.round(sourceStartSec * FPS);
         return (
           <Sequence
             key={ap.id}
@@ -315,6 +323,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
             <Audio
               src={audioMeta.url}
               volume={ap.volume ?? 1}
+              startFrom={audioStartFromFrames}
             />
           </Sequence>
         );
