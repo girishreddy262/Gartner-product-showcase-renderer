@@ -2951,15 +2951,15 @@ function renderKeyGoalsSVG_V1(seg) {
 // Source layout: Key_goals_new__1.svg. Stats stack vertically inside the card.
 function renderKeyGoalsSVG_V2(seg) {
   const stats = (seg.customerStats || []).slice(0, 3);
-  const cardX = 170, cardY = 97, cardW = 440;
+  const cardX = 170, cardY = 113.5, cardW = 440;
   const cardCenterX = cardX + cardW / 2;
   const statYs = [470, 600, 730];
 
   let svg = '<svg viewBox="0 0 1920 1080" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block">';
   svg += '<rect width="1920" height="1080" fill="#002B54"/>';
-  // V2: no inner-card overlay (V2 ref is flat navy bg, no step)
+  svg += '<rect x="10" y="113.5" width="1900" height="853" rx="20" fill="black" fill-opacity="0.2"/>';
 
-  // Slim left card
+  // Slim left card (top aligned with overlay top — no bump)
   svg += '<rect x="' + cardX + '" y="' + cardY + '" width="' + cardW + '" height="747" rx="15" fill="#032444"/>';
 
   // Customer logo — LOCKED to bundled ACME, centered top of card

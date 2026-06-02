@@ -231,7 +231,7 @@ const KeyGoalsSlideV2: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
   // Card is x=170, y=97, w=440, h=747. Logo takes top ~250px, divider at y=347.
   // Stats area: y=420..780. Three stats: ~y=470, y=600, y=730 (130px apart).
   const cardX = 170;
-  const cardY = 97;
+  const cardY = 113.5;
   const cardW = 440;
   const cardCenterX = cardX + cardW / 2; // 390
   const statYs = [470, 600, 730];
@@ -243,8 +243,10 @@ const KeyGoalsSlideV2: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
       style={{ display: 'block' }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Outer bg only — V2 has no inner-card overlay (flat navy bg, no step). */}
+      {/* Outer bg + inner card chrome — same as V1.
+          Slim card top at y=113.5 aligns with overlay top (no bump). */}
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
+      <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
 
       {/* Slim left card */}
       <g opacity={cardOpacity} transform={`translate(${cardTx}, 0)`}>
