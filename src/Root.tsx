@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  AbsoluteFill, Sequence, Video, Audio, Img,
+  AbsoluteFill, Sequence, Video, OffthreadVideo, Audio, Img,
   useCurrentFrame, useVideoConfig,
 } from 'remotion';
 import type {
@@ -54,7 +54,7 @@ const RecordingComp: React.FC<{
         // exactly as the editor preview does.
         background: '#002B54',
       }}>
-        <Video
+        <OffthreadVideo
           src={video.url}
           startFrom={Math.round(sourceStartSec * FPS)}
           playbackRate={seg.speed || 1.0}
@@ -180,7 +180,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               // while the video seeks/decodes — the black flash at every cut/speed
               // boundary. 15 frames (~0.5s at 30fps) is ample lead time. Slides don't
               // need it but premounting them is harmless.
-              premountFor={15}
+              premountFor={5}
               name={isRecording ? `Recording: ${(seg as RecordingSegment).videoId}` : `Slide: ${seg.kind}`}
             >
               {isRecording
