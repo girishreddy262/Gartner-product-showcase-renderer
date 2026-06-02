@@ -31,6 +31,13 @@ const RecordingComp: React.FC<{
 
   const sourceStartSec = (seg.sourceStartMs || 0) / 1000;
 
+  // v3.28b.XX: mirror editor formula exactly (editor.html line 6231-6238).
+  // Editor applies CSS `transform: scale(_vScale)` with `transform-origin:
+  // center center` to the <video> element only; the frame overlay is a sibling
+  // at the full canvas and does NOT scale. We do the same here so the rendered
+  // MP4 matches the editor preview at any videoScale value (50-150%).
+  const _vScale = (seg.videoScale != null && seg.videoScale > 0) ? seg.videoScale : 1.0;
+
   return (
     <AbsoluteFill>
       <div style={{
@@ -47,7 +54,11 @@ const RecordingComp: React.FC<{
           startFrom={Math.round(sourceStartSec * FPS)}
           playbackRate={seg.speed || 1.0}
           muted={seg.muteSourceAudio !== false}
-          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          style={{
+            width: '100%', height: '100%', objectFit: 'contain',
+            transform: _vScale !== 1.0 ? `scale(${_vScale})` : undefined,
+            transformOrigin: 'center center',
+          }}
         />
         {seg.showFrame && (
           <Img

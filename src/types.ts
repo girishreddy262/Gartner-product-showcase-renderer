@@ -63,6 +63,10 @@ export interface RecordingSegment extends BaseSegment {
   sourceStartMs: number;
   muteSourceAudio: boolean;
   showFrame: boolean;
+  // v3.28b.XX: per-segment video scale (50-150%, default 1.0). Editor applies
+  // CSS scale to the <video> element only; the frame overlay stays at 100%.
+  // See Root.tsx RecordingComp for the matching render-side transform.
+  videoScale?: number;
 }
 
 export interface IntroSegment extends BaseSegment {
