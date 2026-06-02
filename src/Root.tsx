@@ -47,7 +47,12 @@ const RecordingComp: React.FC<{
         width: seg.width || tokens.canvasW,
         height: seg.height || tokens.canvasH,
         overflow: 'hidden',
-        background: '#000',
+        // v3.28b.XX: match editor.html line 6184 — wrap.style.background = '#002B54'.
+        // Was '#000', which produced a visible black band around the video when
+        // videoScale < 100% (the gap between the scaled video and the frame's
+        // inner edge revealed the wrapper bg). Navy blends with the slide bg
+        // exactly as the editor preview does.
+        background: '#002B54',
       }}>
         <Video
           src={video.url}
