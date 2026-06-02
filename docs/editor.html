@@ -397,6 +397,39 @@
     border-color:#fff;
     box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 0 2px var(--accent);
   }
+  /* v3.28b.88: linked-clips system — small dot indicator on attached items.
+     Blue dot = linked to a parent segment; orange dot = explicitly unlinked. */
+  .tl-block.linked::before {
+    content:""; position:absolute; top:2px; right:2px;
+    width:5px; height:5px; border-radius:50%;
+    background:rgba(123,179,255,0.95);
+    pointer-events:none; z-index:2;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.35);
+  }
+  .tl-block.detached::before {
+    content:""; position:absolute; top:2px; right:2px;
+    width:5px; height:5px; border-radius:50%;
+    background:rgba(255,170,80,0.9);
+    pointer-events:none; z-index:2;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.35);
+  }
+  /* v3.28b.88: right-click context menu for timeline blocks */
+  .tl-context-menu {
+    position:fixed; z-index:10000;
+    background:#1a2438;
+    border:1px solid rgba(255,255,255,0.15);
+    border-radius:6px;
+    padding:4px 0;
+    min-width:190px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.5);
+    font-size:12px; color:#d8e2f4;
+  }
+  .tl-context-menu.hidden { display:none; }
+  .tl-context-item {
+    padding:6px 14px; cursor:pointer; user-select:none;
+  }
+  .tl-context-item:hover { background:rgba(123,179,255,0.15); }
+  .tl-context-divider { height:1px; background:rgba(255,255,255,0.08); margin:4px 0; }
   .tl-block.seg-recording { background:linear-gradient(180deg, var(--accent), #1768D9); }
   .tl-block.seg-slide-intro { background:linear-gradient(180deg, var(--navy-700), var(--navy-500)); }
   .tl-block.seg-slide-journey { background:linear-gradient(180deg, var(--navy-500), var(--accent)); }
@@ -5766,6 +5799,111 @@ function rebuildShapesTrack() {
   (state.shapes || []).forEach(s => track.appendChild(makeBlock(s, 'shape')));
 }
 
+// v3.28b.88: LINKED-CLIPS helpers + right-click context menu.
+// An item is "linked" if its startMs falls inside some segment's range AND
+// it's not explicitly detached (item.detached !== true).
+function _findParentSegment(item) {
+  const s = item && item.startMs || 0;
+  return (state.segments || []).find(seg => {
+    const ss = seg.startMs || 0;
+    const se = ss + (seg.durationMs || 0);
+    return s >= ss && s < se;
+  });
+}
+function _isItemLinked(item, kind) {
+  if (kind === 'segment') return false;
+  if (item.detached) return false;
+  return !!_findParentSegment(item);
+}
+function _hideContextMenu() {
+  const m = document.getElementById('tlContextMenu');
+  if (m) m.classList.add('hidden');
+  document.removeEventListener('mousedown', _onDocMouseDownForCtx, true);
+  document.removeEventListener('keydown', _onEscForCtx, true);
+}
+function _onDocMouseDownForCtx(e) {
+  const m = document.getElementById('tlContextMenu');
+  if (m && !m.contains(e.target)) _hideContextMenu();
+}
+function _onEscForCtx(e) {
+  if (e.key === 'Escape') _hideContextMenu();
+}
+function _showBlockContextMenu(e, item, kind) {
+  e.preventDefault();
+  e.stopPropagation();
+  setSelected(item.id, kind);
+  const m = document.getElementById('tlContextMenu');
+  if (!m) return;
+  // Position the menu but keep within viewport.
+  const x = Math.min(e.clientX, window.innerWidth - 220);
+  const y = Math.min(e.clientY, window.innerHeight - 220);
+  m.style.left = x + 'px';
+  m.style.top = y + 'px';
+  m.classList.remove('hidden');
+  // Adapt visible items based on kind / link state.
+  const linked = _isItemLinked(item, kind);
+  const detached = item.detached === true;
+  const hasParent = kind !== 'segment' && !!_findParentSegment(item);
+  const unlinkEl = m.querySelector('[data-action="unlink"]');
+  const relinkEl = m.querySelector('[data-action="relink"]');
+  if (kind === 'segment') {
+    if (unlinkEl) unlinkEl.style.display = 'none';
+    if (relinkEl) relinkEl.style.display = 'none';
+  } else {
+    if (unlinkEl) unlinkEl.style.display = linked ? '' : 'none';
+    if (relinkEl) relinkEl.style.display = (detached && hasParent) ? '' : 'none';
+  }
+  m.dataset.itemId = item.id;
+  m.dataset.itemKind = kind;
+  setTimeout(() => {
+    document.addEventListener('mousedown', _onDocMouseDownForCtx, true);
+    document.addEventListener('keydown', _onEscForCtx, true);
+  }, 0);
+}
+function _handleContextAction(action, itemId, kind) {
+  _hideContextMenu();
+  const kindToArr = {
+    segment: state.segments, callout: state.callouts, audio: state.audioPlacements,
+    effect: state.effects, textOverlay: state.textOverlays, customerCard: state.customerCards,
+    shape: state.shapes
+  };
+  const arr = kindToArr[kind];
+  const item = arr && arr.find(x => x.id === itemId);
+  if (!item) return;
+  if (action === 'unlink') {
+    pushHistory();
+    item.detached = true;
+    showToast('Unlinked from segment — drag moves only this item now', 'success');
+    rebuildTimeline();
+  } else if (action === 'relink') {
+    pushHistory();
+    delete item.detached;
+    showToast('Re-linked to segment', 'success');
+    rebuildTimeline();
+  } else if (action === 'copy') {
+    copySelectedItem();
+  } else if (action === 'delete') {
+    if (typeof deleteSelected === 'function') deleteSelected();
+  }
+}
+// Wire menu clicks once on load
+(function setupTimelineContextMenu() {
+  const wire = () => {
+    const m = document.getElementById('tlContextMenu');
+    if (!m) return;
+    m.addEventListener('click', (e) => {
+      const t = e.target.closest('.tl-context-item');
+      if (!t) return;
+      _handleContextAction(t.dataset.action, m.dataset.itemId, m.dataset.itemKind);
+    });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wire);
+  } else {
+    wire();
+  }
+})();
+
 function makeBlock(item, kind) {
   const px = getEffectivePxPerMs();
   const block = document.createElement('div');
@@ -5810,6 +5948,12 @@ function makeBlock(item, kind) {
   if (view.selectedId === item.id) cls += ' selected';
   // v3.28b.16: multi-select highlight
   if (view.multiSelect && view.multiSelect.some(s => s.id === item.id)) cls += ' selected';
+  // v3.28b.88: link indicator — small dot at top-right of block.
+  // Skipped for segments (they're parents, not links).
+  if (kind !== 'segment') {
+    if (item.detached === true) cls += ' detached';
+    else if (_findParentSegment(item)) cls += ' linked';
+  }
   block.className = cls;
   block.style.left = (item.startMs * px) + 'px';
   block.style.width = Math.max(12, item.durationMs * px) + 'px';
@@ -5820,6 +5964,8 @@ function makeBlock(item, kind) {
   const rh = document.createElement('div'); rh.className = 'tl-block-handle right';
   block.appendChild(lh); block.appendChild(rh);
   block.addEventListener('mousedown', (e) => onBlockMouseDown(e, item, kind));
+  // v3.28b.88: right-click → context menu (Unlink / Re-link / Copy / Delete)
+  block.addEventListener('contextmenu', (e) => _showBlockContextMenu(e, item, kind));
   // v3.28b.XX: in cut mode, fall through to the block's mousedown so the cut
   // is registered at the handle's x position. Was: handles unconditionally
   // called e.stopPropagation(), which made cut clicks fail on narrow audio
@@ -5896,26 +6042,51 @@ function onBlockMouseDown(e, item, kind) {
     }
   } else {
     movers = [{ obj: item, startMs0: item.startMs || 0 }];
-    // v3.28b.87: if dragging a SEGMENT, carry everything attached to it (audio,
-    // callouts, text, cards, effects, shapes whose start falls within the
-    // segment's time range) so the whole composition shifts together.
-    if (kind === 'segment') {
-      const segStart = item.startMs || 0;
-      const segEnd = segStart + (item.durationMs || 0);
-      const attach = (arr) => {
-        if (!arr) return;
-        for (const it of arr) {
-          if (it.id === item.id) continue;
-          const s = it.startMs || 0;
-          if (s >= segStart && s < segEnd) movers.push({ obj: it, startMs0: s });
+    // v3.28b.88: SYMMETRIC linked drag (ClipChamp-style). Replaces v3.28b.87 one-way attach.
+    //  - drag SEGMENT -> all items in its time range follow (as before)
+    //  - drag AUDIO/CARD/CALLOUT/etc -> find parent segment by time range, then
+    //    move parent segment + all OTHER siblings in its range (symmetric)
+    //  - hold Alt/Option while dragging -> bypass entirely, move ONLY clicked item
+    //  - items with .detached === true are skipped (right-click -> Unlink to set)
+    const altBypass = e.altKey;
+    if (!altBypass && !item.detached) {
+      // Find the "parent segment" whose time range contains this item.
+      // For a segment, the parent is itself.
+      let parentSeg;
+      if (kind === 'segment') {
+        parentSeg = item;
+      } else {
+        const s0 = item.startMs || 0;
+        parentSeg = (state.segments || []).find(seg => {
+          const ss = seg.startMs || 0;
+          const se = ss + (seg.durationMs || 0);
+          return s0 >= ss && s0 < se;
+        });
+      }
+      if (parentSeg) {
+        // Include parent segment in the move group if it's not the clicked item.
+        if (parentSeg.id !== item.id) {
+          movers.push({ obj: parentSeg, startMs0: parentSeg.startMs || 0 });
         }
-      };
-      attach(state.callouts);
-      attach(state.textOverlays);
-      attach(state.customerCards);
-      attach(state.effects);
-      attach(state.audioPlacements);
-      attach(state.shapes);
+        // Attach all OTHER items whose start falls within parent segment's range.
+        const segStart = parentSeg.startMs || 0;
+        const segEnd = segStart + (parentSeg.durationMs || 0);
+        const attach = (arr) => {
+          if (!arr) return;
+          for (const it of arr) {
+            if (it.id === item.id || it.id === parentSeg.id) continue;
+            if (it.detached) continue;
+            const ss = it.startMs || 0;
+            if (ss >= segStart && ss < segEnd) movers.push({ obj: it, startMs0: ss });
+          }
+        };
+        attach(state.callouts);
+        attach(state.textOverlays);
+        attach(state.customerCards);
+        attach(state.effects);
+        attach(state.audioPlacements);
+        attach(state.shapes);
+      }
     }
   }
 
@@ -8877,131 +9048,195 @@ function setupTimelineWheelZoom() {
   }, { passive: false });
 }
 
-// Clipboard for copy/paste (Cmd+C / Cmd+V). Stores a deep-clone with item kind tag.
+// Clipboard for copy/paste (Cmd+C / Cmd+V).
+// v3.28b.88: now stores an ARRAY of items with relative offsets, so multi-select
+// copy preserves pair/group relationships (e.g. slide + its audio).
+// Shape: { items: [{kind, data, relOffset}], baseStartMs }
 let _clipboard = null;
 
-function copySelectedItem() {
-  if (!view.selectedId) return;
-  // v3.28b.20: universal — segments (recording + slides), callouts,
-  // textOverlays, customerCards, audioPlacements
-  let item = state.segments.find(s => s.id === view.selectedId);
-  let kind = 'segment';
-  if (!item) {
-    item = state.callouts.find(c => c.id === view.selectedId);
-    if (item) kind = 'callout';
-  }
-  if (!item) {
-    item = (state.textOverlays || []).find(t => t.id === view.selectedId);
-    if (item) kind = 'textOverlay';
-  }
-  if (!item) {
-    item = (state.customerCards || []).find(c => c.id === view.selectedId);
-    if (item) kind = 'customerCard';
-  }
-  if (!item) {
-    item = (state.audioPlacements || []).find(a => a.id === view.selectedId);
-    if (item) kind = 'audioPlacement';
-  }
-  if (!item) {
-    item = (state.shapes || []).find(s => s.id === view.selectedId);
-    if (item) kind = 'shape';
-  }
-  if (!item) return;
-  _clipboard = { kind, data: JSON.parse(JSON.stringify(item)) };
-  const label = kind === 'segment' ? (item.kind === 'recording' ? 'Video segment' : (item.title || 'Slide'))
-    : (kind === 'callout' ? 'Callout'
-    : (kind === 'textOverlay' ? 'Text'
-    : (kind === 'audioPlacement' ? 'Audio clip'
-    : (kind === 'shape' ? 'Shape' : 'Customer Card'))));
-  showToast('Copied: ' + label, 'success');
+// Helper: resolve a {id, kind} ref to the underlying item + its array.
+function _resolveSelRef(sel) {
+  const kindToArr = {
+    segment: state.segments,
+    callout: state.callouts,
+    textOverlay: state.textOverlays,
+    customerCard: state.customerCards,
+    audio: state.audioPlacements,
+    audioPlacement: state.audioPlacements,
+    effect: state.effects,
+    shape: state.shapes
+  };
+  const arr = kindToArr[sel.kind];
+  if (!arr) return null;
+  const item = arr.find(x => x.id === sel.id);
+  if (!item) return null;
+  // Normalize storage kind: audio placements stored as 'audioPlacement' on clipboard
+  // (matches the existing paste switch + id-prefix logic).
+  const storeKind = (sel.kind === 'audio') ? 'audioPlacement' : sel.kind;
+  return { item, arr, kind: storeKind };
 }
 
-// v3.28b.49: Cut (Cmd+X / Ctrl+X) — copy the selected item to clipboard, then
-// remove it from the timeline. Paste with Cmd+V to place at playhead.
+// Build a multi-item clipboard payload from view.multiSelect, or fall back to single selection.
+function _buildClipboardFromSelection() {
+  let refs = [];
+  if (view.multiSelect && view.multiSelect.length > 1) {
+    for (const sel of view.multiSelect) {
+      const r = _resolveSelRef(sel);
+      if (r) refs.push(r);
+    }
+  } else if (view.selectedId && view.selectedKind) {
+    const r = _resolveSelRef({ id: view.selectedId, kind: view.selectedKind });
+    if (r) refs.push(r);
+  }
+  if (refs.length === 0) return null;
+  const baseStartMs = Math.min(...refs.map(r => r.item.startMs || 0));
+  const items = refs.map(r => ({
+    kind: r.kind,
+    data: JSON.parse(JSON.stringify(r.item)),
+    relOffset: (r.item.startMs || 0) - baseStartMs,
+    arr: r.arr,
+    item: r.item  // kept only for cut; stripped before storing
+  }));
+  return { items, baseStartMs };
+}
+
+function copySelectedItem() {
+  const cb = _buildClipboardFromSelection();
+  if (!cb) return;
+  // Strip the live arr/item refs before storing on _clipboard
+  _clipboard = {
+    items: cb.items.map(it => ({ kind: it.kind, data: it.data, relOffset: it.relOffset })),
+    baseStartMs: cb.baseStartMs
+  };
+  const n = cb.items.length;
+  if (n === 1) {
+    const k = cb.items[0].kind;
+    const d = cb.items[0].data;
+    const label = k === 'segment' ? (d.kind === 'recording' ? 'Video segment' : (d.title || 'Slide'))
+      : (k === 'callout' ? 'Callout'
+      : (k === 'textOverlay' ? 'Text'
+      : (k === 'audioPlacement' ? 'Audio clip'
+      : (k === 'shape' ? 'Shape' : 'Customer Card'))));
+    showToast('Copied: ' + label, 'success');
+  } else {
+    showToast('Copied ' + n + ' items (linked)', 'success');
+  }
+}
+
+// v3.28b.49: Cut (Cmd+X / Ctrl+X) — copy the selected item(s) to clipboard, then
+// remove them from the timeline. Paste with Cmd+V to place at playhead.
+// v3.28b.88: now multi-select aware.
 function cutSelectedItem() {
-  if (!view.selectedId) {
+  const cb = _buildClipboardFromSelection();
+  if (!cb) {
     showToast('Nothing selected', 'warning');
     return;
   }
-  // Resolve item + container array. Try by selectedKind first to avoid edge cases.
-  let item, arr, kind;
-  if (view.selectedKind === 'audio') {
-    item = (state.audioPlacements || []).find(a => a.id === view.selectedId);
-    if (item) { kind = 'audioPlacement'; arr = state.audioPlacements; }
-  }
-  if (!item) { item = state.segments.find(s => s.id === view.selectedId); if (item) { kind = 'segment'; arr = state.segments; } }
-  if (!item) { item = state.callouts.find(c => c.id === view.selectedId); if (item) { kind = 'callout'; arr = state.callouts; } }
-  if (!item) { item = (state.textOverlays || []).find(t => t.id === view.selectedId); if (item) { kind = 'textOverlay'; arr = state.textOverlays; } }
-  if (!item) { item = (state.customerCards || []).find(c => c.id === view.selectedId); if (item) { kind = 'customerCard'; arr = state.customerCards; } }
-  if (!item) { item = (state.shapes || []).find(s => s.id === view.selectedId); if (item) { kind = 'shape'; arr = state.shapes; } }
-  if (!item) { item = (state.audioPlacements || []).find(a => a.id === view.selectedId); if (item) { kind = 'audioPlacement'; arr = state.audioPlacements; } }
-  if (!item || !arr) return;
   pushHistory();
-  _clipboard = { kind, data: JSON.parse(JSON.stringify(item)) };
-  const idx = arr.indexOf(item);
-  if (idx >= 0) arr.splice(idx, 1);
+  // Remove each item from its source array.
+  for (const it of cb.items) {
+    const idx = it.arr.indexOf(it.item);
+    if (idx >= 0) it.arr.splice(idx, 1);
+  }
+  // Strip refs and store on clipboard.
+  _clipboard = {
+    items: cb.items.map(it => ({ kind: it.kind, data: it.data, relOffset: it.relOffset })),
+    baseStartMs: cb.baseStartMs
+  };
   view.selectedId = null;
   view.selectedKind = null;
-  if (view.multiSelect) view.multiSelect = view.multiSelect.filter(s => s.id !== item.id);
-  const label = kind === 'segment' ? (item.kind === 'recording' ? 'Video segment' : (item.title || 'Slide'))
-    : (kind === 'callout' ? 'Callout'
-    : (kind === 'textOverlay' ? 'Text'
-    : (kind === 'audioPlacement' ? 'Audio clip'
-    : (kind === 'shape' ? 'Shape' : 'Customer Card'))));
+  view.multiSelect = [];
+  const n = cb.items.length;
   rebuildAll();
   renderEditPanel();
-  showToast('Cut: ' + label + ' — paste with Cmd+V', 'success');
+  if (n === 1) {
+    const k = cb.items[0].kind;
+    const d = cb.items[0].data;
+    const label = k === 'segment' ? (d.kind === 'recording' ? 'Video segment' : (d.title || 'Slide'))
+      : (k === 'callout' ? 'Callout'
+      : (k === 'textOverlay' ? 'Text'
+      : (k === 'audioPlacement' ? 'Audio clip'
+      : (k === 'shape' ? 'Shape' : 'Customer Card'))));
+    showToast('Cut: ' + label + ' — paste with Cmd+V', 'success');
+  } else {
+    showToast('Cut ' + n + ' items — paste with Cmd+V', 'success');
+  }
 }
 
 function pasteClipboardAtPlayhead() {
-  if (!_clipboard) {
+  if (!_clipboard || !_clipboard.items || _clipboard.items.length === 0) {
     showToast('Clipboard is empty', 'warning');
     return;
   }
   pushHistory();
-  // v3.28b.78: paste lands RIGHT AFTER the original item (original start + its
-  // duration), so the copy doesn't stack exactly on top of the source at the
-  // same time/layer. Falls back to playhead if the original has no timing.
-  const orig = _clipboard.data || {};
-  const origStart = orig.startMs || 0;
-  const origDur = orig.durationMs || 0;
-  const dropMs = (origDur > 0) ? Math.round(origStart + origDur) : Math.round(view.curTimeMs || 0);
-  const fresh = JSON.parse(JSON.stringify(_clipboard.data));
-  const idPrefix = _clipboard.kind === 'segment' ? 'seg'
-    : (_clipboard.kind === 'callout' ? 'co'
-    : (_clipboard.kind === 'textOverlay' ? 'to'
-    : (_clipboard.kind === 'audioPlacement' ? 'ap'
-    : (_clipboard.kind === 'shape' ? 'sh' : 'cc'))));
-  fresh.id = uid(idPrefix);
-  fresh.startMs = dropMs;
-  ['rows', 'columns', 'bullets', 'statPills', 'customerStats'].forEach(k => {
-    if (Array.isArray(fresh[k])) {
-      fresh[k].forEach(item => { if (item && item.id) item.id = uid(k.slice(0, 3)); });
+  // v3.28b.88: paste lands RIGHT AFTER the source group.
+  // For a single item we paste at origStart + origDur (existing v3.28b.78 behavior).
+  // For multi-item, we paste the EARLIEST item just past the LAST original end,
+  // preserving the inter-item offsets.
+  let dropMs;
+  if (_clipboard.items.length === 1) {
+    const orig = _clipboard.items[0].data;
+    const oStart = orig.startMs || 0;
+    const oDur = orig.durationMs || 0;
+    dropMs = (oDur > 0) ? Math.round(oStart + oDur) : Math.round(view.curTimeMs || 0);
+  } else {
+    // Find latest end among original positions
+    let latestEnd = 0;
+    for (const it of _clipboard.items) {
+      const s = it.data.startMs || 0;
+      const d = it.data.durationMs || 0;
+      if (s + d > latestEnd) latestEnd = s + d;
     }
-  });
-  if (_clipboard.kind === 'segment') {
-    state.segments.push(fresh);
-  } else if (_clipboard.kind === 'callout') {
-    state.callouts.push(fresh);
-  } else if (_clipboard.kind === 'textOverlay') {
-    if (!state.textOverlays) state.textOverlays = [];
-    state.textOverlays.push(fresh);
-  } else if (_clipboard.kind === 'customerCard') {
-    if (!state.customerCards) state.customerCards = [];
-    state.customerCards.push(fresh);
-  } else if (_clipboard.kind === 'audioPlacement') {
-    if (!state.audioPlacements) state.audioPlacements = [];
-    state.audioPlacements.push(fresh);
-  } else if (_clipboard.kind === 'shape') {
-    if (!state.shapes) state.shapes = [];
-    state.shapes.push(fresh);
+    dropMs = (latestEnd > 0) ? Math.round(latestEnd) : Math.round(view.curTimeMs || 0);
   }
-  view.selectedId = fresh.id;
-  // v3.28b.20: also set selectedKind so the edit panel rerenders correctly
-  view.selectedKind = (_clipboard.kind === 'audioPlacement') ? 'audio' : _clipboard.kind;
+  // Place each item: earliest at dropMs, others at dropMs + relOffset.
+  const newIds = [];
+  for (const ci of _clipboard.items) {
+    const fresh = JSON.parse(JSON.stringify(ci.data));
+    const idPrefix = ci.kind === 'segment' ? 'seg'
+      : (ci.kind === 'callout' ? 'co'
+      : (ci.kind === 'textOverlay' ? 'to'
+      : (ci.kind === 'audioPlacement' ? 'ap'
+      : (ci.kind === 'shape' ? 'sh' : 'cc'))));
+    fresh.id = uid(idPrefix);
+    fresh.startMs = dropMs + (ci.relOffset || 0);
+    ['rows', 'columns', 'bullets', 'statPills', 'customerStats'].forEach(k => {
+      if (Array.isArray(fresh[k])) {
+        fresh[k].forEach(item => { if (item && item.id) item.id = uid(k.slice(0, 3)); });
+      }
+    });
+    if (ci.kind === 'segment') {
+      state.segments.push(fresh);
+    } else if (ci.kind === 'callout') {
+      state.callouts.push(fresh);
+    } else if (ci.kind === 'textOverlay') {
+      if (!state.textOverlays) state.textOverlays = [];
+      state.textOverlays.push(fresh);
+    } else if (ci.kind === 'customerCard') {
+      if (!state.customerCards) state.customerCards = [];
+      state.customerCards.push(fresh);
+    } else if (ci.kind === 'audioPlacement') {
+      if (!state.audioPlacements) state.audioPlacements = [];
+      state.audioPlacements.push(fresh);
+    } else if (ci.kind === 'shape') {
+      if (!state.shapes) state.shapes = [];
+      state.shapes.push(fresh);
+    }
+    newIds.push({ id: fresh.id, kind: (ci.kind === 'audioPlacement') ? 'audio' : ci.kind });
+  }
+  // Select the first new item; if multi, also rebuild multiSelect to include all new ones.
+  if (newIds.length === 1) {
+    view.selectedId = newIds[0].id;
+    view.selectedKind = newIds[0].kind;
+    view.multiSelect = [];
+  } else {
+    view.selectedId = newIds[0].id;
+    view.selectedKind = newIds[0].kind;
+    view.multiSelect = newIds.slice();
+  }
   rebuildAll();
   renderEditPanel();
-  showToast('Pasted at ' + (dropMs / 1000).toFixed(1) + 's', 'success');
+  showToast('Pasted ' + newIds.length + (newIds.length === 1 ? ' item' : ' items') + ' at ' + (dropMs / 1000).toFixed(1) + 's', 'success');
 }
 
 // ====================================================================
@@ -11409,6 +11644,14 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         </div>
       </div>
     </div>
+  </div>
+  <!-- v3.28b.88: timeline block right-click menu -->
+  <div id="tlContextMenu" class="tl-context-menu hidden">
+    <div class="tl-context-item" data-action="unlink">🔓 Unlink from segment</div>
+    <div class="tl-context-item" data-action="relink">🔗 Re-link to segment</div>
+    <div class="tl-context-divider"></div>
+    <div class="tl-context-item" data-action="copy">Copy</div>
+    <div class="tl-context-item" data-action="delete">Delete</div>
   </div>
 </body>
 </html>
