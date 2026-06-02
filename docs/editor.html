@@ -5723,8 +5723,13 @@ function makeBlock(item, kind) {
   const rh = document.createElement('div'); rh.className = 'tl-block-handle right';
   block.appendChild(lh); block.appendChild(rh);
   block.addEventListener('mousedown', (e) => onBlockMouseDown(e, item, kind));
-  lh.addEventListener('mousedown', (e) => { e.stopPropagation(); onHandleMouseDown(e, item, kind, 'left'); });
-  rh.addEventListener('mousedown', (e) => { e.stopPropagation(); onHandleMouseDown(e, item, kind, 'right'); });
+  // v3.28b.XX: in cut mode, fall through to the block's mousedown so the cut
+  // is registered at the handle's x position. Was: handles unconditionally
+  // called e.stopPropagation(), which made cut clicks fail on narrow audio
+  // blocks (handles cover the full width when block ≤ 12px) and on the
+  // outer 6px of any block.
+  lh.addEventListener('mousedown', (e) => { if (view.tool === 'cut') return; e.stopPropagation(); onHandleMouseDown(e, item, kind, 'left'); });
+  rh.addEventListener('mousedown', (e) => { if (view.tool === 'cut') return; e.stopPropagation(); onHandleMouseDown(e, item, kind, 'right'); });
   return block;
 }
 
