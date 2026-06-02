@@ -167,12 +167,27 @@ export interface EmptySegment extends BaseSegment {
   textStyles: TextStyles;
 }
 
+// v3.28b.XX: full-bleed image slide (created via "Add Slide → Upload image").
+// Editor sets these fields at editor.html line 3496+:
+//   { kind: 'slide-image', imageUrl, filename, x:0, y:0, width:1920, height:1080 }
+// Optional: imageScale (50-150%, default 1.0) — CSS scale on the <img>.
+// Optional: showFrame — when true, recording-style frame overlay is drawn.
+//   (Per editor.html line 5966: image-slide frame is opt-in, recording is opt-out.)
+export interface ImageSegment extends BaseSegment {
+  kind: 'slide-image';
+  imageUrl: string;
+  filename?: string;
+  imageScale?: number;
+  showFrame?: boolean;
+}
+
 export type Segment =
   | RecordingSegment
   | IntroSegment
   | JourneySegment
   | FocusSegment
   | KeyGoalsSegment
+  | ImageSegment
   | EmptySegment;
 
 export type SlideSegment = Exclude<Segment, RecordingSegment>;

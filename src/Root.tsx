@@ -263,18 +263,28 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         ))}
       </div>
 
-      {/* === RECORDING FRAME OVERLAYS — siblings of the zoom wrap, NEVER
-          transformed. Mirrors editor.html stageFrameLayer (v3.28b.13): "Frame
-          overlay goes to the FRAME LAYER (sibling of stage-inner) so the
-          playback zoom effect that transforms stage-inner doesn't scale the
-          frame — frame stays at canvas dimensions." Each frame is gated by
-          its own Sequence so it appears only during that recording segment.
-          Full canvas dims (1920×1080) regardless of segment box size, matching
-          editor.html lines 5970-5973. === */}
+      {/* === FRAME OVERLAYS — siblings of the zoom wrap, NEVER transformed.
+          Mirrors editor.html stageFrameLayer (v3.28b.13): "Frame overlay goes
+          to the FRAME LAYER (sibling of stage-inner) so the playback zoom
+          effect that transforms stage-inner doesn't scale the frame — frame
+          stays at canvas dimensions." Each frame is gated by its own Sequence
+          so it appears only during that segment. Full canvas dims (1920×1080)
+          regardless of segment box size, matching editor.html lines 5970-5973.
+
+          v3.28b.XX: applies to recordings (opt-out: showFrame !== false) AND
+          to image slides (opt-in: showFrame === true). Matches the editor's
+          wantsFrame logic at editor.html line 5965-5966 exactly. === */}
       {payload.segments.map(seg => {
-        if (seg.kind !== 'recording') return null;
-        const r = seg as RecordingSegment;
-        if (r.showFrame === false) return null;
+        const isRec = seg.kind === 'recording';
+        const isImg = seg.kind === 'slide-image';
+        if (!isRec && !isImg) return null;
+        // Recording: showFrame defaults to TRUE (skip only on explicit false).
+        // Image:     showFrame defaults to FALSE (draw only on explicit true).
+        const segAny = seg as RecordingSegment & { showFrame?: boolean };
+        const wantsFrame = isRec
+          ? (segAny.showFrame !== false)
+          : (segAny.showFrame === true);
+        if (!wantsFrame) return null;
         const startFrame = msToFrames(seg.startMs);
         const durFrames = msToFrames(seg.durationMs);
         return (

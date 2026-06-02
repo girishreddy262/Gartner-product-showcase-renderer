@@ -1,7 +1,7 @@
 import React from 'react';
 import { useCurrentFrame, interpolate, Easing } from 'remotion';
 import type {
-  IntroSegment, EmptySegment, SlideSegment, TextStyles,
+  IntroSegment, EmptySegment, ImageSegment, SlideSegment, TextStyles,
 } from '../types';
 import { tokens } from '../tokens';
 import { Img } from 'remotion';
@@ -136,6 +136,47 @@ export const EmptySlide: React.FC<{ seg: EmptySegment }> = ({ seg }) => {
   );
 };
 
+// ─── Image slide (v3.28b.XX) ───
+// Full-bleed user-uploaded image. Mirrors editor.html line 6374-6386 exactly:
+//   - Background #002B54 (navy) shows behind the image while it loads or if
+//     aspect mismatches.
+//   - <img width:100% height:100% objectFit:cover> fills the slide.
+//   - Optional imageScale (50-150%) applies as `transform: scale(N)` with
+//     transform-origin center center.
+// Frame overlay (if showFrame) is handled at the composition level in Root.tsx,
+// not here — same as recording segments.
+export const ImageSlide: React.FC<{ seg: ImageSegment }> = ({ seg }) => {
+  const scale = (seg.imageScale != null && seg.imageScale > 0) ? seg.imageScale : 1.0;
+  if (!seg.imageUrl) {
+    return (
+      <div style={{
+        ...slideBase,
+        background: '#002B54',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: 48, padding: 40, textAlign: 'center',
+      }}>
+        No image — re-add this slide
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      position: 'absolute', inset: 0,
+      background: '#002B54', overflow: 'hidden',
+    }}>
+      <Img
+        src={seg.imageUrl}
+        style={{
+          width: '100%', height: '100%',
+          objectFit: 'cover', display: 'block',
+          transform: scale !== 1.0 ? `scale(${scale})` : undefined,
+          transformOrigin: 'center center',
+        }}
+      />
+    </div>
+  );
+};
+
 // ─── Dispatcher ───
 export const SlideRenderer: React.FC<{ seg: SlideSegment; headerOpacity?: number }> = ({ seg, headerOpacity }) => {
   switch (seg.kind) {
@@ -144,6 +185,7 @@ export const SlideRenderer: React.FC<{ seg: SlideSegment; headerOpacity?: number
     case 'slide-focus': return <FocusSlide seg={seg} />;
     case 'slide-keygoals': return <KeyGoalsSlide seg={seg} />;
     case 'slide-divider': return <DividerSlide seg={seg} />;
+    case 'slide-image': return <ImageSlide seg={seg} />;
     case 'slide-empty': return <EmptySlide seg={seg} />;
     default: return <EmptySlide seg={seg as EmptySegment} />;
   }
