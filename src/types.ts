@@ -154,6 +154,11 @@ export interface KeyGoalsCustomerStat {
 export interface KeyGoalsSegment extends BaseSegment {
   kind: 'slide-keygoals';
   title: string;
+  // v3.28b.XX: variation selector, matches the Focus slide pattern.
+  //   1 = original layout: customer card + stats + small map left, goals list right
+  //   2 = map-hero layout: slim left card (logo + stacked stats), big world map right
+  // Default 1 for backward compat. Renderer + editor branch on this field.
+  variation?: 1 | 2;
   bullets: KeyGoalsBullet[];           // legacy left as-is, now treated as goals
   customerLogoUrl?: string | null;
   customerStats?: KeyGoalsCustomerStat[];
