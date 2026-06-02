@@ -243,9 +243,8 @@ const KeyGoalsSlideV2: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
       style={{ display: 'block' }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Outer bg + inner card chrome — same as V1 */}
+      {/* Outer bg only — V2 has no inner-card overlay (flat navy bg, no step). */}
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
-      <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
 
       {/* Slim left card */}
       <g opacity={cardOpacity} transform={`translate(${cardTx}, 0)`}>
