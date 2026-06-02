@@ -9783,12 +9783,30 @@ function setupHeader() {
   // v3.28b.16: Cut button = cut at playhead if there's a recording segment
   // under it. If nothing is under the playhead, enter the cut tool mode so
   // user can click a position manually (legacy behavior preserved).
+  // v3.28b.XX: also recognize audio placements — and the currently selected
+  // audio clip — so clicking Cut with an audio clip selected (playhead inside
+  // it) triggers cutAtPlayhead() instead of dropping into cut-mode. Mirrors
+  // how the video flow works.
   $('btnToolCut').addEventListener('click', () => {
     const t = view.curTimeMs;
-    const seg = state.segments.find(s =>
+    const segUnder = state.segments.find(s =>
       s.kind === 'recording' && t > s.startMs && t < s.startMs + s.durationMs
     );
-    if (seg) {
+    const audioUnder = (state.audioPlacements || []).find(a =>
+      t > a.startMs && t < a.startMs + a.durationMs
+    );
+    const selectedAudioCuttable =
+      view.selectedKind === 'audio' &&
+      (state.audioPlacements || []).some(a =>
+        a.id === view.selectedId && t > a.startMs && t < a.startMs + a.durationMs
+      );
+    const selectedSegCuttable =
+      view.selectedKind === 'segment' &&
+      state.segments.some(s =>
+        s.id === view.selectedId && s.kind === 'recording' &&
+        t > s.startMs && t < s.startMs + s.durationMs
+      );
+    if (segUnder || audioUnder || selectedAudioCuttable || selectedSegCuttable) {
       cutAtPlayhead();
     } else {
       setTool('cut');
