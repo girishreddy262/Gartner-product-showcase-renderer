@@ -6658,9 +6658,46 @@ function play() {
   _playbackStartMs = view.curTimeMs >= total ? 0 : view.curTimeMs;
   _playbackStartedAt = performance.now();
   _lastActiveSegmentId = null; // Force rebuild on first tick
+  // v3.28b.XX: pre-warm audio elements that will play in the next ~500ms.
+  // Eliminates the ~1ms buffer/seek delay at audio-clip start: the element's
+  // currentTime seek + decode happens BEFORE play() is called, so by the time
+  // its placement becomes active in the tick loop, the next frame is already
+  // decoded and play() is instant. Without this, the seek inside
+  // syncAudioPlayback races the play(), producing audible click/buffer.
+  _prewarmUpcomingAudio(view.curTimeMs, 500);
   $('status-text').textContent = 'Playing...';
   tick();
 }
+
+// v3.28b.XX: seek each upcoming audio element to its correct position so the
+// decoder warms up before the audio's startMs arrives. Used by play() and by
+// the scrub mouseup path so resume-from-scrub also avoids the audio glitch.
+function _prewarmUpcomingAudio(fromMs, lookaheadMs) {
+  if (!state.audioPlacements || !_audioElements) return;
+  const horizon = fromMs + lookaheadMs;
+  for (const ap of state.audioPlacements) {
+    const startMs = ap.startMs || 0;
+    const endMs = startMs + (ap.durationMs || 0);
+    // Skip placements outside the lookahead window
+    if (endMs < fromMs || startMs > horizon) continue;
+    const el = _audioElements[ap.id];
+    if (!el) continue;
+    const sourceOffsetMs = ap.sourceStartMs || 0;
+    // Compute the source-time the audio should be at when its placement starts.
+    // If fromMs is already inside the placement, seek to current position.
+    const refMs = Math.max(fromMs, startMs);
+    const localT = (sourceOffsetMs + (refMs - startMs)) / 1000;
+    try {
+      if (el.readyState >= 1) { // metadata loaded
+        el.currentTime = Math.max(0, localT);
+      } else {
+        // No metadata yet — kick a load so the decoder starts now
+        try { el.load(); } catch(_) {}
+      }
+    } catch(_) {}
+  }
+}
+
 function pause() {
   view.isPlaying = false;
   if (_playbackHandle) { cancelAnimationFrame(_playbackHandle); _playbackHandle = null; }
@@ -8566,7 +8603,18 @@ function setupRuler() {
   // v3.28b.43: smooth scrubbing — during drag, don't rebuild canvas.
   // Just update playhead position + seek the active video element directly.
   // The full rebuild runs on mouseup so all overlays/effects re-render correctly.
+  //
+  // v3.28b.XX: Clipchamp-style continuous-play scrub.
+  //   - Remember if playback was active when the mousedown fired (wasPlaying).
+  //   - During scrub, the existing path already pauses internally by re-routing
+  //     time. Don't toggle view.isPlaying — let it stay true so the tick() loop
+  //     keeps running over the new curTimeMs.
+  //   - On mouseup, the final rebuildCanvas() restores the active segment's
+  //     <video> element. If wasPlaying, call play() to resume from the new pos.
+  //   - Also wire this same handler to tlInner so a click anywhere on the
+  //     timeline body (not on a block) scrubs+plays from that point.
   const onRulerDown = (e) => {
+    const wasPlaying = view.isPlaying;  // v3.28b.XX: capture pre-scrub state
     const ms = timelineMsAtClientX(e.clientX);
     view.curTimeMs = ms;
     view.userSeeked = true;  // v3.28b.61: tell audio sync to re-seek
@@ -8619,12 +8667,47 @@ function setupRuler() {
       document.removeEventListener('mouseup', onUp);
       // Final rebuild on release so any overlays/effects/callouts settle correctly
       rebuildCanvas();
+      // v3.28b.XX: Clipchamp-style — if a click landed on an empty area while
+      // NOT playing, start playing from the new playhead. If we were already
+      // playing, the tick loop kept running, but the rebuild may have replaced
+      // the <video> element, so re-issue play() to resume.
+      if (wasPlaying) {
+        // Resume any video element that got rebuilt
+        if (_activeVideoElement && _activeVideoElement.paused && !_activeVideoElement._playPending) {
+          const ve = _activeVideoElement;
+          ve._playPending = true;
+          const p = ve.play();
+          if (p && typeof p.then === 'function') {
+            p.then(() => { ve._playPending = false; })
+             .catch(() => { ve._playPending = false; });
+          }
+        }
+        // v3.28b.XX: prewarm audio so resume-from-scrub doesn't click/buffer
+        _prewarmUpcomingAudio(view.curTimeMs, 500);
+        // Re-anchor the playback clock so tick() math stays correct from here
+        _playbackStartMs = view.curTimeMs;
+        _playbackStartedAt = performance.now();
+      }
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   };
   ruler.addEventListener('mousedown', onRulerDown);
   $('playheadHandle').addEventListener('mousedown', onRulerDown);
+
+  // v3.28b.XX: Clipchamp-style click-anywhere-on-timeline to scrub. Wire the
+  // same onRulerDown handler to tlInner, but ONLY when the click did NOT land
+  // on a block or its handles (those have their own drag/select logic).
+  const tlInner = $('tlInner');
+  if (tlInner) {
+    tlInner.addEventListener('mousedown', (e) => {
+      // Skip if clicking a block, handle, or empty-track-action button
+      if (e.target.closest('.tl-block, .tl-block-handle, .tl-track-empty, button, input, select')) return;
+      // Skip right/middle clicks
+      if (e.button !== 0) return;
+      onRulerDown(e);
+    });
+  }
 }
 
 function setupCanvasPan() {
@@ -10360,6 +10443,7 @@ const AI_COMMANDS = {
       addCustomerCard({ startMs: _aiParseTime(args.startMs), x: args.x, y: args.y });
       const el = _aiSelectedEl();
       let logoNote = '';
+      let logoMatched = false;
       if (el) {
         if (args.body) el.body = String(args.body);
         if (args.industry) el.industry = String(args.industry);
@@ -10367,6 +10451,9 @@ const AI_COMMANDS = {
         if (args.employees) el.employees = String(args.employees);
         // v3.28b.71: match a logo name to the CUSTOMER_LOGOS_LIB (51 logos).
         // Accept args.logo OR args.customer OR args.company as the lookup key.
+        // v3.28b.XX: when the lookup misses, fall back to args.bodyFallback so
+        // `/customer "some description"` (where the freeText isn't a logo name)
+        // still puts the text in the body.
         const logoKey = args.logo || args.customer || args.company;
         if (logoKey) {
           const low = String(logoKey).toLowerCase().replace(/\s+/g, '');
@@ -10375,8 +10462,13 @@ const AI_COMMANDS = {
                    || lib.find(l => l.name.toLowerCase().replace(/\s+/g, '') === low)
                    || lib.find(l => l.name.toLowerCase().includes(String(logoKey).toLowerCase()))
                    || lib.find(l => l.id.toLowerCase().includes(low));
-          if (hit) { el.customerLogoId = hit.id; el.logoUrl = null; logoNote = ` with ${hit.name} logo`; }
+          if (hit) { el.customerLogoId = hit.id; el.logoUrl = null; logoNote = ` with ${hit.name} logo`; logoMatched = true; }
           else logoNote = ` (no logo match for "${logoKey}")`;
+        }
+        // v3.28b.XX: if no logo matched and no explicit body, use the
+        // bodyFallback (freeText from the slash command) as the body text.
+        if (!logoMatched && !args.body && args.bodyFallback) {
+          el.body = String(args.bodyFallback);
         }
         rebuildAll();
       }
@@ -10767,9 +10859,20 @@ function _aiParseLocalCommand(msg) {
     case 'callout':
       return A('add_callout', { startMs: timeTok, text: kv.text || freeText, x: kv.x, y: kv.y });
     case 'card': case 'customer':
-      return A('add_customer_card', { startMs: timeTok, body: kv.body || freeText,
+      // v3.28b.XX: a quoted/positional name becomes the logo lookup so
+      // `/customer "Acme Corp"` auto-picks the logo from CUSTOMER_LOGOS_LIB.
+      // Lookup priority: kv.logo > kv.company > freeText. The fuzzy matcher
+      // in add_customer_card handles name→id resolution. If freeText matches
+      // a logo, body stays whatever user explicitly set via body:... (or
+      // empty); if freeText DOESN'T match a logo, freeText becomes body as
+      // a fallback so the old behavior (`/customer "some description text"`)
+      // keeps working when no library logo fits.
+      return A('add_customer_card', { startMs: timeTok,
+        body: kv.body,                                  // explicit body only
         industry: kv.industry, location: kv.location, employees: kv.employees,
-        logo: kv.logo || kv.company, x: kv.x, y: kv.y });
+        logo: kv.logo || kv.company || freeText,        // freeText as logo
+        bodyFallback: freeText,                          // body if logo misses
+        x: kv.x, y: kv.y });
     case 'text':
       return A('add_text_overlay', { startMs: timeTok, text: kv.text || freeText,
         color: kv.color, fontSize: kv.fontSize, x: kv.x, y: kv.y });
