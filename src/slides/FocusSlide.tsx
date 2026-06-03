@@ -9,13 +9,14 @@ import { IconLocations, IconClients, IconConfigurable, IconBill } from './Icons'
  * HR Focus Areas slide — supports 3 layout variations.
  *
  * V1 (bullets):    bg #032444, title 56px, 4 columns, each: icon → 2-line heading 32px → bullet list (cyan 22px)
- * V2 (2 pills):    bg #002B54, title 56px, 4 columns centered (icon 100×100 + heading 28px), 2 stat pills bottom
+ * V2 (pills):      bg #002B54, title 56px, columns centered (icon 100×100 + heading 28px), 1-3 stat pills bottom
  * V3 (stat bar):   bg #002B54, title 56px, 4 columns + 1 long stat bar with 4 segments
  *
  * Pill gradient: #0183FF → #0183FF @ 20% opacity, overall 80% opacity.
- * Pill 1 (v2): x=358, y=764, w=567, h=88, rx=44
- * Pill 2 (v2): x=1020, y=764, w=543, h=88, rx=44
- * Stat bar (v3): x=228, y=756, w=1464, h=140, rx=70
+ * v3.28b.96: V2 pills are now DYNAMIC (1-3 count), matching the editor's
+ * renderFocusSVG (v3.28b.88). Previously the renderer hardcoded exactly 2
+ * FocusPill components, so deleting pills in the editor left phantom pills in
+ * the MP4. Now we render statPills.slice(0,3) with the same count-based layout.
  */
 export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
@@ -54,14 +55,6 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <linearGradient id="focusPill1" x1="358" y1="808" x2="925" y2="808" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#0183FF" />
-          <stop offset="1" stopColor="#0183FF" stopOpacity="0.2" />
-        </linearGradient>
-        <linearGradient id="focusPill2" x1="1020" y1="808" x2="1563" y2="808" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#0183FF" />
-          <stop offset="1" stopColor="#0183FF" stopOpacity="0.2" />
-        </linearGradient>
         <linearGradient id="focusBar" x1="228" y1="826" x2="1692" y2="826" gradientUnits="userSpaceOnUse">
           <stop stopColor="#0183FF" />
           <stop offset="1" stopColor="#0183FF" stopOpacity="0.2" />
@@ -87,13 +80,8 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
       {variation === 1 && <FocusV1Columns columns={seg.columns || []} animOn={animOn} />}
       {(variation === 2 || variation === 3) && <FocusV2V3Columns columns={seg.columns || []} animOn={animOn} />}
 
-      {/* Stat pills (v2) */}
-      {variation === 2 && (
-        <>
-          <FocusPill x={358} y={764} w={567} h={88} text={(seg.statPills && seg.statPills[0]?.text) || ''} gradientId="focusPill1" />
-          <FocusPill x={1020} y={764} w={543} h={88} text={(seg.statPills && seg.statPills[1]?.text) || ''} gradientId="focusPill2" />
-        </>
-      )}
+      {/* Stat pills (v2) — dynamic 1-3 count, matches editor */}
+      {variation === 2 && <FocusV2Pills pills={seg.statPills || []} animOn={animOn} />}
 
       {/* Stat bar (v3) */}
       {variation === 3 && <FocusStatBar pills={seg.statPills || []} />}
@@ -168,7 +156,7 @@ const FocusV1Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({
   );
 };
 
-// Variation 2/3 layout — 1-4 columns center-aligned per column,
+// Variation 2/3 layout — 1-6 columns center-aligned per column,
 // whole group auto-centered on the slide.
 const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = ({ columns, animOn }) => {
   const frame = useCurrentFrame();
@@ -225,37 +213,86 @@ const FocusV2V3Columns: React.FC<{ columns: FocusColumn[]; animOn: boolean }> = 
   );
 };
 
-// Single stat pill (used by v2)
-const FocusPill: React.FC<{
-  x: number; y: number; w: number; h: number;
-  text: string; gradientId: string;
-}> = ({ x, y, w, h, text, gradientId }) => {
-  // v3.28b.8: fixed icons baked into V2 pills (same pattern as V3 stat bar).
-  // Convention: pill 1 (left, gradientId="focusPill1") = Globe.
-  //             pill 2 (right, gradientId="focusPill2") = Employees.
-  const iconHref =
-    gradientId === 'focusPill1' ? ASSETS.pillIcons.globe :
-    gradientId === 'focusPill2' ? ASSETS.pillIcons.employees :
-    null;
+// v3.28b.96: Variation 2 pills — DYNAMIC 1-3 count, mirrors editor.html
+// renderFocusSVG (v3.28b.88). Renders statPills.slice(0,3); count drives layout:
+//   1 pill  → centered (x=676, w=567)
+//   2 pills → x=358/w=567 and x=1020/w=543
+//   3 pills → three equal 425px pills spread across canvas
+// Per-pill gradient fades #0183FF (left) → 20% opacity (right). Icons:
+// [globe, employees, globe]. Pills fade in 0.8-1.2s (after columns). When the
+// user deletes pills, statPills shrinks, so no phantom pills render — fixes the
+// MP4 showing deleted pills.
+const FocusV2Pills: React.FC<{ pills: FocusStatPill[]; animOn: boolean }> = ({ pills, animOn }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const v2pills = (pills || []).slice(0, 3);
+  const n = v2pills.length;
+  if (n === 0) return null;
+
+  // Pills fade in 0.8-1.2s, matching editor's pillsOp window
+  const pillsOpacity = animOn
+    ? interpolate(frame, [0.8 * fps, 1.2 * fps], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    : 1;
+
+  let layouts: { x: number; w: number }[];
+  if (n === 1) {
+    layouts = [{ x: 676, w: 567 }];
+  } else if (n === 2) {
+    layouts = [{ x: 358, w: 567 }, { x: 1020, w: 543 }];
+  } else {
+    const PILL_W = 425;
+    const GAP = 50;
+    const total = PILL_W * 3 + GAP * 2; // 1375
+    const x0 = (1920 - total) / 2;      // 272.5
+    layouts = [
+      { x: x0, w: PILL_W },
+      { x: x0 + (PILL_W + GAP), w: PILL_W },
+      { x: x0 + 2 * (PILL_W + GAP), w: PILL_W },
+    ];
+  }
+
+  // Icon order matches editor: [globe, employees, globe]
+  const PILL_ICONS = [ASSETS.pillIcons.globe, ASSETS.pillIcons.employees, ASSETS.pillIcons.globe];
+
   return (
-    <g>
-      <rect x={x} y={y} width={w} height={h} rx={44} fill={`url(#${gradientId})`} fillOpacity={0.8} />
-      {iconHref && (
-        <image
-          x={x + 38} y={y + 22}
-          width={44} height={44}
-          href={iconHref}
-          preserveAspectRatio="xMidYMid meet"
-        />
-      )}
-      <text
-        x={x + 100} y={y + 52}
-        fill="white"
-        fontFamily="Satoshi, system-ui, sans-serif"
-        fontSize={32} fontWeight={700}
-      >
-        {text}
-      </text>
+    <g opacity={pillsOpacity}>
+      <defs>
+        {layouts.map((L, i) => (
+          <linearGradient
+            key={i}
+            id={`fp_v2_${i}`}
+            x1={L.x} y1={808} x2={L.x + L.w} y2={808}
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop stopColor="#0183FF" />
+            <stop offset="1" stopColor="#0183FF" stopOpacity="0.2" />
+          </linearGradient>
+        ))}
+      </defs>
+      {v2pills.map((p, i) => {
+        const L = layouts[i];
+        const icon = PILL_ICONS[i];
+        return (
+          <g key={(p && p.id) || i}>
+            <rect x={L.x} y={764} width={L.w} height={88} rx={44} fill={`url(#fp_v2_${i})`} fillOpacity={0.8} />
+            {icon && (
+              <image
+                x={L.x + 38} y={786} width={44} height={44}
+                href={icon}
+                preserveAspectRatio="xMidYMid meet"
+              />
+            )}
+            <text
+              x={L.x + 100} y={816}
+              fill="white"
+              fontFamily="Satoshi, system-ui, sans-serif"
+              fontSize={32} fontWeight={700}
+            >
+              {(p && p.text) || ''}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 };
