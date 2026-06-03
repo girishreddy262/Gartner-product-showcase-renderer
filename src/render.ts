@@ -135,8 +135,8 @@ async function main() {
       //   crf 18 = "visually lossless" H.264 (broadcast-quality standard)
       //   jpegQuality 95 = high-quality intermediate frames
       //   pixelFormat yuv420p = max compatibility (default but explicit)
-      crf: 18,
-      jpegQuality: 95,
+      crf: 16,
+      jpegQuality: 100,
       pixelFormat: 'yuv420p',
       inputProps: { payload },
       framesPerLambda,
