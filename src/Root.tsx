@@ -29,7 +29,7 @@ const RecordingComp: React.FC<{
   const video = videos.find(v => v.id === seg.videoId);
   if (!video) return <AbsoluteFill style={{ background: '#000' }} />;
 
-  const sourceStartSec = (seg.sourceStartMs || 0) / 1000;
+  const sourceStartFrames = Math.round(((seg.sourceStartMs || 0) / 1000) * FPS);
 
   // v3.28b.XX: mirror editor formula exactly (editor.html line 6231-6238).
   // Editor applies CSS `transform: scale(_vScale)` with `transform-origin:
@@ -54,17 +54,29 @@ const RecordingComp: React.FC<{
         // exactly as the editor preview does.
         background: '#002B54',
       }}>
-        <OffthreadVideo
-          src={video.url}
-          startFrom={Math.round(sourceStartSec * FPS)}
-          playbackRate={seg.speed || 1.0}
-          muted={seg.muteSourceAudio !== false}
-          style={{
-            width: '100%', height: '100%', objectFit: 'contain',
-            transform: _vScale !== 1.0 ? `scale(${_vScale})` : undefined,
-            transformOrigin: 'center center',
-          }}
-        />
+        {/* v3.28b.94 Fix #1: trim the source via a negative-`from` Sequence
+            instead of OffthreadVideo's `startFrom`. `startFrom` shifts the
+            video's frame mapping; during the outer sequence's premount window
+            (negative local frames) that offset could resolve to an out-of-range
+            / not-yet-decoded source frame and paint ONE black frame at the cut
+            seam — the blink. With trim-by-Sequence, OffthreadVideo always plays
+            from source frame 0 forward and the inner Sequence shifts its clock
+            by -sourceStartFrames, so frame 0 of OffthreadVideo aligns to
+            sourceStartMs. premount-safe: no offset to mis-resolve. `layout="none"`
+            keeps the Sequence from adding a wrapping div that would disturb the
+            scale/position styles. */}
+        <Sequence from={-sourceStartFrames} layout="none">
+          <OffthreadVideo
+            src={video.url}
+            playbackRate={seg.speed || 1.0}
+            muted={seg.muteSourceAudio !== false}
+            style={{
+              width: '100%', height: '100%', objectFit: 'contain',
+              transform: _vScale !== 1.0 ? `scale(${_vScale})` : undefined,
+              transformOrigin: 'center center',
+            }}
+          />
+        </Sequence>
         {/* v3.28b.XX: frame moved OUT of this wrap, rendered as a sibling of
             the zoom-transform canvas in ProductShowcase below. Matches editor's
             stageFrameLayer design (editor.html line 5962-5978, v3.28b.13) so
@@ -113,6 +125,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
       currentMs < e.startMs + e.durationMs
   );
 
+
   return (
     <AbsoluteFill style={{ backgroundColor: tokens.navy900 }}>
       {/* Font loading */}
@@ -134,7 +147,14 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         {/* === SEGMENTS === */}
         {payload.segments.map(seg => {
           const startFrame = msToFrames(seg.startMs);
-          const durFrames = msToFrames(seg.durationMs);
+          // v3.28b.94 Fix #3: derive duration from the ABSOLUTE end, not the
+          // standalone duration. round(start) + round(dur) can differ from
+          // round(end) by 1 frame, leaving a 1-frame seam (overlap or gap) at
+          // the cut even when the editor tiled the ms perfectly. Computing
+          // round(end) - round(start) makes this segment's end frame equal
+          // round(end), which equals the next segment's round(start) — exact
+          // tiling, no seam, no intermittent black frame at the cut.
+          const durFrames = msToFrames(seg.startMs + seg.durationMs) - startFrame;
           const isRecording = seg.kind === 'recording';
 
           // Compute headerOpacity for slide segments based on zoom effect overlap.
@@ -240,7 +260,9 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         const r = seg as RecordingSegment;
         if (r.showFrame === false) return null;
         const startFrame = msToFrames(seg.startMs);
-        const durFrames = msToFrames(seg.durationMs);
+        // v3.28b.94 Fix #3: same end-derived duration so the frame bezel tiles
+        // with its recording segment instead of leaving a 1-frame seam.
+        const durFrames = msToFrames(seg.startMs + seg.durationMs) - startFrame;
         return (
           <Sequence
             key={`frame-${seg.id}`}

@@ -10390,18 +10390,24 @@ function cutVideoSegment(seg, atTimelineMs) {
   const localTimelineMs = atTimelineMs - seg.startMs;
   // Source video offset at the cut point (advanced by speed)
   const sourceOffsetAtCut = localTimelineMs * speed;
-  // First segment: shrink to cut point
-  const firstDur = localTimelineMs;
-  const secondDur = seg.durationMs - localTimelineMs;
-  // Mutate seg in place (first half)
-  seg.durationMs = Math.round(firstDur);
-  // Create second segment
+  // v3.28b.94 Fix #2: tile the two halves with ZERO gap/overlap. Round the cut
+  // point ONCE, then derive both halves from it so first.end === second.start
+  // exactly. The old code rounded firstDur and atTimelineMs independently,
+  // which could leave a 1ms mismatch that became a 1-frame black seam at the
+  // cut in the rendered MP4. sourceStartMs still uses the UNROUNDED
+  // sourceOffsetAtCut (correct — source offset should stay precise; only the
+  // timeline tiling needed fixing).
+  const origEndMs = seg.startMs + seg.durationMs;
+  const cutMs = Math.round(atTimelineMs);
+  // Mutate seg in place (first half): ends exactly at the cut point
+  seg.durationMs = cutMs - seg.startMs;
+  // Create second segment: starts exactly at the cut point, runs to original end
   const second = {
     id: uid('seg'),
     kind: 'recording',
     videoId: seg.videoId,
-    startMs: Math.round(atTimelineMs),
-    durationMs: Math.round(secondDur),
+    startMs: cutMs,
+    durationMs: origEndMs - cutMs,
     x: seg.x, y: seg.y, width: seg.width, height: seg.height,
     scale: seg.scale, muteSourceAudio: seg.muteSourceAudio, showFrame: seg.showFrame,
     audioVolume: seg.audioVolume,
