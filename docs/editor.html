@@ -6115,6 +6115,21 @@ function onBlockMouseDown(e, item, kind) {
   const groupStart0 = Math.min(...movers.map(m => m.startMs0));
   const groupEnd0 = Math.max(...movers.map(m => (m.startMs0 + (m.obj.durationMs || 0))));
 
+  // v3.28b.88: rAF throttle for the per-mousemove rebuild — coalesces high-rate
+  // mousemove events (100+/s on high-refresh displays) into one rebuild per frame.
+  // Eliminates the visible "flicker"/"blink" during drag caused by repeated DOM
+  // teardown+rebuild of the timeline blocks.
+  let _dragRafPending = false;
+  const scheduleDragRebuild = () => {
+    if (_dragRafPending) return;
+    _dragRafPending = true;
+    requestAnimationFrame(() => {
+      _dragRafPending = false;
+      rebuildTimeline();
+    });
+  };
+  view.isDragging = true;
+
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
     if (Math.abs(dx) > 3 && !_historyPushed) { pushHistory(); _historyPushed = true; dragged = true; }
@@ -6138,11 +6153,14 @@ function onBlockMouseDown(e, item, kind) {
     for (const m of movers) {
       m.obj.startMs = Math.max(0, m.startMs0 + deltaMs);
     }
-    rebuildTimeline();
+    scheduleDragRebuild();  // v3.28b.88: coalesce rebuilds — was direct rebuildTimeline()
   };
   const onUp = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
+    view.isDragging = false;
+    // v3.28b.88: one final rebuild to ensure DOM matches state (in case last rAF was queued)
+    rebuildTimeline();
     if (dragged) { setupAudioElements(); renderEditPanel(); }
   };
   document.addEventListener('mousemove', onMove);
@@ -6157,6 +6175,14 @@ function onHandleMouseDown(e, item, kind, side) {
   const startMs0 = item.startMs;
   const dur0 = item.durationMs;
   const px = getEffectivePxPerMs();
+  // v3.28b.88: rAF throttle to prevent per-mousemove DOM flicker
+  let _rafPending = false;
+  const sched = () => {
+    if (_rafPending) return;
+    _rafPending = true;
+    requestAnimationFrame(() => { _rafPending = false; rebuildTimeline(); });
+  };
+  view.isDragging = true;
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
     const dms = Math.round(dx / px);
@@ -6167,11 +6193,13 @@ function onHandleMouseDown(e, item, kind, side) {
       item.startMs = newStart;
       item.durationMs = Math.max(100, dur0 - delta);
     }
-    rebuildTimeline();
+    sched();
   };
   const onUp = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
+    view.isDragging = false;
+    rebuildTimeline();
     renderEditPanel();
   };
   document.addEventListener('mousemove', onMove);
@@ -6958,12 +6986,16 @@ function tick() {
       const spd = active.speed || 1.0;
       const srcStartSec = (active.sourceStartMs || 0) / 1000;
       const targetT = srcStartSec + (localSec * spd);
-      // Only hard-seek if the source time actually jumps (a cut to a different part
-      // of the source). If it's a pure speed change at a continuous point, the source
-      // time is already ~correct, so skip the seek to avoid a visible re-decode hitch.
+      // v3.28b.88: avoid no-op writes that can trigger a decode hitch.
+      // Only assign playbackRate when it actually changed (cross-cut speed change).
+      // Loosen the seek threshold to 100ms — for true cut clips the source time
+      // is contiguous so drift is near-zero, and the wider window prevents the
+      // tiny seek that was producing the .001s black flash at segment boundary.
       const drift = Math.abs((v.currentTime || 0) - targetT);
-      v.playbackRate = spd;
-      if (drift > 0.05) {
+      if (Math.abs((v.playbackRate || 1) - spd) > 0.001) {
+        v.playbackRate = spd;
+      }
+      if (drift > 0.1) {
         try { v.currentTime = clamp(targetT, 0, v.duration || 0); } catch(_) {}
       }
       // overlays still need refreshing for the new segment context
