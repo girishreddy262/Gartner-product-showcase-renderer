@@ -191,27 +191,8 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           );
         })}
 
-        {/* === CALLOUTS === */}
-        {payload.callouts.map(c => {
-          const startFrame = msToFrames(c.startMs);
-          const durFrames = msToFrames(c.durationMs);
-          return (
-            <Sequence
-              key={c.id}
-              from={startFrame}
-              durationInFrames={durFrames}
-              name={`Callout: ${c.text?.substring(0, 20)}`}
-            >
-              <AbsoluteFill>
-                <CalloutComp
-                  callout={c}
-                  startFrame={startFrame}
-                  durationFrames={durFrames}
-                />
-              </AbsoluteFill>
-            </Sequence>
-          );
-        })}
+        {/* === CALLOUTS moved OUTSIDE the zoom wrap (v3.28b.90) — see siblings
+            block below. Empty here to keep file structure clear. === */}
 
         {/* === TEXT OVERLAYS === */}
         {(payload.textOverlays || []).map(t => {
@@ -235,27 +216,8 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           );
         })}
 
-        {/* === CUSTOMER CARD OVERLAYS === */}
-        {(payload.customerCards || []).map(c => {
-          const startFrame = msToFrames(c.startMs);
-          const durFrames = msToFrames(c.durationMs);
-          return (
-            <Sequence
-              key={c.id}
-              from={startFrame}
-              durationInFrames={durFrames}
-              name={`CustomerCard: ${c.employees || ''}`}
-            >
-              <AbsoluteFill>
-                <CustomerCardComp
-                  card={c}
-                  startFrame={startFrame}
-                  durationFrames={durFrames}
-                />
-              </AbsoluteFill>
-            </Sequence>
-          );
-        })}
+        {/* === CUSTOMER CARDS moved OUTSIDE the zoom wrap (v3.28b.90) — see
+            siblings block below. === */}
 
         {/* === SPOTLIGHTS === */}
         {activeSpotlights.map(sp => (
@@ -295,6 +257,54 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
                   objectFit: 'fill',
                   pointerEvents: 'none',
                 }}
+              />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+
+      {/* === CALLOUTS — siblings of the zoom wrap, NEVER transformed by the
+          playback zoom effect (v3.28b.90). Mirrors editor.html stageOverlayLayer
+          which keeps callouts at canvas dimensions while the underlying video
+          zooms beneath them. Each callout is gated by its own Sequence. === */}
+      {payload.callouts.map(c => {
+        const startFrame = msToFrames(c.startMs);
+        const durFrames = msToFrames(c.durationMs);
+        return (
+          <Sequence
+            key={`overlay-callout-${c.id}`}
+            from={startFrame}
+            durationInFrames={durFrames}
+            name={`Callout: ${c.text?.substring(0, 20)}`}
+          >
+            <AbsoluteFill style={{ pointerEvents: 'none' }}>
+              <CalloutComp
+                callout={c}
+                startFrame={startFrame}
+                durationFrames={durFrames}
+              />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+
+      {/* === CUSTOMER CARDS — siblings of the zoom wrap, NEVER transformed by
+          the playback zoom effect (v3.28b.90). Same rule as callouts above. === */}
+      {(payload.customerCards || []).map(c => {
+        const startFrame = msToFrames(c.startMs);
+        const durFrames = msToFrames(c.durationMs);
+        return (
+          <Sequence
+            key={`overlay-card-${c.id}`}
+            from={startFrame}
+            durationInFrames={durFrames}
+            name={`CustomerCard: ${c.employees || ''}`}
+          >
+            <AbsoluteFill style={{ pointerEvents: 'none' }}>
+              <CustomerCardComp
+                card={c}
+                startFrame={startFrame}
+                durationFrames={durFrames}
               />
             </AbsoluteFill>
           </Sequence>
