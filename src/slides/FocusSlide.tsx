@@ -1,5 +1,5 @@
-import React from 'react';
-import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
+import React, { useState, useEffect } from 'react';
+import { useCurrentFrame, useVideoConfig, interpolate, Easing, delayRender, continueRender } from 'remotion';
 import type { FocusSegment, FocusColumn, FocusStatPill } from '../types';
 import { tokens } from '../tokens';
 import { ASSETS, getFocusIconUrl } from '../assets';
@@ -22,6 +22,41 @@ export const FocusSlide: React.FC<{ seg: FocusSegment }> = ({ seg }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const variation = seg.variation || 1;
+
+  // v3.28b.96: Preload every remote icon URL before Remotion captures frames.
+  // The column icons render as SVG <image href="https://...svg"> from GitHub
+  // Pages. SVG <image> does NOT hook into Remotion's frame-readiness system, so
+  // without this some frames are captured before an icon has decoded → it
+  // renders blank → the intermittent flicker in the MP4. delayRender holds the
+  // render until every icon (and the pill icons) has loaded; on error we still
+  // continueRender so a single bad URL can't hang the whole render.
+  const iconUrls = React.useMemo(() => {
+    const urls = (seg.columns || [])
+      .map(c => getFocusIconUrl(c.iconId))
+      .filter((u): u is string => !!u);
+    // pill icons (data URIs decode instantly but harmless to include)
+    if (seg.variation === 2) {
+      [ASSETS.pillIcons.globe, ASSETS.pillIcons.employees].forEach(u => { if (u) urls.push(u); });
+    }
+    return Array.from(new Set(urls));
+  }, [seg.columns, seg.variation]);
+
+  const [handle] = useState(() => delayRender('focus-icons'));
+  useEffect(() => {
+    if (iconUrls.length === 0) { continueRender(handle); return; }
+    let done = 0;
+    let cancelled = false;
+    const finish = () => { if (!cancelled && ++done >= iconUrls.length) continueRender(handle); };
+    iconUrls.forEach(url => {
+      const img = new Image();
+      img.onload = finish;
+      img.onerror = finish; // don't hang the render on one bad icon
+      img.src = url;
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handle, iconUrls]);
+
   const bgColor = variation === 1 ? tokens.bgOuterAlt : tokens.bgOuter;
   const cardRadius = variation === 1 ? 10 : 20;
   const cardY = variation === 1 ? 113.5 : 110;
