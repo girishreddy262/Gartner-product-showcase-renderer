@@ -7210,13 +7210,6 @@ function _prewarmUpcomingAudio(fromMs, lookaheadMs) {
     if (endMs < fromMs || startMs > horizon) continue;
     const el = _audioElements[ap.id];
     if (!el) continue;
-    // v3.28b.95 fix: NEVER re-seek an element that is already playing. The
-    // per-frame prewarm would otherwise set currentTime on the currently-active
-    // placement every single tick, constantly restarting its seek and breaking
-    // playback (audio stutters/goes silent). Only paused elements — i.e. ones
-    // that haven't started yet — are safe to pre-seek. The active element is
-    // managed by syncAudioPlayback, which is left untouched.
-    if (!el.paused) continue;
     const sourceOffsetMs = ap.sourceStartMs || 0;
     // Compute the source-time the audio should be at when its placement starts.
     // If fromMs is already inside the placement, seek to current position.
@@ -7403,13 +7396,12 @@ function tick() {
   const total = getTotalDurationMs();
   if (view.curTimeMs >= total) { view.curTimeMs = total; pause(); }
   updatePlayhead();
-  // v3.28b.95: pre-seek any placement that goes active within the next 500ms
-  // so its <audio> element finishes seeking BEFORE syncAudioPlayback calls
-  // play(). Without this, a placement activated at a cut seeks + plays in the
-  // same tick; the async seek isn't done when play() fires, so the first
-  // ~0.1-0.2s plays from a not-yet-decoded position = soft/clipped attack.
-  // _prewarmUpcomingAudio is window-gated and idempotent, so per-frame is cheap.
-  _prewarmUpcomingAudio(view.curTimeMs, 500);
+  // v3.28b.95: per-frame _prewarmUpcomingAudio was REMOVED. It raced with
+  // syncAudioPlayback: when play() is called, el.paused stays true until the
+  // play promise resolves, so on the next tick the prewarm re-seeked the just-
+  // started element and broke playback. Prewarm still runs at its safe original
+  // call sites (playback start + seek). The crisp-attack improvement isn't worth
+  // breaking continuous audio; revisit with a non-racing approach if needed.
   syncAudioPlayback();
   // Determine current active segment
   const active = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
