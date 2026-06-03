@@ -1523,6 +1523,7 @@
       <button class="btn" id="btnPause">⏸ Pause</button>
       <button class="btn" id="btnReset">↺ Reset</button>
       <button class="btn" id="btnCloseGaps" title="Close all gaps between segments">⇆ Close gaps</button>
+      <button class="btn" id="btnInsertGap" title="Insert a 10-second gap at the playhead — everything after the playhead shifts forward by 10s">⏸ +10s Gap</button>
       <button class="btn" id="btnSaveProject" title="Save project to the cloud">💾 Save project</button>
       <button class="btn" id="btnDownloadProject" title="Download project as .psproj.json file">⬇ Download</button>
       <button class="btn" id="btnOpenProject" title="Open .psproj.json file">📂 Open project</button>
@@ -3651,9 +3652,10 @@ function snapInsertToSegmentBoundary(insertMs) {
 }
 
 // Shift every time-based item whose startMs >= insertMs forward by shiftMs.
-// Covers all five tracks: segments, callouts, customer cards, text overlays,
-// and audio placements — so callouts/cards/text/audio anchored to a clip
-// after the insert point ride along with it.
+// v3.28b.90: covers ALL seven time-based collections so callouts, customer
+// cards, text overlays, audio, effects (zoom/spotlight), and shapes anchored
+// after the insert point all ride along. Matches the same set that closeGaps
+// shifts so insert and close-gaps stay in lock-step.
 function rippleShiftAtOrAfter(insertMs, shiftMs) {
   if (!shiftMs) return;
   const apply = (arr) => {
@@ -3668,6 +3670,22 @@ function rippleShiftAtOrAfter(insertMs, shiftMs) {
   apply(state.customerCards);
   apply(state.textOverlays);
   apply(state.audioPlacements);
+  apply(state.effects);   // v3.28b.90: zoom + spotlight effects
+  apply(state.shapes);    // v3.28b.90: drawn shapes
+}
+
+// v3.28b.90: insert a fixed-duration gap at the playhead. Everything at or
+// after the playhead shifts forward by the gap. If the playhead lands inside
+// a segment we snap to the nearer boundary (same rule as ripple-insert).
+function insertGapAtPlayhead(gapMs) {
+  if (!gapMs || gapMs <= 0) return;
+  pushHistory();
+  const insertMs = snapInsertToSegmentBoundary(Math.max(0, Math.round(view.curTimeMs || 0)));
+  rippleShiftAtOrAfter(insertMs, gapMs);
+  setupAudioElements();
+  rebuildAll();
+  const secs = (gapMs / 1000).toFixed(gapMs % 1000 ? 1 : 0);
+  showToast(`Inserted ${secs}s gap at playhead — everything after shifted forward`);
 }
 
 // v3.28b.88: find first time position >= desiredStart where [start, start+duration]
@@ -10711,6 +10729,7 @@ function setupHeader() {
   $('btnPause').addEventListener('click', pause);
   $('btnReset').addEventListener('click', reset);
   $('btnCloseGaps').addEventListener('click', closeGaps);
+  $('btnInsertGap').addEventListener('click', () => insertGapAtPlayhead(10000));  // v3.28b.90
   $('btnCancel').addEventListener('click', cancel);
   $('btnApprove').addEventListener('click', approve);
   $('btnSaveProject').addEventListener('click', saveProjectToCloud);
