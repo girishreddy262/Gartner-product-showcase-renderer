@@ -174,13 +174,15 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               key={seg.id}
               from={startFrame}
               durationInFrames={durFrames}
-              // v3.28b.87: premount video segments so the <Video> is mounted and the
-              // source frame is decoded BEFORE this sequence becomes visible. Without
-              // this, the first frame(s) of each clip show the black wrapper background
-              // while the video seeks/decodes — the black flash at every cut/speed
-              // boundary. 15 frames (~0.5s at 30fps) is ample lead time. Slides don't
-              // need it but premounting them is harmless.
-              premountFor={5}
+              // v3.28b.91: premount video segments so the <OffthreadVideo> is
+              // mounted and the source frame is decoded BEFORE this sequence
+              // becomes visible. Earlier value of 5 frames (~167ms at 30fps)
+              // was too short for a cold network fetch + decoder warmup → first
+              // frame(s) of each clip showed the navy/black wrapper background
+              // during the gap. 30 frames = 1 full second of lead time, which
+              // covers most edge frames + network jitter while costing only a
+              // bit of memory (each video mounted briefly before its slot).
+              premountFor={30}
               name={isRecording ? `Recording: ${(seg as RecordingSegment).videoId}` : `Slide: ${seg.kind}`}
             >
               {isRecording

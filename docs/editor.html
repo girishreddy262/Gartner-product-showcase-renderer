@@ -7354,6 +7354,114 @@ function shouldElementBeActive(el) {
   }
   return false;
 }
+// v3.28b.91: Seamless cross-source video cut. Builds the new segment's video
+// element on top of whatever is currently in stageInner, waits for its first
+// frame to be paintable (readyState >= 2 / canplay), then removes the old
+// content and keeps the new one in place. Result: no blank/navy interval
+// between source A and source B at the cut. Stage frame layer + overlays are
+// rebuilt the moment the swap happens, mirroring rebuildCanvas's tail steps.
+function seamlessCrossSourceSwap(active) {
+  const inner = $('stageInner');
+  if (!inner) { rebuildCanvas(); return; }
+  // Snapshot current children so we can remove ONLY them after the swap.
+  // Anything we append below is excluded.
+  const oldChildren = Array.from(inner.children);
+  // Build the new segment wrap (same code path rebuildCanvas uses)
+  let newWrap;
+  try { newWrap = renderSegmentToCanvas(active); }
+  catch (e) { console.warn('seamless swap failed, falling back to rebuildCanvas:', e); rebuildCanvas(); return; }
+  if (!newWrap) { rebuildCanvas(); return; }
+  // Stack the new wrap on top of the current content while we wait for it to
+  // be ready to paint. position:absolute + inset already set by renderSegmentToCanvas.
+  newWrap.style.zIndex = '2';
+  inner.appendChild(newWrap);
+  const newVideo = newWrap.querySelector('video');
+
+  // We MUST keep _activeVideoElement pointing at the OLD element until the
+  // new one is ready — otherwise the cleanup path in rebuildCanvas (or a fast
+  // re-tick) might tear down the wrong element. Stash the new video ref and
+  // promote it on swap.
+  const finalize = () => {
+    // Promote: new video becomes the active element. Don't run cleanupActiveVideo
+    // because that would null out _activeVideoElement before we rebind it.
+    // Old element is destroyed when we remove its wrapper below — release its
+    // resources cleanly first.
+    if (_activeVideoElement && _activeVideoElement !== newVideo) {
+      try { safePauseMedia(_activeVideoElement); } catch(_) {}
+      try {
+        if (_activeVideoElement._waSource) _activeVideoElement._waSource.disconnect();
+        if (_activeVideoElement._waGain) _activeVideoElement._waGain.disconnect();
+      } catch(_) {}
+      try { _activeVideoElement.removeAttribute('src'); _activeVideoElement.load(); } catch(_) {}
+    }
+    // Remove old wraps now that new is paintable
+    oldChildren.forEach(c => { try { c.remove(); } catch(_) {} });
+    // New wrap is now the sole occupant — drop the z-index hack so it goes back
+    // to normal stacking with overlays/effects.
+    newWrap.style.zIndex = '';
+    if (newVideo) {
+      _activeVideoElement = newVideo;
+      _activeVideoElement._videoId = active.videoId;
+      _activeVideoElement._segId = active.id;
+      // Resume playback if the timeline is playing
+      if (view.isPlaying && newVideo.paused && !newVideo._playPending) {
+        newVideo._playPending = true;
+        newVideo.play()
+          .then(() => { if (newVideo) newVideo._playPending = false; })
+          .catch(() => { if (newVideo) newVideo._playPending = false; });
+      }
+    } else {
+      _activeVideoElement = null;
+    }
+    // Rebuild frame layer + overlays for the new active segment (mirrors the
+    // tail of rebuildCanvas without touching stageInner)
+    rebuildFrameAndOverlaysFor(active);
+  };
+
+  // If the video element is already paintable (cached resource), swap right
+  // away. Otherwise wait for canplay or 1.5s safety timeout — whichever first.
+  if (!newVideo || newVideo.readyState >= 2) {
+    finalize();
+  } else {
+    let done = false;
+    const trigger = () => { if (done) return; done = true; finalize(); };
+    newVideo.addEventListener('canplay', trigger, { once: true });
+    newVideo.addEventListener('loadeddata', trigger, { once: true });
+    setTimeout(trigger, 1500);
+  }
+}
+
+// v3.28b.91: rebuild ONLY the frame layer + overlay layer for an active
+// segment, without touching stageInner. Used by the seamless swap path so it
+// doesn't have to call the full rebuildCanvas (which would wipe stageInner).
+function rebuildFrameAndOverlaysFor(active) {
+  const frameLayer = $('stageFrameLayer');
+  if (frameLayer) frameLayer.innerHTML = '';
+  const wantsFrame = active && (
+    (isRecordingSegment(active) && active.showFrame !== false) ||
+    (active.kind === 'slide-image' && active.showFrame === true)
+  );
+  if (wantsFrame && frameLayer) {
+    const frame = document.createElement('div');
+    frame.className = 'video-frame-overlay';
+    frame.style.left = '0px';
+    frame.style.top = '0px';
+    frame.style.width = CANVAS_W + 'px';
+    frame.style.height = CANVAS_H + 'px';
+    const img = document.createElement('img');
+    img.src = ASSETS.videoFrame;
+    img.draggable = false;
+    frame.appendChild(img);
+    frameLayer.appendChild(frame);
+  }
+  $('canvas-info').textContent = active
+    ? (active.kind === 'recording' ? '▶ ' + (active.videoId||'') : '★ ' + (active.title||''))
+        + ' (' + fmtTimeDecimal(active.startMs) + ' — ' + fmtTimeDecimal(active.startMs+active.durationMs) + ')'
+    : 'No segment at ' + fmtTime(view.curTimeMs);
+  updateCanvasOverlays();
+  applyCanvasTransform();
+}
+
 let _lastActiveSegmentId = null;
 function tick() {
   if (!view.isPlaying) return;
@@ -7403,8 +7511,19 @@ function tick() {
       }
       // overlays still need refreshing for the new segment context
       updateCanvasOverlays();
+    } else if (active && isRecordingSegment(active)) {
+      // v3.28b.91: SEAMLESS CROSS-SOURCE CUT. The old code path here called
+      // rebuildCanvas() which did `innerHTML=''` then re-built — that produced
+      // the visible flash between video A and video B (or slide → video). The
+      // new approach builds the new video element ON TOP of the old one, waits
+      // for the new one to be ready to paint, then removes the old. The new
+      // first frame is rendered BEFORE the old element vanishes, so there is no
+      // empty interval. Falls back to rebuildCanvas() if anything looks wrong.
+      seamlessCrossSourceSwap(active);
     } else {
-      // Segment changed to a different source (or a slide): full rebuild.
+      // Segment changed to a slide or to nothing: full rebuild. No video element
+      // to keep alive, so rebuildCanvas's blank-then-build is fine here — the
+      // slide content renders synchronously.
       rebuildCanvas();
     }
   } else if (active) {
