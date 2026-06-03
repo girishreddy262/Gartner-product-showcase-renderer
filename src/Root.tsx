@@ -339,15 +339,12 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
       {payload.audioPlacements.map(ap => {
         const audioMeta = payload.audios.find(a => a.id === ap.audioId);
         if (!audioMeta) return null;
-        // v3.28b.95: trim the source via a negative-`from` Sequence instead of
-        // <Audio startFrom>. startFrom seeks into the middle of the source; the
-        // decoder aligns to the nearest audio frame, softening/clipping the
-        // first fraction of a second = the audible fade-in at a cut. With the
-        // negative-`from` trim, Audio decodes from source frame 0 forward
-        // (clean attack) and the inner Sequence shifts its clock so source
-        // frame 0 aligns to the placement's sourceStartMs. Mirrors the
-        // OffthreadVideo trim-Sequence pattern from Fix #1. The OUTER Sequence
-        // still gates when the audio is audible.
+        // v3.28b.95: keep the proven startFrom for audio. (The negative-`from`
+        // trim that works for OffthreadVideo is unverified for <Audio> and
+        // risked silent audio in the MP4, so audio stays on startFrom — the
+        // same approach that fixed the audio-repeat in v3.28b.88. The crisp-
+        // attack improvement is handled editor-side via the prewarm; the
+        // render's startFrom attack is acceptable.)
         const sourceStartFrames = msToFrames(ap.sourceStartMs || 0);
         return (
           <Sequence
@@ -356,12 +353,11 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
             durationInFrames={msToFrames(ap.durationMs)}
             name={`Audio: ${ap.audioId}`}
           >
-            <Sequence from={-sourceStartFrames} layout="none">
-              <Audio
-                src={audioMeta.url}
-                volume={ap.volume ?? 1}
-              />
-            </Sequence>
+            <Audio
+              src={audioMeta.url}
+              volume={ap.volume ?? 1}
+              startFrom={sourceStartFrames}
+            />
           </Sequence>
         );
       })}

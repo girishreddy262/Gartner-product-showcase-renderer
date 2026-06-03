@@ -7210,6 +7210,13 @@ function _prewarmUpcomingAudio(fromMs, lookaheadMs) {
     if (endMs < fromMs || startMs > horizon) continue;
     const el = _audioElements[ap.id];
     if (!el) continue;
+    // v3.28b.95 fix: NEVER re-seek an element that is already playing. The
+    // per-frame prewarm would otherwise set currentTime on the currently-active
+    // placement every single tick, constantly restarting its seek and breaking
+    // playback (audio stutters/goes silent). Only paused elements — i.e. ones
+    // that haven't started yet — are safe to pre-seek. The active element is
+    // managed by syncAudioPlayback, which is left untouched.
+    if (!el.paused) continue;
     const sourceOffsetMs = ap.sourceStartMs || 0;
     // Compute the source-time the audio should be at when its placement starts.
     // If fromMs is already inside the placement, seek to current position.
