@@ -191,6 +191,28 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           );
         })}
 
+        {/* === CALLOUTS === */}
+        {payload.callouts.map(c => {
+          const startFrame = msToFrames(c.startMs);
+          const durFrames = msToFrames(c.durationMs);
+          return (
+            <Sequence
+              key={c.id}
+              from={startFrame}
+              durationInFrames={durFrames}
+              name={`Callout: ${c.text?.substring(0, 20)}`}
+            >
+              <AbsoluteFill>
+                <CalloutComp
+                  callout={c}
+                  startFrame={startFrame}
+                  durationFrames={durFrames}
+                />
+              </AbsoluteFill>
+            </Sequence>
+          );
+        })}
+
         {/* === TEXT OVERLAYS === */}
         {(payload.textOverlays || []).map(t => {
           const startFrame = msToFrames(t.startMs);
@@ -205,6 +227,28 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               <AbsoluteFill>
                 <TextOverlayComp
                   overlay={t}
+                  startFrame={startFrame}
+                  durationFrames={durFrames}
+                />
+              </AbsoluteFill>
+            </Sequence>
+          );
+        })}
+
+        {/* === CUSTOMER CARD OVERLAYS === */}
+        {(payload.customerCards || []).map(c => {
+          const startFrame = msToFrames(c.startMs);
+          const durFrames = msToFrames(c.durationMs);
+          return (
+            <Sequence
+              key={c.id}
+              from={startFrame}
+              durationInFrames={durFrames}
+              name={`CustomerCard: ${c.employees || ''}`}
+            >
+              <AbsoluteFill>
+                <CustomerCardComp
+                  card={c}
                   startFrame={startFrame}
                   durationFrames={durFrames}
                 />
@@ -257,59 +301,15 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         );
       })}
 
-      {/* === CALLOUTS — v3.28b.88: MOVED here, after the frame overlays, so
-          callouts render ON TOP of the recording frame chrome. Mirrors
-          editor.html stageOverlayLayer (sibling AFTER stageFrameLayer). === */}
-      {payload.callouts.map(c => {
-        const startFrame = msToFrames(c.startMs);
-        const durFrames = msToFrames(c.durationMs);
-        return (
-          <Sequence
-            key={c.id}
-            from={startFrame}
-            durationInFrames={durFrames}
-            name={`Callout: ${c.text?.substring(0, 20)}`}
-          >
-            <AbsoluteFill>
-              <CalloutComp
-                callout={c}
-                startFrame={startFrame}
-                durationFrames={durFrames}
-              />
-            </AbsoluteFill>
-          </Sequence>
-        );
-      })}
-
-      {/* === CUSTOMER CARD OVERLAYS — v3.28b.88: MOVED here, after the frame
-          overlays, so customer cards render ON TOP of the recording frame
-          chrome. Auto slide-in/out direction comes from the card's stored
-          animIn/animOut, which the editor sets based on placement. === */}
-      {(payload.customerCards || []).map(c => {
-        const startFrame = msToFrames(c.startMs);
-        const durFrames = msToFrames(c.durationMs);
-        return (
-          <Sequence
-            key={c.id}
-            from={startFrame}
-            durationInFrames={durFrames}
-            name={`CustomerCard: ${c.employees || ''}`}
-          >
-            <AbsoluteFill>
-              <CustomerCardComp
-                card={c}
-                startFrame={startFrame}
-                durationFrames={durFrames}
-              />
-            </AbsoluteFill>
-          </Sequence>
-        );
-      })}
-
       {/* === AUDIO PLACEMENTS === */}
       {payload.audioPlacements.map(ap => {
         const audioMeta = payload.audios.find(a => a.id === ap.audioId);
         if (!audioMeta) return null;
+        // v3.28b.88: respect sourceStartMs so cut/sliced audio clips play from the
+        // correct offset inside the source file instead of restarting at 0:00 each
+        // time. Without `startFrom`, every cut piece replays the head of the audio,
+        // causing the audible repeat the user reported.
+        const sourceStartFrames = msToFrames(ap.sourceStartMs || 0);
         return (
           <Sequence
             key={ap.id}
@@ -320,6 +320,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
             <Audio
               src={audioMeta.url}
               volume={ap.volume ?? 1}
+              startFrom={sourceStartFrames}
             />
           </Sequence>
         );
