@@ -2990,9 +2990,11 @@ function renderKeyGoalsSVG_V2(seg) {
 
   let svg = '<svg viewBox="0 0 1920 1080" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block">';
   svg += '<rect width="1920" height="1080" fill="#002B54"/>';
-  svg += '<rect x="10" y="113.5" width="1900" height="853" rx="20" fill="black" fill-opacity="0.2"/>';
+  // v3.28b.88 final: inner-card overlay is solid #021D36 (darker than slim card),
+  // so the slim card #032444 reads clearly as the visible block on top.
+  svg += '<rect x="10" y="113.5" width="1900" height="853" rx="20" fill="#021D36"/>';
 
-  // Slim left card (top aligned with overlay top — no bump)
+  // Slim left card (top aligned with overlay top — no bump).
   svg += '<rect x="' + cardX + '" y="' + cardY + '" width="' + cardW + '" height="747" rx="15" fill="#032444"/>';
 
   // Customer logo — LOCKED to bundled ACME, centered top of card

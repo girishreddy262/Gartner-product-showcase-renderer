@@ -243,10 +243,11 @@ const KeyGoalsSlideV2: React.FC<{ seg: KeyGoalsSegment }> = ({ seg }) => {
       style={{ display: 'block' }}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Outer bg + inner card chrome — same as V1.
-          Slim card top at y=113.5 aligns with overlay top (no bump). */}
+      {/* Outer bg + inner card chrome.
+          v3.28b.88 final: overlay = solid #021D36 (darker than slim card),
+          slim card = #032444. Both rectangles align tops at y=113.5 (no bump). */}
       <rect width={1920} height={1080} fill={tokens.bgOuter} />
-      <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="black" fillOpacity={0.2} />
+      <rect x={10} y={113.5} width={1900} height={853} rx={20} fill="#021D36" />
 
       {/* Slim left card */}
       <g opacity={cardOpacity} transform={`translate(${cardTx}, 0)`}>
