@@ -7690,16 +7690,29 @@ function renderCustomerCardPanel(panel) {
       '<div><label>Y</label><div class="field-with-unit"><input type="number" id="cc-y" value="' + Math.round(c.y||0) + '"><span class="unit">px</span></div></div>' +
     '</div></div>';
 
-  // v3.28b.18: Customer cards use FADE in/out only. Slide-direction options removed.
-  // Existing cards with slide-left/slide-right values are normalized to 'fade'.
-  if (c.animIn !== 'fade') c.animIn = 'fade';
-  if (c.animOut !== 'fade') c.animOut = 'fade';
+  // v3.28b.88: customer cards use slideLeft / slideRight (auto-set from placement)
+  // or fade. Direction is derived from the card's current x; legacy 'slideUp' /
+  // 'slideDown' / 'scale' values normalize to a side-based slide.
+  const _cardCx = (c.x || 0) + 388 / 2;
+  const _expectedDir = _cardCx < (CANVAS_W / 2) ? 'slideLeft' : 'slideRight';
+  if (!c.animIn || (c.animIn !== 'fade' && c.animIn !== 'slideLeft' && c.animIn !== 'slideRight')) {
+    c.animIn = _expectedDir;
+  }
+  if (!c.animOut || (c.animOut !== 'fade' && c.animOut !== 'slideLeft' && c.animOut !== 'slideRight')) {
+    c.animOut = _expectedDir;
+  }
+  const _animLabel = (c.animIn === 'fade') ? 'Fade'
+    : (c.animIn === 'slideLeft' ? 'Slide from left' : 'Slide from right');
+  const _animHint = (c.animIn === 'fade')
+    ? 'Fade in and fade out.'
+    : 'Card slides in/out from the ' + (c.animIn === 'slideLeft' ? 'LEFT' : 'RIGHT') +
+      ' (auto-set from placement \u2014 drag the card across the canvas midline to flip).';
 
-  html += '<div class="align-section"><div class="align-label">Animation</div>';
-  html += '<div class="hint" style="font-size:11px;color:var(--text-3);margin-bottom:8px;line-height:1.4;">Fade in and fade out (standardized).</div>';
+  html += '<div class="align-section"><div class="align-label">Animation \u2014 ' + _animLabel + '</div>';
+  html += '<div class="hint" style="font-size:11px;color:var(--text-3);margin-bottom:8px;line-height:1.4;">' + _animHint + '</div>';
   html += '<div class="form-row dual">';
-  html += '<div><label>Fade in</label><div class="field-with-unit"><input type="number" id="cc-anim-in-at" step="0.1" min="0" value="' + (c.animInAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
-  html += '<div><label>Fade out</label><div class="field-with-unit"><input type="number" id="cc-anim-out-at" step="0.1" min="0" value="' + (c.animOutAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
+  html += '<div><label>In at</label><div class="field-with-unit"><input type="number" id="cc-anim-in-at" step="0.1" min="0" value="' + (c.animInAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
+  html += '<div><label>Out at</label><div class="field-with-unit"><input type="number" id="cc-anim-out-at" step="0.1" min="0" value="' + (c.animOutAt||0.3).toFixed(1) + '"><span class="unit">s</span></div></div>';
   html += '</div></div>';
 
   html += '<div class="form-actions"><button class="btn danger" id="cc-delete">Delete</button></div></div>';
@@ -8896,6 +8909,19 @@ async function approve() {
   // The CF Worker wraps this whole object under client_payload.data,
   // and render.yml unwraps client_payload.data to top level for render.ts.
   // render.ts expects: payload.segments — so segments MUST be at top level here.
+  //
+  // v3.28b.88: resolve customerLogoId -> logoUrl right here in the payload so
+  // the renderer doesn't need its own copy of CUSTOMER_LOGOS_LIB. Editor is
+  // the single source of truth for the 78-logo library; renderer just reads
+  // the resolved data URL from each card. Fixes "logo missing in MP4" when a
+  // newly-added logo (Delhivery, Max Bupa, etc) isn't in the renderer's lib.
+  const _resolveLogoForPayload = (c) => {
+    if (c && c.customerLogoId) {
+      const hit = (typeof CUSTOMER_LOGOS_LIB !== 'undefined') ? CUSTOMER_LOGOS_LIB.find(l => l.id === c.customerLogoId) : null;
+      if (hit) return Object.assign({}, c, { logoUrl: hit.url });
+    }
+    return c;
+  };
   const body = {
     decision: 'approved',
     jobId: freshJobId,
@@ -8907,7 +8933,7 @@ async function approve() {
     callouts: state.callouts,
     effects: state.effects,
     textOverlays: state.textOverlays,
-    customerCards: state.customerCards,
+    customerCards: (state.customerCards || []).map(_resolveLogoForPayload),
     shapes: state.shapes,
     frameUrl: PAYLOAD.frameUrl,
     rendererVersion: RENDERER_VERSION
