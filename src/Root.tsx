@@ -235,15 +235,20 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
               key={seg.id}
               from={startFrame}
               durationInFrames={durFrames}
-              // v3.28b.91: premount video segments so the <OffthreadVideo> is
-              // mounted and the source frame is decoded BEFORE this sequence
-              // becomes visible. Earlier value of 5 frames (~167ms at 30fps)
-              // was too short for a cold network fetch + decoder warmup → first
-              // frame(s) of each clip showed the navy/black wrapper background
-              // during the gap. 30 frames = 1 full second of lead time, which
-              // covers most edge frames + network jitter while costing only a
-              // bit of memory (each video mounted briefly before its slot).
-              premountFor={30}
+              // v3.28b.93: premountFor REVERTED to 5 after a regression test.
+              // The earlier bump to 30 was based on a wrong mental model:
+              // premountFor doesn't pre-decode OffthreadVideo frames (FFmpeg
+              // extracts on demand), it just mounts the component early. With
+              // OffthreadVideo, the original fix that killed the black flash
+              // was the switch from <Video> → <OffthreadVideo>; premountFor=5
+              // was the proven companion value. Bumping to 30 caused too many
+              // upcoming OffthreadVideos to mount simultaneously and compete
+              // for Lambda's FFmpeg/decode budget, which itself produces
+              // dropped/black frames at chunk boundaries — the exact symptom
+              // the user just reported. Pair this with v3.28b.92's source-
+              // contiguous merge so cuts of one source render as ONE
+              // OffthreadVideo (no seek between merged pieces at all).
+              premountFor={5}
               name={isRecording ? `Recording: ${(seg as RecordingSegment).videoId}` : `Slide: ${seg.kind}`}
             >
               {isRecording
