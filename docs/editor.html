@@ -3307,6 +3307,15 @@ function applyCanvasTransform() {
     frameLayer.style.transform = 'translate(' + baseTx + 'px, ' + baseTy + 'px) scale(' + baseScale + ')';
     frameLayer.style.transition = '';
   }
+  // v3.28b.88: overlay layer (cards + callouts) gets the SAME base transform as
+  // the frame layer so it scales to fit the viewport. Without this, elements
+  // positioned in canvas coords (e.g. left:670px) render at literal pixels and
+  // a 388px card fills the whole viewport.
+  const overlayLayer = $('stageOverlayLayer');
+  if (overlayLayer) {
+    overlayLayer.style.transform = 'translate(' + baseTx + 'px, ' + baseTy + 'px) scale(' + baseScale + ')';
+    overlayLayer.style.transition = '';
+  }
   viewport.classList.toggle('zoomed', view.canvasZoom > 1 || inZoomEffect);
   // v3.28b.20: zoomDisplay element removed; guard the assignment
   const zd = $('zoomDisplay');
