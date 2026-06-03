@@ -7396,6 +7396,13 @@ function tick() {
   const total = getTotalDurationMs();
   if (view.curTimeMs >= total) { view.curTimeMs = total; pause(); }
   updatePlayhead();
+  // v3.28b.95: pre-seek any placement that goes active within the next 500ms
+  // so its <audio> element finishes seeking BEFORE syncAudioPlayback calls
+  // play(). Without this, a placement activated at a cut seeks + plays in the
+  // same tick; the async seek isn't done when play() fires, so the first
+  // ~0.1-0.2s plays from a not-yet-decoded position = soft/clipped attack.
+  // _prewarmUpcomingAudio is window-gated and idempotent, so per-frame is cheap.
+  _prewarmUpcomingAudio(view.curTimeMs, 500);
   syncAudioPlayback();
   // Determine current active segment
   const active = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
@@ -9924,6 +9931,7 @@ function openProjectFromFile() {
         state.textOverlays = p.textOverlays || [];
         state.customerCards = p.customerCards || [];
         state.shapes = p.shapes || [];
+        normalizeSegmentTiling();  // v3.28b.94: retro-tile old cuts
         view.selectedId = null; view.selectedKind = null;
         rebuildAll();
         showToast('Project loaded (saved ' + (proj.savedAt || 'earlier') + ')', 'success');
@@ -10196,6 +10204,7 @@ async function loadCloudProjectIfRequested() {
       state.textOverlays = p.textOverlays || [];
       state.customerCards = p.customerCards || [];
       state.shapes = p.shapes || [];
+      normalizeSegmentTiling();  // v3.28b.94: retro-tile old cuts
       _history.past = [];
       _history.future = [];
     }
@@ -10360,6 +10369,7 @@ function restoreAutoSaveState(proj) {
     state.textOverlays = p.textOverlays || [];
     state.customerCards = p.customerCards || [];
     state.shapes = p.shapes || [];
+    normalizeSegmentTiling();  // v3.28b.94: retro-tile old cuts
     view.selectedId = null; view.selectedKind = null;
     rebuildAll();
     showToast('Restored session from ' + fmtSavedAgo(proj.savedAt), 'success');
@@ -10377,6 +10387,32 @@ function setTool(tool) {
 }
 
 // Cut a video segment at the given timeline ms (must fall within the segment)
+// v3.28b.94: One-time tiling normalizer for projects cut BEFORE the Fix #2
+// editor change. Old cuts rounded each half independently, so adjacent pieces
+// could sit 1ms apart (gap) or 1ms over (overlap). After ms→frame conversion
+// that became a 1-frame black seam. This pass snaps any adjacent pair that is
+// within TOL ms of touching so the earlier piece ends EXACTLY at the later
+// piece's start. It only adjusts durationMs (never startMs, so nothing shifts
+// in time) and only for pairs already meant to be adjacent — real gaps larger
+// than TOL are left untouched. Runs silently on load; returns count fixed.
+function normalizeSegmentTiling() {
+  if (!state.segments || state.segments.length < 2) return 0;
+  const sorted = [...state.segments].sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
+  const TOL = 2; // ms — closes only the sub-frame rounding artifacts, never real gaps
+  let fixed = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i], b = sorted[i + 1];
+    const aEnd = (a.startMs || 0) + (a.durationMs || 0);
+    const gap = (b.startMs || 0) - aEnd;
+    if (gap !== 0 && Math.abs(gap) <= TOL) {
+      // Snap A's end exactly to B's start (handles both 1ms gap and 1ms overlap)
+      a.durationMs = (b.startMs || 0) - (a.startMs || 0);
+      fixed++;
+    }
+  }
+  return fixed;
+}
+
 function cutVideoSegment(seg, atTimelineMs) {
   if (seg.kind !== 'recording') return;
   if (atTimelineMs <= seg.startMs + 100 || atTimelineMs >= seg.startMs + seg.durationMs - 100) {
