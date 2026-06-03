@@ -93,6 +93,62 @@ const SlideComp: React.FC<{ seg: SlideSegment; headerOpacity?: number }> = ({ se
   );
 };
 
+// v3.28b.92: Merge source-contiguous same-source recording segments into a
+// single render block. When the user cuts one clip into pieces, the pieces
+// are contiguous in both timeline and source-time — but emitting them as
+// separate <OffthreadVideo>s forces FFmpeg to re-seek at every cut, which is
+// the real cause of the black flash in the rendered MP4 (premountFor doesn't
+// help OffthreadVideo since it extracts frame-by-frame, with no continuous
+// decoder to "warm up"). Merging them into one OffthreadVideo eliminates the
+// per-cut seek entirely.
+//
+// Two segments are safe to merge when ALL of these hold:
+//   - both are 'recording'
+//   - same videoId
+//   - timeline-contiguous (B.startMs ≈ A.startMs + A.durationMs)
+//   - source-contiguous (B.sourceStartMs ≈ A.sourceStartMs + A.timelineDur * A.speed)
+//   - same speed, same mute/showFrame, same x/y/width/height/videoScale
+// If any of those differ, we keep them separate (legitimate cuts that need a
+// real seek). Slides are never merged.
+function mergeContiguousRecordingSegments(segments: Segment[]): Segment[] {
+  if (!segments || segments.length === 0) return [];
+  const sorted = [...segments].sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
+  const out: Segment[] = [];
+  const eqNum = (a: number | undefined, b: number | undefined, tol = 2) =>
+    Math.abs((a || 0) - (b || 0)) < tol;
+  for (const cur of sorted) {
+    const prev = out[out.length - 1];
+    let canMerge = false;
+    if (prev && prev.kind === 'recording' && cur.kind === 'recording') {
+      const p = prev as RecordingSegment;
+      const c = cur as RecordingSegment;
+      const pEnd = p.startMs + p.durationMs;
+      const pSrcEnd = (p.sourceStartMs || 0) + p.durationMs * (p.speed || 1);
+      canMerge =
+        p.videoId === c.videoId &&
+        eqNum(pEnd, c.startMs) &&
+        eqNum(pSrcEnd, c.sourceStartMs || 0) &&
+        (p.speed || 1) === (c.speed || 1) &&
+        (p.muteSourceAudio !== false) === (c.muteSourceAudio !== false) &&
+        (p.showFrame !== false) === (c.showFrame !== false) &&
+        (p.x || 0) === (c.x || 0) &&
+        (p.y || 0) === (c.y || 0) &&
+        (p.width || tokens.canvasW) === (c.width || tokens.canvasW) &&
+        (p.height || tokens.canvasH) === (c.height || tokens.canvasH) &&
+        (p.videoScale || 1) === (c.videoScale || 1);
+    }
+    if (canMerge) {
+      const p = out[out.length - 1] as RecordingSegment;
+      p.durationMs = (cur.startMs + cur.durationMs) - p.startMs;
+    } else {
+      // Shallow-copy so we can mutate durationMs on subsequent merges without
+      // mutating the caller's payload object.
+      out.push({ ...cur } as Segment);
+    }
+  }
+  return out;
+}
+
 // ─── Main composition ───
 export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payload }) => {
   const frame = useCurrentFrame();
@@ -113,6 +169,11 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
       currentMs < e.startMs + e.durationMs
   );
 
+  // v3.28b.92: merge contiguous same-source cuts into single render blocks so
+  // there is no FFmpeg seek between adjacent pieces of one source clip. This
+  // is what kills the black flash between cuts in the rendered MP4.
+  const renderSegments = mergeContiguousRecordingSegments(payload.segments);
+
   return (
     <AbsoluteFill style={{ backgroundColor: tokens.navy900 }}>
       {/* Font loading */}
@@ -132,7 +193,7 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         transformOrigin: '0 0',
       }}>
         {/* === SEGMENTS === */}
-        {payload.segments.map(seg => {
+        {renderSegments.map(seg => {
           const startFrame = msToFrames(seg.startMs);
           const durFrames = msToFrames(seg.durationMs);
           const isRecording = seg.kind === 'recording';
@@ -236,6 +297,11 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           Full canvas dims (1920×1080) regardless of segment box size, matching
           editor.html lines 5970-5973. === */}
       {payload.segments.map(seg => {
+        // v3.28b.92: frame overlays still iterate the ORIGINAL segments list,
+        // not the merged one. Each user-visible cut still gets its own frame
+        // overlay Sequence (same as before). Frame overlays are an Img — they
+        // don't seek and don't flash, so merging them buys nothing and would
+        // lose the per-cut showFrame flag granularity.
         if (seg.kind !== 'recording') return null;
         const r = seg as RecordingSegment;
         if (r.showFrame === false) return null;
