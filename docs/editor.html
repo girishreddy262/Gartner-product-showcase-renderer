@@ -3629,6 +3629,47 @@ function setupTrackDropTargets() {
   });
 }
 
+// v3.28b.89: ripple-insert helpers. When dropping a new clip at the playhead,
+// instead of pushing the new clip past existing content (the old non-overlap
+// behavior, which caused drops at 1:20 to land at the end of the timeline),
+// we push existing content forward so the new clip lands where the user
+// actually dropped it.
+
+// If insertMs lands inside an existing segment, snap to the nearer boundary
+// so we don't produce a sub-clip overlap on the video track.
+function snapInsertToSegmentBoundary(insertMs) {
+  insertMs = Math.max(0, Math.round(insertMs || 0));
+  for (const s of (state.segments || [])) {
+    const a = s.startMs || 0;
+    const b = a + (s.durationMs || 0);
+    if (insertMs > a && insertMs < b) {
+      // inside this segment — snap to whichever edge is closer
+      return ((insertMs - a) < (b - insertMs)) ? a : b;
+    }
+  }
+  return insertMs;
+}
+
+// Shift every time-based item whose startMs >= insertMs forward by shiftMs.
+// Covers all five tracks: segments, callouts, customer cards, text overlays,
+// and audio placements — so callouts/cards/text/audio anchored to a clip
+// after the insert point ride along with it.
+function rippleShiftAtOrAfter(insertMs, shiftMs) {
+  if (!shiftMs) return;
+  const apply = (arr) => {
+    for (const it of (arr || [])) {
+      if ((it.startMs || 0) >= insertMs) {
+        it.startMs = (it.startMs || 0) + shiftMs;
+      }
+    }
+  };
+  apply(state.segments);
+  apply(state.callouts);
+  apply(state.customerCards);
+  apply(state.textOverlays);
+  apply(state.audioPlacements);
+}
+
 // v3.28b.88: find first time position >= desiredStart where [start, start+duration]
 // doesn't overlap any item in arr. Used at drop time to prevent stacking video on
 // video or audio on audio. Iterates until clean (safety capped at 50 hops).
@@ -3656,17 +3697,24 @@ function findNonOverlappingStart(arr, desiredStart, duration) {
 function handleTrackDrop(drag, trackKind, dropMs) {
   if (trackKind === 'video' || trackKind === 'slide-template') {
     if (drag.kind === 'video') {
-      // v3.28b.88: no-overlap on segment track
+      // v3.28b.89: ripple-insert at drop position. Snap to a clean boundary
+      // if dropping inside an existing segment, then push every time-based
+      // item at/after that boundary forward by `dur` so the new clip lands
+      // where the user dropped it instead of being shoved to the end.
       const dur = videoDurations[drag.videoId] || DEFAULT_VIDEO_DURATION_MS;
-      const safe = findNonOverlappingStart(state.segments, dropMs, dur);
-      addVideoSegment(drag.videoId, safe);
+      const insertMs = snapInsertToSegmentBoundary(dropMs);
+      rippleShiftAtOrAfter(insertMs, dur);
+      addVideoSegment(drag.videoId, insertMs);
     }
     else if (drag.kind === 'slide-template') {
-      const safe = findNonOverlappingStart(state.segments, dropMs, DEFAULT_SLIDE_DURATION_MS);
-      addSlideSegment(drag.template, safe);
+      // v3.28b.89: ripple-insert for slide drops too — same track, same rule
+      const insertMs = snapInsertToSegmentBoundary(dropMs);
+      rippleShiftAtOrAfter(insertMs, DEFAULT_SLIDE_DURATION_MS);
+      addSlideSegment(drag.template, insertMs);
     }
   } else if (trackKind === 'audio') {
-    // v3.28b.88: no-overlap on audio track
+    // v3.28b.88: no-overlap on audio track (audio not rippled — too disruptive
+    // to a v/o bed; user can manually adjust if needed)
     const dur = audioDurations[drag.audioId] || DEFAULT_VIDEO_DURATION_MS;
     const safe = findNonOverlappingStart(state.audioPlacements, dropMs, dur);
     addAudioPlacement(drag.audioId, safe);
