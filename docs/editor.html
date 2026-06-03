@@ -3447,11 +3447,48 @@ function setupTrackDropTargets() {
   });
 }
 
+// v3.28b.88: find first time position >= desiredStart where [start, start+duration]
+// doesn't overlap any item in arr. Used at drop time to prevent stacking video on
+// video or audio on audio. Iterates until clean (safety capped at 50 hops).
+function findNonOverlappingStart(arr, desiredStart, duration) {
+  let start = Math.max(0, Math.round(desiredStart || 0));
+  let dur = Math.max(100, Math.round(duration || 100));
+  let safety = 0;
+  let moved = true;
+  while (moved && safety < 50) {
+    moved = false;
+    safety++;
+    for (const it of (arr || [])) {
+      const itStart = it.startMs || 0;
+      const itEnd = itStart + (it.durationMs || 0);
+      // overlap if our interval [start, start+dur) intersects [itStart, itEnd)
+      if (start < itEnd && (start + dur) > itStart) {
+        start = itEnd;
+        moved = true;
+      }
+    }
+  }
+  return start;
+}
+
 function handleTrackDrop(drag, trackKind, dropMs) {
   if (trackKind === 'video' || trackKind === 'slide-template') {
-    if (drag.kind === 'video') addVideoSegment(drag.videoId, dropMs);
-    else if (drag.kind === 'slide-template') addSlideSegment(drag.template, dropMs);
-  } else if (trackKind === 'audio') addAudioPlacement(drag.audioId, dropMs);
+    if (drag.kind === 'video') {
+      // v3.28b.88: no-overlap on segment track
+      const dur = videoDurations[drag.videoId] || DEFAULT_VIDEO_DURATION_MS;
+      const safe = findNonOverlappingStart(state.segments, dropMs, dur);
+      addVideoSegment(drag.videoId, safe);
+    }
+    else if (drag.kind === 'slide-template') {
+      const safe = findNonOverlappingStart(state.segments, dropMs, DEFAULT_SLIDE_DURATION_MS);
+      addSlideSegment(drag.template, safe);
+    }
+  } else if (trackKind === 'audio') {
+    // v3.28b.88: no-overlap on audio track
+    const dur = audioDurations[drag.audioId] || DEFAULT_VIDEO_DURATION_MS;
+    const safe = findNonOverlappingStart(state.audioPlacements, dropMs, dur);
+    addAudioPlacement(drag.audioId, safe);
+  }
   else if (trackKind === 'callout-template') addCallout({ startMs: dropMs });
   else if (trackKind === 'customer-card-template') addCustomerCard({ startMs: dropMs });
 }
@@ -6115,6 +6152,35 @@ function onBlockMouseDown(e, item, kind) {
   const groupStart0 = Math.min(...movers.map(m => m.startMs0));
   const groupEnd0 = Math.max(...movers.map(m => (m.startMs0 + (m.obj.durationMs || 0))));
 
+  // v3.28b.88: NO-OVERLAP clamps for tracks that don't allow stacking
+  // (video segments and audio placements only). Effects, callouts, text overlays,
+  // customer cards, and shapes remain free to overlap.
+  // Snapshot at drag-start so the constraint stays stable through the drag.
+  const NO_OVERLAP_KINDS = { segment: state.segments, audio: state.audioPlacements };
+  const noOverlapClamps = []; // [{ minDelta, maxDelta }]
+  for (const k of Object.keys(NO_OVERLAP_KINDS)) {
+    const arr = NO_OVERLAP_KINDS[k];
+    if (!arr || arr.length === 0) continue;
+    // Which mover entries belong to this collection?
+    const moversInKind = movers.filter(m => arr.indexOf(m.obj) >= 0);
+    if (moversInKind.length === 0) continue;
+    const movGroupStart = Math.min(...moversInKind.map(m => m.startMs0));
+    const movGroupEnd = Math.max(...moversInKind.map(m => m.startMs0 + (m.obj.durationMs || 0)));
+    let leftEnd = 0;            // floor for movGroupStart
+    let rightStart = Infinity;  // ceiling for movGroupEnd
+    for (const o of arr) {
+      if (moverIds.has(o.id)) continue;
+      const oStart = o.startMs || 0;
+      const oEnd = oStart + (o.durationMs || 0);
+      if (oEnd <= movGroupStart && oEnd > leftEnd) leftEnd = oEnd;
+      if (oStart >= movGroupEnd && oStart < rightStart) rightStart = oStart;
+    }
+    noOverlapClamps.push({
+      minDelta: leftEnd - movGroupStart,
+      maxDelta: rightStart - movGroupEnd
+    });
+  }
+
   // v3.28b.88: rAF throttle for the per-mousemove rebuild — coalesces high-rate
   // mousemove events (100+/s on high-refresh displays) into one rebuild per frame.
   // Eliminates the visible "flicker"/"blink" during drag caused by repeated DOM
@@ -6150,6 +6216,12 @@ function onBlockMouseDown(e, item, kind) {
     }
     if (bestAdjust !== null) deltaMs += Math.round(bestAdjust);
     if (minStart + deltaMs < 0) deltaMs = -minStart; // re-clamp after snap
+    // v3.28b.88: NO-OVERLAP clamp for segment + audio tracks.
+    // Applied AFTER snap so snap can't push us into a neighbor.
+    for (const c of noOverlapClamps) {
+      if (deltaMs < c.minDelta) deltaMs = c.minDelta;
+      if (deltaMs > c.maxDelta) deltaMs = c.maxDelta;
+    }
     for (const m of movers) {
       m.obj.startMs = Math.max(0, m.startMs0 + deltaMs);
     }
@@ -6175,6 +6247,21 @@ function onHandleMouseDown(e, item, kind, side) {
   const startMs0 = item.startMs;
   const dur0 = item.durationMs;
   const px = getEffectivePxPerMs();
+  // v3.28b.88: no-overlap snapshot for segment + audio (resize can't push into a neighbor)
+  const noOverlapArrays = { segment: state.segments, audio: state.audioPlacements };
+  const arr = noOverlapArrays[kind];
+  let neighborLeftEnd = 0;          // floor for left-edge resize
+  let neighborRightStart = Infinity; // ceiling for right-edge resize
+  if (arr) {
+    const itemEnd = startMs0 + dur0;
+    for (const o of arr) {
+      if (o.id === item.id) continue;
+      const oStart = o.startMs || 0;
+      const oEnd = oStart + (o.durationMs || 0);
+      if (oEnd <= startMs0 && oEnd > neighborLeftEnd) neighborLeftEnd = oEnd;
+      if (oStart >= itemEnd && oStart < neighborRightStart) neighborRightStart = oStart;
+    }
+  }
   // v3.28b.88: rAF throttle to prevent per-mousemove DOM flicker
   let _rafPending = false;
   const sched = () => {
@@ -6186,9 +6273,17 @@ function onHandleMouseDown(e, item, kind, side) {
   const onMove = (ev) => {
     const dx = ev.clientX - startX;
     const dms = Math.round(dx / px);
-    if (side === 'right') item.durationMs = Math.max(100, dur0 + dms);
-    else {
-      const newStart = Math.max(0, startMs0 + dms);
+    if (side === 'right') {
+      let newEnd = startMs0 + dur0 + dms;
+      // No-overlap ceiling on right-edge resize
+      if (newEnd > neighborRightStart) newEnd = neighborRightStart;
+      const newDur = Math.max(100, newEnd - startMs0);
+      item.durationMs = newDur;
+    } else {
+      let newStart = Math.max(0, startMs0 + dms);
+      // No-overlap floor on left-edge resize
+      if (newStart < neighborLeftEnd) newStart = neighborLeftEnd;
+      // Keep the right edge fixed: durationMs shrinks/grows opposite to delta
       const delta = newStart - startMs0;
       item.startMs = newStart;
       item.durationMs = Math.max(100, dur0 - delta);
