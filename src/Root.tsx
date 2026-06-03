@@ -191,28 +191,6 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           );
         })}
 
-        {/* === CALLOUTS === */}
-        {payload.callouts.map(c => {
-          const startFrame = msToFrames(c.startMs);
-          const durFrames = msToFrames(c.durationMs);
-          return (
-            <Sequence
-              key={c.id}
-              from={startFrame}
-              durationInFrames={durFrames}
-              name={`Callout: ${c.text?.substring(0, 20)}`}
-            >
-              <AbsoluteFill>
-                <CalloutComp
-                  callout={c}
-                  startFrame={startFrame}
-                  durationFrames={durFrames}
-                />
-              </AbsoluteFill>
-            </Sequence>
-          );
-        })}
-
         {/* === TEXT OVERLAYS === */}
         {(payload.textOverlays || []).map(t => {
           const startFrame = msToFrames(t.startMs);
@@ -235,56 +213,24 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
           );
         })}
 
-        {/* === CUSTOMER CARD OVERLAYS === */}
-        {(payload.customerCards || []).map(c => {
-          const startFrame = msToFrames(c.startMs);
-          const durFrames = msToFrames(c.durationMs);
-          return (
-            <Sequence
-              key={c.id}
-              from={startFrame}
-              durationInFrames={durFrames}
-              name={`CustomerCard: ${c.employees || ''}`}
-            >
-              <AbsoluteFill>
-                <CustomerCardComp
-                  card={c}
-                  startFrame={startFrame}
-                  durationFrames={durFrames}
-                />
-              </AbsoluteFill>
-            </Sequence>
-          );
-        })}
-
         {/* === SPOTLIGHTS === */}
         {activeSpotlights.map(sp => (
           <SpotlightComp key={sp.id} spotlight={sp} />
         ))}
       </div>
 
-      {/* === FRAME OVERLAYS — siblings of the zoom wrap, NEVER transformed.
-          Mirrors editor.html stageFrameLayer (v3.28b.13): "Frame overlay goes
-          to the FRAME LAYER (sibling of stage-inner) so the playback zoom
-          effect that transforms stage-inner doesn't scale the frame — frame
-          stays at canvas dimensions." Each frame is gated by its own Sequence
-          so it appears only during that segment. Full canvas dims (1920×1080)
-          regardless of segment box size, matching editor.html lines 5970-5973.
-
-          v3.28b.XX: applies to recordings (opt-out: showFrame !== false) AND
-          to image slides (opt-in: showFrame === true). Matches the editor's
-          wantsFrame logic at editor.html line 5965-5966 exactly. === */}
+      {/* === RECORDING FRAME OVERLAYS — siblings of the zoom wrap, NEVER
+          transformed. Mirrors editor.html stageFrameLayer (v3.28b.13): "Frame
+          overlay goes to the FRAME LAYER (sibling of stage-inner) so the
+          playback zoom effect that transforms stage-inner doesn't scale the
+          frame — frame stays at canvas dimensions." Each frame is gated by
+          its own Sequence so it appears only during that recording segment.
+          Full canvas dims (1920×1080) regardless of segment box size, matching
+          editor.html lines 5970-5973. === */}
       {payload.segments.map(seg => {
-        const isRec = seg.kind === 'recording';
-        const isImg = seg.kind === 'slide-image';
-        if (!isRec && !isImg) return null;
-        // Recording: showFrame defaults to TRUE (skip only on explicit false).
-        // Image:     showFrame defaults to FALSE (draw only on explicit true).
-        const segAny = seg as RecordingSegment & { showFrame?: boolean };
-        const wantsFrame = isRec
-          ? (segAny.showFrame !== false)
-          : (segAny.showFrame === true);
-        if (!wantsFrame) return null;
+        if (seg.kind !== 'recording') return null;
+        const r = seg as RecordingSegment;
+        if (r.showFrame === false) return null;
         const startFrame = msToFrames(seg.startMs);
         const durFrames = msToFrames(seg.durationMs);
         return (
@@ -311,18 +257,59 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
         );
       })}
 
+      {/* === CALLOUTS — v3.28b.88: MOVED here, after the frame overlays, so
+          callouts render ON TOP of the recording frame chrome. Mirrors
+          editor.html stageOverlayLayer (sibling AFTER stageFrameLayer). === */}
+      {payload.callouts.map(c => {
+        const startFrame = msToFrames(c.startMs);
+        const durFrames = msToFrames(c.durationMs);
+        return (
+          <Sequence
+            key={c.id}
+            from={startFrame}
+            durationInFrames={durFrames}
+            name={`Callout: ${c.text?.substring(0, 20)}`}
+          >
+            <AbsoluteFill>
+              <CalloutComp
+                callout={c}
+                startFrame={startFrame}
+                durationFrames={durFrames}
+              />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+
+      {/* === CUSTOMER CARD OVERLAYS — v3.28b.88: MOVED here, after the frame
+          overlays, so customer cards render ON TOP of the recording frame
+          chrome. Auto slide-in/out direction comes from the card's stored
+          animIn/animOut, which the editor sets based on placement. === */}
+      {(payload.customerCards || []).map(c => {
+        const startFrame = msToFrames(c.startMs);
+        const durFrames = msToFrames(c.durationMs);
+        return (
+          <Sequence
+            key={c.id}
+            from={startFrame}
+            durationInFrames={durFrames}
+            name={`CustomerCard: ${c.employees || ''}`}
+          >
+            <AbsoluteFill>
+              <CustomerCardComp
+                card={c}
+                startFrame={startFrame}
+                durationFrames={durFrames}
+              />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+
       {/* === AUDIO PLACEMENTS === */}
       {payload.audioPlacements.map(ap => {
         const audioMeta = payload.audios.find(a => a.id === ap.audioId);
         if (!audioMeta) return null;
-        // v3.28b.XX: honor ap.sourceStartMs so cut audio halves play from
-        // the correct source offset (mirrors editor.html line 10008
-        // syncAudioPlayback: `const sourceOffsetMs = ap.sourceStartMs || 0`).
-        // Without this, the second half of any cut audio replays from second 0
-        // of the source — sounds like the first half repeating in the render
-        // even though the timeline shows two distinct clips.
-        const sourceStartSec = (ap.sourceStartMs || 0) / 1000;
-        const audioStartFromFrames = Math.round(sourceStartSec * FPS);
         return (
           <Sequence
             key={ap.id}
@@ -333,7 +320,6 @@ export const ProductShowcase: React.FC<{ payload: ShowcasePayload }> = ({ payloa
             <Audio
               src={audioMeta.url}
               volume={ap.volume ?? 1}
-              startFrom={audioStartFromFrames}
             />
           </Sequence>
         );
