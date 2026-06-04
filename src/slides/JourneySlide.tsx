@@ -416,17 +416,46 @@ const JourneyRowComp: React.FC<{
         );
       })()}
 
-      {/* Description text */}
-      {row.description && (
-        <text
-          x={1320} y={y + 11}
-          fill="white"
-          fontFamily="Satoshi, system-ui, sans-serif"
-          fontSize={30} fontWeight={700}
-        >
-          {row.description}
-        </text>
-      )}
+      {/* Description text — multi-line, matches editor renderJourneySVG: split on
+          \n, fallback word-wrap at 30 chars, LINE_HEIGHT 36, vertically centered
+          on (y + 11). Previously a single <text> ignored newlines so multi-line
+          descriptions collapsed to one line in the MP4. */}
+      {row.description && (() => {
+        const MAX_CHARS_PER_LINE = 30;
+        const LINE_HEIGHT = 36;
+        const desc = String(row.description);
+        let lines: string[];
+        if (desc.includes('\n')) {
+          lines = desc.split('\n');
+        } else {
+          const words = desc.split(/\s+/);
+          lines = [];
+          let current = '';
+          for (const w of words) {
+            const candidate = current ? (current + ' ' + w) : w;
+            if (candidate.length > MAX_CHARS_PER_LINE && current) {
+              lines.push(current);
+              current = w;
+            } else {
+              current = candidate;
+            }
+          }
+          if (current) lines.push(current);
+        }
+        const totalH = (lines.length - 1) * LINE_HEIGHT;
+        const startY = (y + 11) - totalH / 2;
+        return lines.map((line, li) => (
+          <text
+            key={li}
+            x={1320} y={startY + li * LINE_HEIGHT}
+            fill="white"
+            fontFamily="Satoshi, system-ui, sans-serif"
+            fontSize={30} fontWeight={700}
+          >
+            {line}
+          </text>
+        ));
+      })()}
     </g>
   );
 };
