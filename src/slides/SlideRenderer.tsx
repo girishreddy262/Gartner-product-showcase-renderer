@@ -140,7 +140,8 @@ export const EmptySlide: React.FC<{ seg: EmptySegment }> = ({ seg }) => {
 // Full-bleed user-uploaded image. Mirrors editor.html line 6374-6386 exactly:
 //   - Background #002B54 (navy) shows behind the image while it loads or if
 //     aspect mismatches.
-//   - <img width:100% height:100% objectFit:cover> fills the slide.
+//   - <img width:100% height:100% objectFit:contain> fits the whole image
+//     inside the slide (letterboxed on the navy bg) — no cropping.
 //   - Optional imageScale (50-150%) applies as `transform: scale(N)` with
 //     transform-origin center center.
 // Frame overlay (if showFrame) is handled at the composition level in Root.tsx,
@@ -168,7 +169,7 @@ export const ImageSlide: React.FC<{ seg: ImageSegment }> = ({ seg }) => {
         src={seg.imageUrl}
         style={{
           width: '100%', height: '100%',
-          objectFit: 'cover', display: 'block',
+          objectFit: 'contain', display: 'block',
           transform: scale !== 1.0 ? `scale(${scale})` : undefined,
           transformOrigin: 'center center',
         }}
