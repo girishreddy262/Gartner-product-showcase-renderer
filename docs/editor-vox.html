@@ -12506,7 +12506,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       if(c.audioUrl)URL.revokeObjectURL(c.audioUrl);
       c.audioUrl=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));
       c.aMs=Math.round((await durationOf(c.audioUrl))*1000);
-      c.gen=true;c.dirty=false;
+      c.gen=true;c.dirty=false;c.voUrl=null;
     }catch(err){c.err=String(err.message||err);}
     c.busy=false;renderStates();
   }
@@ -12530,33 +12530,52 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     var c=clips.find(function(x){return x.id===cid;});
     if(!c||!c.words||!c.words[wi])return;
     c.words[wi].del=!c.words[wi].del; c.dirty=true; render();
-    if(c.srcVideoId&&window._voxRebuildVideo)window._voxRebuildVideo(c.srcVideoId);
+    if(c.srcVideoId&&window._voxResync)window._voxResync(c.srcVideoId);
   };
-  // Rebuild a recording's timeline from its surviving WORDS (cut deleted words, merge contiguous, ripple)
-  window._voxRebuildVideo=function(videoId){
+  // Resync: rebuild a recording's timeline so each sentence's footage fills its voiceover length
+  // (speed-fit per clip; engine maps sourceT = sourceStart + localTimelineT*speed) and place the
+  // per-clip VO over it. Editor-side; renders via the existing audio path. No Lambda.
+  window._voxResync=function(videoId){
     if(!videoId||typeof state==='undefined'||!state.segments)return;
     var existing=state.segments.filter(function(s){return s.kind==='recording'&&s.videoId===videoId;});
-    if(!existing.length)return; // recording not placed on the timeline → nothing to cut
-    var ws=[];
-    clips.forEach(function(c){ if(c.srcVideoId===videoId&&c.words){ c.words.forEach(function(w){ if(!w.del&&w.tileStart!=null) ws.push(w); }); } });
-    ws.sort(function(a,b){return a.tileStart-b.tileStart;});
-    var runs=[];
-    ws.forEach(function(w){ var last=runs[runs.length-1]; if(last&&Math.abs(w.tileStart-last.end)<2){last.end=w.tileEnd;} else {runs.push({start:w.tileStart,end:w.tileEnd});} });
+    if(!existing.length)return; // recording not placed → nothing to do
     var anchor=Math.min.apply(null,existing.map(function(s){return s.startMs||0;}));
     var tmpl=existing[0];
     state.segments=state.segments.filter(function(s){return !(s.kind==='recording'&&s.videoId===videoId);});
+    var voAids=(state.audios||[]).filter(function(a){return /^audio_vo_/.test(a.id);}).map(function(a){return a.id;});
+    state.audioPlacements=(state.audioPlacements||[]).filter(function(p){return voAids.indexOf(p.audioId)<0;});
+    var clipsV=clips.filter(function(c){return c.srcVideoId===videoId;});
     var running=anchor;
-    runs.forEach(function(r){
-      var dur=Math.max(1,Math.round(r.end-r.start));
-      var seg=JSON.parse(JSON.stringify(tmpl));
-      seg.id=(typeof uid==='function'?uid('seg'):'seg'+Math.random().toString(36).slice(2,8));
-      seg.kind='recording'; seg.videoId=videoId;
-      seg.sourceStartMs=Math.round(r.start); seg.durationMs=dur; seg.startMs=Math.round(running);
-      running+=dur;
-      state.segments.push(seg);
+    clipsV.forEach(function(c){
+      if(!c.words)return;
+      var sw=c.words.filter(function(w){return !w.del&&w.tileStart!=null;}).sort(function(a,b){return a.tileStart-b.tileStart;});
+      if(!sw.length)return;
+      var natural=sw.reduce(function(a,w){return a+(w.tileEnd-w.tileStart);},0);
+      var hasVO=!!(c.gen&&c.voUrl&&c.aMs);
+      var voDur=hasVO?c.aMs:natural; if(voDur<=0)voDur=natural||1;
+      var speed=natural/voDur; if(!isFinite(speed)||speed<=0)speed=1;
+      var clipStart=running;
+      var runs=[]; sw.forEach(function(w){var last=runs[runs.length-1]; if(last&&Math.abs(w.tileStart-last.end)<2){last.end=w.tileEnd;}else{runs.push({start:w.tileStart,end:w.tileEnd});}});
+      runs.forEach(function(r){
+        var tlDur=Math.max(1,Math.round((r.end-r.start)/speed));
+        var seg=JSON.parse(JSON.stringify(tmpl));
+        seg.id=(typeof uid==='function'?uid('seg'):'seg'+Math.random().toString(36).slice(2,8));
+        seg.kind='recording'; seg.videoId=videoId;
+        seg.sourceStartMs=Math.round(r.start); seg.durationMs=tlDur; seg.startMs=Math.round(running);
+        seg.speed=speed; seg.muteSourceAudio=true;
+        state.segments.push(seg); running+=tlDur;
+      });
+      if(hasVO){
+        if(!(state.audios||[]).some(function(a){return a.id===c.voAid;})){ state.audios.push({id:c.voAid,filename:'VO',url:c.voUrl}); }
+        audioDurations[c.voAid]=Math.round(c.aMs);
+        state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:c.voAid,startMs:Math.round(clipStart),durationMs:Math.round(voDur),volume:1.0});
+      }
     });
-    try{rebuildAll();}catch(e){}
+    try{setupAudioElements&&setupAudioElements();}catch(e){}
+    try{renderLeftRail&&renderLeftRail();}catch(e){}
+    try{rebuildAll&&rebuildAll();}catch(e){}
   };
+  window._voxRebuildVideo=function(videoId){ return window._voxResync(videoId); }; // back-compat alias
   // Phase 2 (item 12): clear a video's transcript clips when the video itself is deleted
   window._voxClearVideo=function(videoId){
     if(!videoId)return;
@@ -12569,30 +12588,21 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     if(typeof state==='undefined'){return;}
     var gen=clips.filter(function(c){return c.gen&&c.audioUrl;});
     if(!gen.length){ $('voxStatus').textContent='Generate speech first, then Use as voiceover'; return; }
-    $('voxStatus').textContent='Uploading voiceover to timeline…';
-    var oldIds=(state.audios||[]).filter(function(a){return /^audio_vo_/.test(a.id);}).map(function(a){return a.id;});
-    state.audios=(state.audios||[]).filter(function(a){return oldIds.indexOf(a.id)<0;});
-    state.audioPlacements=(state.audioPlacements||[]).filter(function(p){return oldIds.indexOf(p.audioId)<0;});
-    var recSegs=state.segments.filter(function(s){return s.kind==='recording';});
-    var running=recSegs.length?Math.min.apply(null,recSegs.map(function(s){return s.startMs||0;})):0;
+    $('voxStatus').textContent='Uploading voiceover…';
     try{
       for(var i=0;i<gen.length;i++){
         var c=gen[i];
-        var blob=await(await fetch(c.audioUrl)).blob();
-        var file=new File([blob],'vo_'+c.id+'.mp3',{type:'audio/mpeg'});
-        var url=await uploadToS3(file,'audio',function(){});
-        var aid='audio_vo_'+c.id;
-        state.audios.push({id:aid,filename:'VO '+(i+1),url:url});
-        audioDurations[aid]=Math.round(c.aMs||0);
-        state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:aid,startMs:Math.round(running),durationMs:Math.round(c.aMs||0),volume:1.0});
-        running+=Math.round(c.aMs||0);
+        if(!c.voUrl){
+          var blob=await(await fetch(c.audioUrl)).blob();
+          var file=new File([blob],'vo_'+c.id+'.mp3',{type:'audio/mpeg'});
+          c.voUrl=await uploadToS3(file,'audio',function(){});
+          c.voAid='audio_vo_'+c.id;
+        }
       }
-      state.segments.forEach(function(s){ if(s.kind==='recording') s.muteSourceAudio=true; });
-      try{setupAudioElements&&setupAudioElements();}catch(e){}
-      try{renderLeftRail&&renderLeftRail();}catch(e){}
-      try{rebuildAll&&rebuildAll();}catch(e){}
+      var vids={}; clips.forEach(function(c){if(c.srcVideoId)vids[c.srcVideoId]=1;});
+      Object.keys(vids).forEach(function(vid){ if(window._voxResync)window._voxResync(vid); });
       try{pushHistory&&pushHistory();}catch(e){}
-      $('voxStatus').textContent=gen.length+' voiceover clip'+(gen.length>1?'s':'')+' on timeline · source muted · Approve & render to bake in';
+      $('voxStatus').textContent='Voiceover synced to the video · Approve & render to bake in';
     }catch(e){ $('voxStatus').textContent='Use as voiceover failed: '+((e&&e.message)?e.message:e); }
   };
   console.log('VoxScript build: PHASE3 — Use as voiceover places TTS on timeline + mutes source; renders via existing audio path. _voxDebug() to inspect');
