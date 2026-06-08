@@ -12505,8 +12505,24 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   var _curAudio=null;
   window._voxPlay=id=>{const c=clips.find(x=>x.id===id);if(!c||!c.audioUrl){return;}try{if(_curAudio)_curAudio.pause();}catch(e){} _curAudio=new Audio(c.audioUrl); _curAudio.play().catch(function(e){console.warn('voxscript play failed',e);});};
   window._voxDel=id=>{clips=clips.filter(x=>x.id!==id);render();};
-  // Auto-transcribe a recording (S3 URL) into the transcript
-  window._voxFromRecording=async function(url,label){
+  // Phase 1: split AssemblyAI words into timed sentence segments
+  function _voxSplit(words){
+    var segs=[],cur=[];
+    for(var i=0;i<words.length;i++){
+      var w=words[i]; cur.push(w);
+      var t=(w.text||'').trim();
+      var nextGap=(i+1<words.length)?(words[i+1].start-w.end):0;
+      var curText=cur.map(function(x){return x.text;}).join(' ').trim();
+      if(/[.!?]$/.test(t)||nextGap>800||curText.length>140||i===words.length-1){
+        segs.push({text:curText,startMs:cur[0].start,endMs:w.end});
+        cur=[];
+      }
+    }
+    return segs;
+  }
+  function _voxClock(ms){ms=Math.max(0,Math.round((ms||0)/1000));return Math.floor(ms/60)+':'+('0'+(ms%60)).slice(-2);}
+  // Auto-transcribe a recording (S3 URL) → timed transcript segments bound to videoId
+  window._voxFromRecording=async function(url,label,videoId){
     if(!url)return;
     open(); // show the Transcript tab
     $('voxStatus').textContent='Transcribing recording…';
@@ -12521,11 +12537,12 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         if(j&&(j.status==='completed'||j.status==='error'))break;
       }
       if(!j||j.status!=='completed')throw new Error((j&&j.error)||(j&&j.status)||'timeout');
-      const text=((j.text||'')+'').trim();
-      let c=clips.find(x=>!clipText(x.id)); if(!c){c=newClip('');clips.push(c);}
-      c.html=text; c.dirty=true; c.gen=false; c.srcVideo=label||'';
+      const words=(j.words||[]);
+      const segs=words.length?_voxSplit(words):((((j.text||'')+'').trim())?[{text:((j.text||'')+'').trim(),startMs:0,endMs:0}]:[]);
+      if(!segs.length){ $('voxStatus').textContent='No speech detected in recording'; return; }
+      clips=segs.map(function(s){var c=newClip(s.text);c.srcVideoId=videoId||'';c.srcStartMs=s.startMs;c.srcEndMs=s.endMs;c.dirty=true;c.gen=false;return c;});
       render();
-      $('voxStatus').textContent=text?'Transcript ready — edit, then Generate speech':'No speech detected in recording';
+      $('voxStatus').textContent=segs.length+' segment'+(segs.length>1?'s':'')+' · edit the words, then Generate speech';
     }catch(e){ $('voxStatus').textContent='Transcribe failed: '+((e&&e.message)?e.message:e); }
   };
   window._voxDirty=id=>{const c=clips.find(x=>x.id===id);if(c){c.dirty=true;c.gen=c.gen;}renderStates();};
@@ -12557,7 +12574,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       const d=document.createElement('div');d.className='vox-clip';
       const vo=VOICES.map(v=>`<option value="${v.id}" ${v.id===c.voice?'selected':''}>${v.n}</option>`).join('');
       d.innerHTML=`<div class="vox-clip-h">
-          <span class="vox-chip num">${i+1}</span>
+          <span class="vox-chip num">${i+1}</span>${(c.srcStartMs!=null)?`<span class="vox-chip" style="color:#8B92A3" title="source video range">${_voxClock(c.srcStartMs)}–${_voxClock(c.srcEndMs)}</span>`:''}
           <span class="vox-chip voice">🎙 <select onchange="_voxVoice('${c.id}',this.value)">${vo}</select></span>
           <span class="sp"></span>
           <button class="vox-ib" title="Insert sync point" onclick="_voxSync('${c.id}')">⌨</button>
@@ -12670,7 +12687,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       $id('vrecStatus').textContent='Added. Transcribing…';
       try{
         var v=(typeof state!=='undefined'&&state.videos)?state.videos.slice().reverse().find(function(x){return x.filename===file.name;}):null;
-        if(v&&v.url&&window._voxFromRecording){ window._voxFromRecording(v.url, file.name); }
+        if(v&&v.url&&window._voxFromRecording){ window._voxFromRecording(v.url, file.name, v.id); }
       }catch(e){ console.warn('auto-transcribe trigger failed',e); }
       setTimeout(closeModal,1000);
     }catch(e){ console.error('record convert/add error',e); $id('vrecStatus').textContent='Failed: '+((e&&e.message)?e.message:String(e)); }
