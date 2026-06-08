@@ -1859,7 +1859,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match.</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p2</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -12544,6 +12544,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     clips=clips.filter(function(c){return c.srcVideoId!==videoId;});
     try{render();}catch(e){}
   };
+  window._voxDebug=function(){var segs=(typeof state!=='undefined'&&state.segments)?state.segments.filter(function(s){return s.kind==='recording';}).map(function(s){return {videoId:s.videoId,startMs:s.startMs,dur:s.durationMs,src:s.sourceStartMs};}):[];return {recordingSegments:segs,clips:clips.map(function(c){return {t:(clipText(c.id)||'').slice(0,24),vid:c.srcVideoId,tile:[c.tileStartMs,c.tileEndMs]};})};};
+  console.log('VoxScript build: PHASE2-cut — delete a transcript line cuts the PLACED recording; type _voxDebug() to inspect');
   // Phase 1: split AssemblyAI words into timed sentence segments
   function _voxSplit(words){
     var segs=[],cur=[];
