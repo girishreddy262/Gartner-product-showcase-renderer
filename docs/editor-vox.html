@@ -1549,6 +1549,9 @@
   .vox-body:empty:before{content:attr(data-ph);color:#5b6373}
   .vox-body:focus{background:rgba(31,138,255,.05)}
   .vox-body.dirty{box-shadow:inset 2px 0 0 #FFD43B;padding-left:9px}
+  .vox-body.words .vw{cursor:pointer;border-radius:3px;padding:0 1px;transition:background .08s}
+  .vox-body.words .vw:hover{background:rgba(255,90,90,.28)}
+  .vox-body.words .vw.del{text-decoration:line-through;opacity:.38}
   .vox-sync{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:1px 7px;margin:0 3px;border-radius:6px;border:1px solid #1F8AFF;color:#4DA3FF;background:rgba(31,138,255,.1);vertical-align:1px;user-select:none;cursor:pointer}
   .vox-state{font-size:11px;margin-top:6px}
   .vox-badge{font-size:10.5px;padding:2px 8px;border-radius:20px;border:1px solid var(--line,#2A2D34);color:#8B92A3}
@@ -12481,7 +12484,12 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   }
 
   function bodyEl(id){return document.querySelector('.vox-body[data-id="'+id+'"]');}
-  function clipText(id){const el=bodyEl(id);if(!el)return '';const c=el.cloneNode(true);c.querySelectorAll('.vox-sync').forEach(n=>n.remove());return (c.textContent||'').replace(/\s+/g,' ').trim();}
+  function _esc(s){return (s==null?'':(''+s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function clipText(id){
+    var c=clips.find(function(x){return x.id===id;});
+    if(c&&c.words){return c.words.filter(function(w){return !w.del;}).map(function(w){return w.text;}).join(' ').replace(/\s+/g,' ').trim();}
+    const el=bodyEl(id);if(!el)return '';const cl=el.cloneNode(true);cl.querySelectorAll('.vox-sync').forEach(n=>n.remove());return (cl.textContent||'').replace(/\s+/g,' ').trim();
+  }
   function durationOf(url){return new Promise(r=>{const a=new Audio();a.preload='metadata';a.onloadedmetadata=()=>r(a.duration||0);a.onerror=()=>r(0);a.src=url;});}
 
   async function gen(c){
@@ -12507,32 +12515,41 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   window._voxPlay=id=>{const c=clips.find(x=>x.id===id);if(!c||!c.audioUrl){return;}try{if(_curAudio)_curAudio.pause();}catch(e){} _curAudio=new Audio(c.audioUrl); _curAudio.play().catch(function(e){console.warn('voxscript play failed',e);});};
   window._voxDel=id=>{
     var c=clips.find(function(x){return x.id===id;});
-    if(c&&c.srcVideoId&&c.tileStartMs!=null){
-      if(!confirm('Delete this line? It also removes '+_voxClock(c.tileStartMs)+'–'+_voxClock(c.tileEndMs)+' from the video on the timeline.'))return;
+    if(c&&c.srcVideoId){
+      if(!confirm('Delete this line? This also removes it from the video on the timeline.'))return;
     }
     var vid=c?c.srcVideoId:null;
     clips=clips.filter(function(x){return x.id!==id;});
     render();
     if(vid&&window._voxRebuildVideo)window._voxRebuildVideo(vid);
   };
-  // Phase 2: rebuild a recording's timeline segments from its surviving transcript clips (cut + ripple)
+  // Word-level: toggle one word deleted and cut its time from the video
+  window._voxWordDel=function(cid,wi){
+    var c=clips.find(function(x){return x.id===cid;});
+    if(!c||!c.words||!c.words[wi])return;
+    c.words[wi].del=!c.words[wi].del; c.dirty=true; render();
+    if(c.srcVideoId&&window._voxRebuildVideo)window._voxRebuildVideo(c.srcVideoId);
+  };
+  // Rebuild a recording's timeline from its surviving WORDS (cut deleted words, merge contiguous, ripple)
   window._voxRebuildVideo=function(videoId){
     if(!videoId||typeof state==='undefined'||!state.segments)return;
     var existing=state.segments.filter(function(s){return s.kind==='recording'&&s.videoId===videoId;});
     if(!existing.length)return; // recording not placed on the timeline → nothing to cut
-    var survivors=clips.filter(function(c){return c.srcVideoId===videoId&&c.tileStartMs!=null;})
-                       .sort(function(a,b){return a.tileStartMs-b.tileStartMs;});
+    var ws=[];
+    clips.forEach(function(c){ if(c.srcVideoId===videoId&&c.words){ c.words.forEach(function(w){ if(!w.del&&w.tileStart!=null) ws.push(w); }); } });
+    ws.sort(function(a,b){return a.tileStart-b.tileStart;});
+    var runs=[];
+    ws.forEach(function(w){ var last=runs[runs.length-1]; if(last&&Math.abs(w.tileStart-last.end)<2){last.end=w.tileEnd;} else {runs.push({start:w.tileStart,end:w.tileEnd});} });
     var anchor=Math.min.apply(null,existing.map(function(s){return s.startMs||0;}));
     var tmpl=existing[0];
     state.segments=state.segments.filter(function(s){return !(s.kind==='recording'&&s.videoId===videoId);});
     var running=anchor;
-    survivors.forEach(function(c){
-      var dur=Math.max(1,Math.round(c.tileEndMs-c.tileStartMs));
+    runs.forEach(function(r){
+      var dur=Math.max(1,Math.round(r.end-r.start));
       var seg=JSON.parse(JSON.stringify(tmpl));
       seg.id=(typeof uid==='function'?uid('seg'):'seg'+Math.random().toString(36).slice(2,8));
       seg.kind='recording'; seg.videoId=videoId;
-      seg.sourceStartMs=Math.round(c.tileStartMs);
-      seg.durationMs=dur; seg.startMs=Math.round(running);
+      seg.sourceStartMs=Math.round(r.start); seg.durationMs=dur; seg.startMs=Math.round(running);
       running+=dur;
       state.segments.push(seg);
     });
@@ -12555,7 +12572,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       var nextGap=(i+1<words.length)?(words[i+1].start-w.end):0;
       var curText=cur.map(function(x){return x.text;}).join(' ').trim();
       if(/[.!?]$/.test(t)||nextGap>800||curText.length>140||i===words.length-1){
-        segs.push({text:curText,startMs:cur[0].start,endMs:w.end});
+        segs.push({text:curText,startMs:cur[0].start,endMs:w.end,words:cur.slice()});
         cur=[];
       }
     }
@@ -12582,11 +12599,17 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       const segs=words.length?_voxSplit(words):((((j.text||'')+'').trim())?[{text:((j.text||'')+'').trim(),startMs:0,endMs:0}]:[]);
       if(!segs.length){ $('voxStatus').textContent='No speech detected in recording'; return; }
       const _D=(typeof videoDurations!=='undefined'&&videoId&&videoDurations[videoId])?videoDurations[videoId]:(segs[segs.length-1].endMs||0);
+      // tile every word across the whole recording: word k owns [k? word.start : 0 , nextWord.start) (last → D)
+      var _allw=[]; segs.forEach(function(s){(s.words||[]).forEach(function(w){_allw.push(w);});});
+      for(var k=0;k<_allw.length;k++){
+        _allw[k].tileStart=(k===0?0:_allw[k].start);
+        _allw[k].tileEnd=(k===_allw.length-1?Math.max(_allw[k].end,_D||_allw[k].end):_allw[k+1].start);
+        _allw[k].del=false;
+      }
       clips=segs.map(function(s,i){
         var c=newClip(s.text);
-        c.srcVideoId=videoId||''; c.srcStartMs=s.startMs; c.srcEndMs=s.endMs;
-        c.tileStartMs=(i===0?0:s.startMs);
-        c.tileEndMs=(i===segs.length-1?Math.max(s.endMs,_D||s.endMs):segs[i+1].startMs);
+        c.srcVideoId=videoId||''; c.fromRec=true; c.words=s.words||null;
+        c.srcStartMs=s.startMs; c.srcEndMs=s.endMs;
         c.dirty=true; c.gen=false; return c;
       });
       render();
@@ -12622,16 +12645,18 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       const d=document.createElement('div');d.className='vox-clip';
       const vo=VOICES.map(v=>`<option value="${v.id}" ${v.id===c.voice?'selected':''}>${v.n}</option>`).join('');
       d.innerHTML=`<div class="vox-clip-h">
-          <span class="vox-chip num">${i+1}</span>${(c.srcStartMs!=null)?`<span class="vox-chip" style="color:#8B92A3" title="source video range">${_voxClock(c.srcStartMs)}–${_voxClock(c.srcEndMs)}</span>`:''}
+          <span class="vox-chip num">${i+1}</span>
           <span class="vox-chip voice">🎙 <select onchange="_voxVoice('${c.id}',this.value)">${vo}</select></span>
           <span class="sp"></span>
           <button class="vox-ib" title="Insert sync point" onclick="_voxSync('${c.id}')">⌨</button>
           <button class="vox-ib" title="Play voiceover" onclick="_voxPlay('${c.id}')">▶</button>
           <button class="vox-ib" title="Generate speech" onclick="_voxGen('${c.id}')">🎙</button>
-          <button class="vox-ib" title="Delete clip" onclick="_voxDel('${c.id}')">✕</button>
+          <button class="vox-ib" title="Delete line" onclick="_voxDel('${c.id}')">✕</button>
         </div>
-        <div class="vox-body${c.dirty?' dirty':''}" data-id="${c.id}" data-ph="Type narration… (use ⌨ to drop a Sync Point)" contenteditable="true"
-             oninput="_voxDirty('${c.id}')">${c.html||''}</div>
+        ${c.words
+          ? `<div class="vox-body words" data-id="${c.id}" title="Click a word to cut it from the video">${c.words.map((w,wi)=>`<span class="vw${w.del?' del':''}" onclick="_voxWordDel('${c.id}',${wi})">${_esc(w.text)}</span>`).join(' ')}</div>`
+          : `<div class="vox-body${c.dirty?' dirty':''}" data-id="${c.id}" data-ph="Type narration… (use ⌨ to drop a Sync Point)" contenteditable="true" oninput="_voxDirty('${c.id}')">${c.html||''}</div>`
+        }
         <div class="vox-state" data-id="${c.id}">${badgeHtml(c)}</div>`;
       L.appendChild(d);
     });
