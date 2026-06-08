@@ -12551,9 +12551,10 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       var sw=c.words.filter(function(w){return !w.del&&w.tileStart!=null;}).sort(function(a,b){return a.tileStart-b.tileStart;});
       if(!sw.length)return;
       var natural=sw.reduce(function(a,w){return a+(w.tileEnd-w.tileStart);},0);
-      var hasVO=!!(c.gen&&c.voUrl&&c.aMs);
-      var voDur=hasVO?c.aMs:natural; if(voDur<=0)voDur=natural||1;
-      var speed=natural/voDur; if(!isFinite(speed)||speed<=0)speed=1;
+      var hasVO=!!(c.gen&&c.voUrl&&c.aMs&&!c.dirty); // edited-but-not-regenerated VO is stale → treat as none
+      var voDur=hasVO?c.aMs:0;
+      var slotDur=Math.max(natural,voDur||0); if(slotDur<=0)slotDur=natural||1;
+      var speed=natural/slotDur; if(!isFinite(speed)||speed<=0)speed=1; // never >1: don't speed footage up, only slow it when VO is longer
       var clipStart=running;
       var runs=[]; sw.forEach(function(w){var last=runs[runs.length-1]; if(last&&Math.abs(w.tileStart-last.end)<2){last.end=w.tileEnd;}else{runs.push({start:w.tileStart,end:w.tileEnd});}});
       runs.forEach(function(r){
