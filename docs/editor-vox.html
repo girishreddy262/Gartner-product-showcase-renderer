@@ -1879,6 +1879,7 @@
     <button class="vox-btn" id="voxRewrite">✎ AI Rewrite</button>
     <span class="sp"></span>
     <span class="lbl" id="voxDirty" style="font-size:11px;color:#8B92A3"></span>
+    <button class="vox-btn" id="voxUseVO" title="Upload the generated voiceover to the timeline and mute source audio">🎬 Use as voiceover</button>
     <button class="vox-btn pri" id="voxGenAll">🎙 Generate speech</button>
   </div>
 </div>
@@ -12469,6 +12470,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   $('voxDefVoice').addEventListener('change',e=>{defVoice=e.target.value;});
   $('voxAdd').addEventListener('click',()=>{clips.push(newClip(''));render();});
   $('voxGenAll').addEventListener('click',async()=>{for(const c of clips) await gen(c);});
+  (function(){var b=document.getElementById('voxUseVO'); if(b)b.addEventListener('click',function(){window._voxAddVO&&window._voxAddVO();});})();
   $('voxRewrite').addEventListener('click',()=>{/* AI rewrite hooks into Worker /vox/clean when ANTHROPIC key lands */});
 
   function markAllDirty(){clips.forEach(c=>{if(c.gen)c.dirty=true;});render();}
@@ -12562,7 +12564,38 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     try{render();}catch(e){}
   };
   window._voxDebug=function(){var segs=(typeof state!=='undefined'&&state.segments)?state.segments.filter(function(s){return s.kind==='recording';}).map(function(s){return {videoId:s.videoId,startMs:s.startMs,dur:s.durationMs,src:s.sourceStartMs};}):[];return {recordingSegments:segs,clips:clips.map(function(c){return {t:(clipText(c.id)||'').slice(0,24),vid:c.srcVideoId,tile:[c.tileStartMs,c.tileEndMs]};})};};
-  console.log('VoxScript build: PHASE2-cut — delete a transcript line cuts the PLACED recording; type _voxDebug() to inspect');
+  // Phase 3: upload generated voiceover to S3, place on the timeline, mute source audio (renders via existing audio path)
+  window._voxAddVO=async function(){
+    if(typeof state==='undefined'){return;}
+    var gen=clips.filter(function(c){return c.gen&&c.audioUrl;});
+    if(!gen.length){ $('voxStatus').textContent='Generate speech first, then Use as voiceover'; return; }
+    $('voxStatus').textContent='Uploading voiceover to timeline…';
+    var oldIds=(state.audios||[]).filter(function(a){return /^audio_vo_/.test(a.id);}).map(function(a){return a.id;});
+    state.audios=(state.audios||[]).filter(function(a){return oldIds.indexOf(a.id)<0;});
+    state.audioPlacements=(state.audioPlacements||[]).filter(function(p){return oldIds.indexOf(p.audioId)<0;});
+    var recSegs=state.segments.filter(function(s){return s.kind==='recording';});
+    var running=recSegs.length?Math.min.apply(null,recSegs.map(function(s){return s.startMs||0;})):0;
+    try{
+      for(var i=0;i<gen.length;i++){
+        var c=gen[i];
+        var blob=await(await fetch(c.audioUrl)).blob();
+        var file=new File([blob],'vo_'+c.id+'.mp3',{type:'audio/mpeg'});
+        var url=await uploadToS3(file,'audio',function(){});
+        var aid='audio_vo_'+c.id;
+        state.audios.push({id:aid,filename:'VO '+(i+1),url:url});
+        audioDurations[aid]=Math.round(c.aMs||0);
+        state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:aid,startMs:Math.round(running),durationMs:Math.round(c.aMs||0),volume:1.0});
+        running+=Math.round(c.aMs||0);
+      }
+      state.segments.forEach(function(s){ if(s.kind==='recording') s.muteSourceAudio=true; });
+      try{setupAudioElements&&setupAudioElements();}catch(e){}
+      try{renderLeftRail&&renderLeftRail();}catch(e){}
+      try{rebuildAll&&rebuildAll();}catch(e){}
+      try{pushHistory&&pushHistory();}catch(e){}
+      $('voxStatus').textContent=gen.length+' voiceover clip'+(gen.length>1?'s':'')+' on timeline · source muted · Approve & render to bake in';
+    }catch(e){ $('voxStatus').textContent='Use as voiceover failed: '+((e&&e.message)?e.message:e); }
+  };
+  console.log('VoxScript build: PHASE3 — Use as voiceover places TTS on timeline + mutes source; renders via existing audio path. _voxDebug() to inspect');
   // Phase 1: split AssemblyAI words into timed sentence segments
   function _voxSplit(words){
     var segs=[],cur=[];
