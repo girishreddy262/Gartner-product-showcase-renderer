@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p3b</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p3c</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -12536,40 +12536,41 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   // (speed-fit per clip; engine maps sourceT = sourceStart + localTimelineT*speed) and place the
   // per-clip VO over it. Editor-side; renders via the existing audio path. No Lambda.
   window._voxResync=function(videoId){
-    if(!videoId||typeof state==='undefined'||!state.segments)return;
-    var existing=state.segments.filter(function(s){return s.kind==='recording'&&s.videoId===videoId;});
-    if(!existing.length)return; // recording not placed → nothing to do
+    if(typeof state==='undefined'||!state.segments)return;
+    var recAll=state.segments.filter(function(s){return s.kind==='recording';});
+    if(!recAll.length)return; // recording not on the timeline → nothing to do
+    // canonical = the recording videoId actually present on the timeline (handles re-record id drift)
+    var counts={}; recAll.forEach(function(s){counts[s.videoId]=(counts[s.videoId]||0)+1;});
+    var canonical=(videoId&&counts[videoId])?videoId:Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];})[0];
+    var existing=recAll.filter(function(s){return s.videoId===canonical;});
     var anchor=Math.min.apply(null,existing.map(function(s){return s.startMs||0;}));
     var tmpl=existing[0];
-    state.segments=state.segments.filter(function(s){return !(s.kind==='recording'&&s.videoId===videoId);});
+    // clips for this recording: prefer matching srcVideoId, else any transcript clip with words (single-recording case)
+    var clipsV=clips.filter(function(c){return c.srcVideoId===canonical&&c.words;});
+    if(!clipsV.length) clipsV=clips.filter(function(c){return c.words;});
+    // remove ALL recording segments for this video (prevents accumulation) + our VO placements
+    state.segments=state.segments.filter(function(s){return !(s.kind==='recording'&&s.videoId===canonical);});
     var voAids=(state.audios||[]).filter(function(a){return /^audio_vo_/.test(a.id);}).map(function(a){return a.id;});
     state.audioPlacements=(state.audioPlacements||[]).filter(function(p){return voAids.indexOf(p.audioId)<0;});
-    var clipsV=clips.filter(function(c){return c.srcVideoId===videoId;});
     var running=anchor;
     clipsV.forEach(function(c){
-      if(!c.words)return;
       var sw=c.words.filter(function(w){return !w.del&&w.tileStart!=null;}).sort(function(a,b){return a.tileStart-b.tileStart;});
       if(!sw.length)return;
-      var natural=sw.reduce(function(a,w){return a+(w.tileEnd-w.tileStart);},0);
-      var hasVO=!!(c.gen&&c.voUrl&&c.aMs&&!c.dirty); // edited-but-not-regenerated VO is stale → treat as none
-      var voDur=hasVO?c.aMs:0;
-      var slotDur=Math.max(natural,voDur||0); if(slotDur<=0)slotDur=natural||1;
-      var speed=natural/slotDur; if(!isFinite(speed)||speed<=0)speed=1; // never >1: don't speed footage up, only slow it when VO is longer
-      var clipStart=running;
       var runs=[]; sw.forEach(function(w){var last=runs[runs.length-1]; if(last&&Math.abs(w.tileStart-last.end)<2){last.end=w.tileEnd;}else{runs.push({start:w.tileStart,end:w.tileEnd});}});
+      var clipStart=running;
       runs.forEach(function(r){
-        var tlDur=Math.max(1,Math.round((r.end-r.start)/speed));
+        var tlDur=Math.max(1,Math.round(r.end-r.start)); // natural speed: no compress/expand
         var seg=JSON.parse(JSON.stringify(tmpl));
         seg.id=(typeof uid==='function'?uid('seg'):'seg'+Math.random().toString(36).slice(2,8));
-        seg.kind='recording'; seg.videoId=videoId;
+        seg.kind='recording'; seg.videoId=canonical;
         seg.sourceStartMs=Math.round(r.start); seg.durationMs=tlDur; seg.startMs=Math.round(running);
-        seg.speed=speed; seg.muteSourceAudio=true;
+        seg.speed=1; seg.muteSourceAudio=true;
         state.segments.push(seg); running+=tlDur;
       });
-      if(hasVO){
+      if(c.gen&&c.voUrl&&c.aMs&&!c.dirty){
         if(!(state.audios||[]).some(function(a){return a.id===c.voAid;})){ state.audios.push({id:c.voAid,filename:'VO',url:c.voUrl}); }
         audioDurations[c.voAid]=Math.round(c.aMs);
-        state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:c.voAid,startMs:Math.round(clipStart),durationMs:Math.round(voDur),volume:1.0});
+        state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:c.voAid,startMs:Math.round(clipStart),durationMs:Math.round(c.aMs),volume:1.0});
       }
     });
     try{setupAudioElements&&setupAudioElements();}catch(e){}
