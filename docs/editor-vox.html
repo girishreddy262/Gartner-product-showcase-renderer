@@ -10808,6 +10808,9 @@ function nudgeMultiSelect(deltaMs) {
 
 function setupKeyboard() {
   document.addEventListener('keydown', (e) => {
+    // never hijack keystrokes while typing in an input/textarea/contenteditable (e.g. the VoxScript transcript)
+    const _typing = e.target && (e.target.isContentEditable || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+    if (_typing && !e.metaKey && !e.ctrlKey) return;
     const isMod = e.metaKey || e.ctrlKey;
     // Tool shortcuts (V/C) - only when not in input
     if (!isMod && !e.shiftKey && (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA')) {
@@ -12499,7 +12502,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
 
   window._voxVoice=(id,v)=>{const c=clips.find(x=>x.id===id);c.voice=v;c.dirty=true;renderStates();};
   window._voxGen=id=>{const c=clips.find(x=>x.id===id);if(c)gen(c);};
-  window._voxPlay=id=>{const c=clips.find(x=>x.id===id);if(c&&c.audioUrl)new Audio(c.audioUrl).play();};
+  var _curAudio=null;
+  window._voxPlay=id=>{const c=clips.find(x=>x.id===id);if(!c||!c.audioUrl){return;}try{if(_curAudio)_curAudio.pause();}catch(e){} _curAudio=new Audio(c.audioUrl); _curAudio.play().catch(function(e){console.warn('voxscript play failed',e);});};
   window._voxDel=id=>{clips=clips.filter(x=>x.id!==id);render();};
   window._voxDirty=id=>{const c=clips.find(x=>x.id===id);if(c){c.dirty=true;c.gen=c.gen;}renderStates();};
   window._voxSync=id=>{ // insert a Sync Point chip at the caret
@@ -12534,6 +12538,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
           <span class="vox-chip voice">🎙 <select onchange="_voxVoice('${c.id}',this.value)">${vo}</select></span>
           <span class="sp"></span>
           <button class="vox-ib" title="Insert sync point" onclick="_voxSync('${c.id}')">⌨</button>
+          <button class="vox-ib" title="Play voiceover" onclick="_voxPlay('${c.id}')">▶</button>
           <button class="vox-ib" title="Generate speech" onclick="_voxGen('${c.id}')">🎙</button>
           <button class="vox-ib" title="Delete clip" onclick="_voxDel('${c.id}')">✕</button>
         </div>
