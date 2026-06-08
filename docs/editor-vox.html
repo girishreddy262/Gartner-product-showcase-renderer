@@ -12469,7 +12469,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   $('voxLang').addEventListener('change',e=>{lang=e.target.value;markAllDirty();});
   $('voxDefVoice').addEventListener('change',e=>{defVoice=e.target.value;});
   $('voxAdd').addEventListener('click',()=>{clips.push(newClip(''));render();});
-  $('voxGenAll').addEventListener('click',async()=>{for(const c of clips) await gen(c);});
+  $('voxGenAll').addEventListener('click',async()=>{for(const c of clips) await gen(c); if(window._voxAddVO) await window._voxAddVO();});
   (function(){var b=document.getElementById('voxUseVO'); if(b)b.addEventListener('click',function(){window._voxAddVO&&window._voxAddVO();});})();
   $('voxRewrite').addEventListener('click',()=>{/* AI rewrite hooks into Worker /vox/clean when ANTHROPIC key lands */});
 
@@ -12512,7 +12512,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   }
 
   window._voxVoice=(id,v)=>{const c=clips.find(x=>x.id===id);c.voice=v;c.dirty=true;renderStates();};
-  window._voxGen=id=>{const c=clips.find(x=>x.id===id);if(c)gen(c);};
+  window._voxGen=async id=>{const c=clips.find(x=>x.id===id);if(c){await gen(c); if(window._voxAddVO) await window._voxAddVO();}};
   var _curAudio=null;
   window._voxPlay=id=>{const c=clips.find(x=>x.id===id);if(!c||!c.audioUrl){return;}try{if(_curAudio)_curAudio.pause();}catch(e){} _curAudio=new Audio(c.audioUrl); _curAudio.play().catch(function(e){console.warn('voxscript play failed',e);});};
   window._voxDel=id=>{
