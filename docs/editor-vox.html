@@ -3600,6 +3600,7 @@ function renderLeftRail() {
         pushHistory();
         state.videos = state.videos.filter(v => v.id !== vid);
         state.segments = state.segments.filter(s => !(s.kind === 'recording' && s.videoId === vid));
+        if (window._voxClearVideo) window._voxClearVideo(vid);
         renderLeftRail(); rebuildAll(); renderEditPanel();
         showToast('Video deleted', 'success');
       } else if (aid) {
@@ -12504,7 +12505,45 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   window._voxGen=id=>{const c=clips.find(x=>x.id===id);if(c)gen(c);};
   var _curAudio=null;
   window._voxPlay=id=>{const c=clips.find(x=>x.id===id);if(!c||!c.audioUrl){return;}try{if(_curAudio)_curAudio.pause();}catch(e){} _curAudio=new Audio(c.audioUrl); _curAudio.play().catch(function(e){console.warn('voxscript play failed',e);});};
-  window._voxDel=id=>{clips=clips.filter(x=>x.id!==id);render();};
+  window._voxDel=id=>{
+    var c=clips.find(function(x){return x.id===id;});
+    if(c&&c.srcVideoId&&c.tileStartMs!=null){
+      if(!confirm('Delete this line? It also removes '+_voxClock(c.tileStartMs)+'–'+_voxClock(c.tileEndMs)+' from the video on the timeline.'))return;
+    }
+    var vid=c?c.srcVideoId:null;
+    clips=clips.filter(function(x){return x.id!==id;});
+    render();
+    if(vid&&window._voxRebuildVideo)window._voxRebuildVideo(vid);
+  };
+  // Phase 2: rebuild a recording's timeline segments from its surviving transcript clips (cut + ripple)
+  window._voxRebuildVideo=function(videoId){
+    if(!videoId||typeof state==='undefined'||!state.segments)return;
+    var existing=state.segments.filter(function(s){return s.kind==='recording'&&s.videoId===videoId;});
+    if(!existing.length)return; // recording not placed on the timeline → nothing to cut
+    var survivors=clips.filter(function(c){return c.srcVideoId===videoId&&c.tileStartMs!=null;})
+                       .sort(function(a,b){return a.tileStartMs-b.tileStartMs;});
+    var anchor=Math.min.apply(null,existing.map(function(s){return s.startMs||0;}));
+    var tmpl=existing[0];
+    state.segments=state.segments.filter(function(s){return !(s.kind==='recording'&&s.videoId===videoId);});
+    var running=anchor;
+    survivors.forEach(function(c){
+      var dur=Math.max(1,Math.round(c.tileEndMs-c.tileStartMs));
+      var seg=JSON.parse(JSON.stringify(tmpl));
+      seg.id=(typeof uid==='function'?uid('seg'):'seg'+Math.random().toString(36).slice(2,8));
+      seg.kind='recording'; seg.videoId=videoId;
+      seg.sourceStartMs=Math.round(c.tileStartMs);
+      seg.durationMs=dur; seg.startMs=Math.round(running);
+      running+=dur;
+      state.segments.push(seg);
+    });
+    try{rebuildAll();}catch(e){}
+  };
+  // Phase 2 (item 12): clear a video's transcript clips when the video itself is deleted
+  window._voxClearVideo=function(videoId){
+    if(!videoId)return;
+    clips=clips.filter(function(c){return c.srcVideoId!==videoId;});
+    try{render();}catch(e){}
+  };
   // Phase 1: split AssemblyAI words into timed sentence segments
   function _voxSplit(words){
     var segs=[],cur=[];
@@ -12540,7 +12579,14 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       const words=(j.words||[]);
       const segs=words.length?_voxSplit(words):((((j.text||'')+'').trim())?[{text:((j.text||'')+'').trim(),startMs:0,endMs:0}]:[]);
       if(!segs.length){ $('voxStatus').textContent='No speech detected in recording'; return; }
-      clips=segs.map(function(s){var c=newClip(s.text);c.srcVideoId=videoId||'';c.srcStartMs=s.startMs;c.srcEndMs=s.endMs;c.dirty=true;c.gen=false;return c;});
+      const _D=(typeof videoDurations!=='undefined'&&videoId&&videoDurations[videoId])?videoDurations[videoId]:(segs[segs.length-1].endMs||0);
+      clips=segs.map(function(s,i){
+        var c=newClip(s.text);
+        c.srcVideoId=videoId||''; c.srcStartMs=s.startMs; c.srcEndMs=s.endMs;
+        c.tileStartMs=(i===0?0:s.startMs);
+        c.tileEndMs=(i===segs.length-1?Math.max(s.endMs,_D||s.endMs):segs[i+1].startMs);
+        c.dirty=true; c.gen=false; return c;
+      });
       render();
       $('voxStatus').textContent=segs.length+' segment'+(segs.length>1?'s':'')+' · edit the words, then Generate speech';
     }catch(e){ $('voxStatus').textContent='Transcribe failed: '+((e&&e.message)?e.message:e); }
