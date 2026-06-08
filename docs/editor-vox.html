@@ -1509,7 +1509,7 @@
   #voxPanel{position:fixed;top:99px;right:0;bottom:calc(var(--layout-timeline-h,280px) + 1px);width:var(--layout-right-w,320px);z-index:40;
     background:var(--panel,#1A1D24);border-left:1px solid var(--line,#2A2D34);display:none;flex-direction:column;
     font-family:'Satoshi',-apple-system,sans-serif;color:#fff}
-  .app.vox-open #voxPanel{display:flex}
+  #voxPanel.vox-show{display:flex}
   /* Properties | Transcript tab bar pinned to the top of the right rail */
   #voxTabs{position:fixed;top:57px;right:0;width:var(--layout-right-w,320px);height:42px;z-index:46;
     display:flex;gap:4px;align-items:center;padding:6px 10px;background:var(--panel,#1A1D24);
@@ -12448,8 +12448,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   function newClip(t){return {id:Math.random().toString(36).slice(2,8),html:t||'',voice:defVoice,audioUrl:null,aMs:0,dirty:!!t,gen:false,busy:false,err:null,cache:''};}
 
   function setTab(t){ var p=$('voxTabProps'),r=$('voxTabTr'); if(p)p.classList.toggle('on',t==='props'); if(r)r.classList.toggle('on',t==='tr'); }
-  function open(){ app().classList.add('vox-open'); setTab('tr'); if(!clips.length){clips=[newClip('')];render();} try{fitCanvasToViewport&&fitCanvasToViewport();}catch(e){} }
-  function close(){ app().classList.remove('vox-open'); setTab('props'); try{fitCanvasToViewport&&fitCanvasToViewport();}catch(e){} }
+  function open(){ var p=document.getElementById('voxPanel'); if(p)p.classList.add('vox-show'); try{app().classList.add('vox-open');}catch(e){} setTab('tr'); if(!clips.length){clips=[newClip('')];render();} try{fitCanvasToViewport&&fitCanvasToViewport();}catch(e){} }
+  function close(){ var p=document.getElementById('voxPanel'); if(p)p.classList.remove('vox-show'); try{app().classList.remove('vox-open');}catch(e){} setTab('props'); try{fitCanvasToViewport&&fitCanvasToViewport();}catch(e){} }
   var _tt=$('voxTabTr'); if(_tt)_tt.addEventListener('click',open);
   var _tp=$('voxTabProps'); if(_tp)_tp.addEventListener('click',close);
   var _ob=$('voxOpenBtn'); if(_ob)_ob.addEventListener('click',open);
