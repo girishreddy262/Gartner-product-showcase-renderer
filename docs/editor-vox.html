@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p5</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p6</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -12591,7 +12591,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         state.segments.push(seg); running+=tlDur;
       });
       if(_voxVoiceMode==='ai'&&c.gen&&c.voUrl&&c.aMs&&!c.dirty){
-        if(!(state.audios||[]).some(function(a){return a.id===c.voAid;})){ state.audios.push({id:c.voAid,filename:'VO',url:c.voUrl}); }
+        var _voxEnt=(state.audios||[]).find(function(a){return a.id===c.voAid;});
+        if(_voxEnt){ _voxEnt.url=c.voUrl; _voxEnt.filename='VO'; } else { (state.audios=state.audios||[]).push({id:c.voAid,filename:'VO',url:c.voUrl}); } // update URL on regenerate so edits after the first generate actually take
         audioDurations[c.voAid]=Math.round(c.aMs);
         state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:c.voAid,startMs:Math.round(clipStart),durationMs:Math.round(c.aMs),volume:1.0});
       }
@@ -12628,7 +12629,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         var c2=speak[j];
         if(c2.gen&&c2.audioUrl&&!c2.voUrl){
           var blob=await(await fetch(c2.audioUrl)).blob();
-          var file=new File([blob],'vo_'+c2.id+'.mp3',{type:'audio/mpeg'});
+          var file=new File([blob],'vo_'+c2.id+'_'+Date.now()+'.mp3',{type:'audio/mpeg'});
           c2.voAid='audio_vo_'+c2.id;
           c2.voUrl=await uploadToS3(file,'audio',function(){});
         }
