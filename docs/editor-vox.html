@@ -1574,7 +1574,7 @@
     :root{
       --bg:#0A0B0D; --panel:#121316; --panel-2:#0E0F12; --panel-3:#1A1D24;
       --line:#23262C; --line-hover:#33373F;
-      --accent:#0183FF; --accent-hover:#4DA6FF;
+      --accent:#6D5EFC; --accent-hover:#8474FF;
       --text:#EDEFF3; --text-dim:#8A909C;
       --danger:#F87171; --success:#34D399; --warning:#FBBF24;
       --audio-color:#7C9CFF;
@@ -1583,11 +1583,11 @@
     .btn, .tool-btn, .add-slide-btn{ border-radius:10px; }
     .tl-track{ border-radius:9px; }
     /* cobalt-tint the lane backgrounds so nothing reads purple/yellow/green */
-    .tl-track.segment-track{ background:rgba(1,131,255,0.045); }
-    .tl-track.audio-track{ background:rgba(124,156,255,0.06); }
-    .tl-track.effects-track{ background:rgba(1,131,255,0.05); }
-    .tl-track.callout-track{ background:rgba(1,131,255,0.04); }
-    .tl-track.textoverlay-track{ background:rgba(124,156,255,0.06); }
+    .tl-track.segment-track{ background:rgba(255,255,255,0.02); }
+    .tl-track.audio-track{ background:rgba(255,255,255,0.025); }
+    .tl-track.effects-track{ background:rgba(255,255,255,0.02); }
+    .tl-track.callout-track{ background:rgba(255,255,255,0.02); }
+    .tl-track.textoverlay-track{ background:rgba(255,255,255,0.025); }
     /* clean scrollbars */
     .left-rail::-webkit-scrollbar, .right-rail::-webkit-scrollbar,
     .timeline-zone ::-webkit-scrollbar{ width:9px; height:9px; }
@@ -1595,6 +1595,8 @@
     .timeline-zone ::-webkit-scrollbar-thumb{ background:var(--line-hover); border-radius:6px; }
     .left-rail::-webkit-scrollbar-track, .right-rail::-webkit-scrollbar-track,
     .timeline-zone ::-webkit-scrollbar-track{ background:transparent; }
+    .tl-block.seg-recording{ background:#16181D !important; border:1px solid #2A2D34; }
+    #voxGenAll{ display:none !important; }
   </style>
   <!-- ============ /DBX CLEAN RE-SKIN ============ -->
   <script src="./ffmpeg/ffmpeg.js"></script>
@@ -1862,7 +1864,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p7</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p8</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -1879,8 +1881,8 @@
     <button class="vox-btn" id="voxRewrite">✎ AI Rewrite</button>
     <span class="sp"></span>
     <span class="lbl" id="voxDirty" style="font-size:11px;color:#8B92A3"></span>
-    <button class="vox-btn" id="voxUseOrig" title="Use your original recorded voice, automatically cut to the edited transcript">🎤 Keep my voice</button>
-    <button class="vox-btn" id="voxUseVO" title="Replace with an AI voice generated from the edited transcript, and mute the original audio">🤖 Use AI voiceover</button>
+    <button class="vox-btn" id="voxUseOrig" title="Use your original recorded voice, automatically cut to the edited transcript">My voice</button>
+    <button class="vox-btn" id="voxUseVO" title="Replace with an AI voice generated from the edited transcript, and mute the original audio">AI voice</button>
     <button class="vox-btn pri" id="voxGenAll">🎙 Generate speech</button>
   </div>
 </div>
@@ -8690,7 +8692,7 @@ async function pickAndUploadAsset(opts = {}) {
   _uploadInProgress = true;
   const toast = showUploadToast(file.name);
   try {
-    updateUploadToast(toast, 5, 'Uploading to S3...');
+    updateUploadToast(toast, 5, 'Uploading…');
     // v3.28b.23: direct S3 upload via Worker-presigned URL (Dropbox blocked on Windows IT)
     const directUrl = await uploadToS3(file, kind, (pct) => {
       updateUploadToast(toast, 5 + Math.round(pct * 90), 'Uploading...');
@@ -8799,7 +8801,7 @@ async function handleBulkFileUpload(fileList, kind) {
 async function uploadOneFile(file, kind, labelPrefix) {
   const toast = showUploadToast(labelPrefix || file.name);
   try {
-    updateUploadToast(toast, 5, 'Uploading to S3...');
+    updateUploadToast(toast, 5, 'Uploading…');
     // v3.28b.23: direct S3 upload via Worker-presigned URL
     const directUrl = await uploadToS3(file, kind, (pct) => {
       updateUploadToast(toast, 5 + Math.round(pct * 90), 'Uploading...');
@@ -8935,7 +8937,7 @@ async function handleFileUpload(file, kind) {
 
   try {
     // v3.28b.23: direct S3 upload via Worker-presigned URL (was Dropbox flow)
-    updateUploadToast(toast, 5, 'Uploading to S3...');
+    updateUploadToast(toast, 5, 'Uploading…');
     const directUrl = await uploadToS3(file, kind, (pct) => {
       updateUploadToast(toast, 5 + Math.round(pct * 90), 'Uploading...');
     });
@@ -12554,8 +12556,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
 
   async function boot(){
     try{const h=await(await fetch(VOX_WORKER+'/')).json();
-      $('voxStatus').innerHTML=h.live&&h.live.tts?'<b>● voiceover live</b> — type, then Generate speech':'worker on, TTS off (set ELEVENLABS_API_KEY)';
-    }catch(e){$('voxStatus').textContent='worker unreachable from this origin (deploy to GitHub Pages, or run on localhost)';}
+      $('voxStatus').innerHTML=h.live&&h.live.tts?'':'Voice is off right now.';
+    }catch(e){$('voxStatus').textContent="Can't reach the voice service right now.";}
     try{const j=await(await fetch(VOX_WORKER+'/vox/voices')).json();
       VOICES=(j.voices||[]).map(v=>({id:v.voiceId,n:v.name}));defVoice=(VOICES[0]||{}).id||'';
       $('voxDefVoice').innerHTML=VOICES.map(v=>`<option value="${v.id}">${v.n}</option>`).join('');
@@ -12610,7 +12612,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   function _voxScheduleRegen(){
     if(_voxVoiceMode!=='ai')return; // 'original' mode plays the recorded voice cut to the video — no TTS to regenerate
     if(_voxRegenTimer)clearTimeout(_voxRegenTimer);
-    try{$('voxStatus').textContent='Transcript edited — updating AI voiceover…';}catch(e){}
+    try{$('voxStatus').textContent='Updating the voice…';}catch(e){}
     _voxRegenTimer=setTimeout(function(){ _voxRegenTimer=null; if(window._voxAddVO)window._voxAddVO(); },700);
   }
   // Word-level: toggle one word deleted and cut its time from the video
@@ -12681,16 +12683,16 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     if(typeof state==='undefined'){return;}
     _voxVoiceMode='ai';
     var speak=clips.filter(function(c){return (clipText(c.id)||'').length>0;});
-    if(!speak.length){ $('voxStatus').textContent='Transcript is empty — nothing to voice'; return; }
+    if(!speak.length){ $('voxStatus').textContent='Add some words first.'; return; }
     try{
       // 1. (re)generate TTS for any clip that is new or was edited since last gen, from the SURVIVING words
-      $('voxStatus').textContent='Generating AI voiceover from the current transcript…';
+      $('voxStatus').textContent='Making the voice…';
       for(var i=0;i<speak.length;i++){
         var c=speak[i];
         if(c.dirty||!c.gen||!c.audioUrl){ c.voUrl=null; await gen(c); }
       }
       // 2. upload fresh audio for any clip missing an uploaded URL
-      $('voxStatus').textContent='Uploading voiceover…';
+      $('voxStatus').textContent='Making the voice…';
       for(var j=0;j<speak.length;j++){
         var c2=speak[j];
         if(c2.gen&&c2.audioUrl&&!c2.voUrl){
@@ -12706,8 +12708,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       if(ks.length){ ks.forEach(function(vid){ if(window._voxResync)window._voxResync(vid); }); }
       else if(window._voxResync){ window._voxResync(); }
       try{pushHistory&&pushHistory();}catch(e){}
-      $('voxStatus').textContent='AI voiceover synced to the edited transcript · Approve & render to bake in';
-    }catch(e){ $('voxStatus').textContent='AI voiceover failed: '+((e&&e.message)?e.message:e); }
+      $('voxStatus').textContent='Voice updated.';
+    }catch(e){ $('voxStatus').textContent="Couldn't make the voice, try again."; }
   };
   // Keep the original recorded voice, automatically cut to the edited transcript (no TTS)
   window._voxUseOriginal=function(){
@@ -12718,7 +12720,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     if(ks.length){ ks.forEach(function(vid){ if(window._voxResync)window._voxResync(vid); }); }
     else if(window._voxResync){ window._voxResync(); }
     try{pushHistory&&pushHistory();}catch(e){}
-    $('voxStatus').textContent='Using your original recorded voice, cut to the transcript · Approve & render to bake in';
+    $('voxStatus').textContent='Using your voice.';
   };
   console.log('VoxScript build: PHASE3 — Use as voiceover places TTS on timeline + mutes source; renders via existing audio path. _voxDebug() to inspect');
   // Phase 1: split AssemblyAI words into timed sentence segments
@@ -12741,7 +12743,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   window._voxFromRecording=async function(url,label,videoId){
     if(!url)return;
     open(); // show the Transcript tab
-    $('voxStatus').textContent='Transcribing recording…';
+    $('voxStatus').textContent='Getting your words…';
     try{
       const sub=await(await fetch(VOX_WORKER+'/vox/transcribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audioUrl:url})})).json();
       if(!sub||!sub.id)throw new Error((sub&&sub.error)||'no transcribe job id');
@@ -12749,13 +12751,13 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       while(tries++<90){
         await new Promise(r=>setTimeout(r,2000));
         j=await(await fetch(VOX_WORKER+'/vox/transcribe/'+sub.id)).json();
-        $('voxStatus').textContent='Transcribing… '+((j&&j.status)||'');
+        $('voxStatus').textContent='Getting your words…';
         if(j&&(j.status==='completed'||j.status==='error'))break;
       }
       if(!j||j.status!=='completed')throw new Error((j&&j.error)||(j&&j.status)||'timeout');
       const words=(j.words||[]);
       const segs=words.length?_voxSplit(words):((((j.text||'')+'').trim())?[{text:((j.text||'')+'').trim(),startMs:0,endMs:0}]:[]);
-      if(!segs.length){ $('voxStatus').textContent='No speech detected in recording'; return; }
+      if(!segs.length){ $('voxStatus').textContent='No speech picked up, try again.'; return; }
       const _D=(typeof videoDurations!=='undefined'&&videoId&&videoDurations[videoId])?videoDurations[videoId]:(segs[segs.length-1].endMs||0);
       // tile every word across the whole recording: word k owns [k? word.start : 0 , nextWord.start) (last → D)
       var _allw=[]; segs.forEach(function(s){(s.words||[]).forEach(function(w){_allw.push(w);});});
@@ -12782,8 +12784,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         if(window._voxResync)window._voxResync(videoId); // normalize to tile-based segments with original voice live (default mode)
       }catch(e){ console.warn('auto-place failed',e); }
       render();
-      $('voxStatus').textContent=segs.length+' segment'+(segs.length>1?'s':'')+' · edit the words, then Generate speech';
-    }catch(e){ $('voxStatus').textContent='Transcribe failed: '+((e&&e.message)?e.message:e); }
+      $('voxStatus').textContent="Ready. Delete any words you don't want.";
+    }catch(e){ $('voxStatus').textContent="Couldn't read that recording, try again."; }
   };
   window._voxDirty=id=>{const c=clips.find(x=>x.id===id);if(c){c.dirty=true;c.gen=c.gen;}renderStates();};
   window._voxSync=id=>{ // insert a Sync Point chip at the caret
@@ -12797,7 +12799,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   function badgeHtml(c){
     if(c.busy)return '<span class="vox-badge gen"><span class="vox-spin"></span> generating</span>';
     if(c.err)return '<span class="vox-badge stale">error: '+c.err+'</span>';
-    if(c.dirty&&clipText(c.id))return '<span class="vox-badge stale">⟳ needs Generate speech</span>';
+    if(c.dirty&&clipText(c.id))return '<span class="vox-badge stale">⟳ updating</span>';
     if(c.gen)return '<span class="vox-badge fresh">✓ voiceover in sync · '+fmt(c.aMs)+'</span>'+(c.cache==='HIT'?' <span class="vox-badge cached">cached</span>':'');
     return '';
   }
@@ -12819,7 +12821,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
           <span class="sp"></span>
           <button class="vox-ib" title="Insert sync point" onclick="_voxSync('${c.id}')">⌨</button>
           <button class="vox-ib" title="Play voiceover" onclick="_voxPlay('${c.id}')">▶</button>
-          <button class="vox-ib" title="Generate speech" onclick="_voxGen('${c.id}')">🎙</button>
+          <button class="vox-ib" title="Make voice" onclick="_voxGen('${c.id}')">🎙</button>
           <button class="vox-ib" title="Delete line" onclick="_voxDel('${c.id}')">✕</button>
         </div>
         ${c.words
@@ -12883,7 +12885,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   function fmt(ms){ var s=Math.floor(ms/1000); return Math.floor(s/60)+':'+('0'+(s%60)).slice(-2); }
   function startTimer(){ t0=Date.now(); timer=setInterval(function(){ var el=Date.now()-t0,left=MAX-el,t=$id('vrecTimer');
     t.textContent='\u25CF '+fmt(el)+' / 5:00'; t.className='vrec-timer'+(left<=30000?' warn':'');
-    if(left<=0){ stopTimer(); if(rec&&rec.state!=='inactive')rec.stop(); vToast('Recording limit reached, stopped at 5:00','error'); } },500); }
+    if(left<=0){ stopTimer(); if(rec&&rec.state!=='inactive')rec.stop(); vToast('Stopped at the 5-minute limit.','error'); } },500); }
   function stopTimer(){ if(timer){clearInterval(timer);timer=null;} }
 
   async function start(){
@@ -12909,7 +12911,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       disp.getVideoTracks()[0].onended=function(){ if(rec&&rec.state!=='inactive')rec.stop(); };
       rec.start(1000);
       $id('vrecStart').disabled=true; $id('vrecStop').disabled=false;
-      vToast('Recording. Max 5 minutes.','info'); startTimer();
+      vToast('Recording…','info'); startTimer();
     }catch(e){ $id('vrecStatus').textContent='Error: '+e.message; }
   }
   function stop(){ if(rec&&rec.state!=='inactive')rec.stop(); }
