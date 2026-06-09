@@ -1500,6 +1500,101 @@
     box-shadow: 0 4px 16px rgba(123,97,255,0.4) !important;
   }
 </style>
+<!-- ===== VoxScript styles (left-docked, matches editor chrome) ===== -->
+<style id="vox-style">
+  .vox-open-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+    background:linear-gradient(135deg,#1F8AFF,#0050a0);border:none;color:#fff;font-weight:700;font-size:13px;
+    border-radius:10px;padding:11px;cursor:pointer;box-shadow:0 4px 14px rgba(31,138,255,.3)}
+  .vox-open-btn:hover{filter:brightness(1.07)}
+  /* v2: transcript docks on the RIGHT as a tab. Left rail/tools/canvas never hide. */
+  #voxPanel{position:fixed;top:99px;right:0;bottom:calc(var(--layout-timeline-h,280px) + 1px);width:var(--layout-right-w,320px);z-index:40;
+    background:var(--panel,#1A1D24);border-left:1px solid var(--line,#2A2D34);display:none;flex-direction:column;
+    font-family:'Satoshi',-apple-system,sans-serif;color:#fff}
+  .app.vox-open #voxPanel{display:flex}
+  /* Properties | Transcript tab bar pinned to the top of the right rail */
+  #voxTabs{position:fixed;top:57px;right:0;width:var(--layout-right-w,320px);height:42px;z-index:46;
+    display:flex;gap:4px;align-items:center;padding:6px 10px;background:var(--panel,#1A1D24);
+    border-bottom:1px solid var(--line,#2A2D34)}
+  #voxTabs .vtab{flex:1;text-align:center;font-size:12.5px;font-weight:600;color:var(--text-dim,#8A909C);
+    padding:7px;border-radius:9px;cursor:pointer;background:transparent;border:0;font-family:inherit}
+  #voxTabs .vtab:hover{color:var(--text,#fff)}
+  #voxTabs .vtab.on{background:var(--panel-3,#1A1D24);color:#fff;box-shadow:inset 0 0 0 1px var(--line,#2A2D34)}
+  .right-rail{padding-top:42px}
+  .vox-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line,#2A2D34)}
+  .vox-h .t{font-weight:700;font-size:14px}.vox-h .t b{color:#1F8AFF}
+  .vox-h .sub{font-size:11px;color:#8B92A3}.vox-h .sp{flex:1}
+  .vox-x{background:transparent;border:1px solid var(--line,#2A2D34);color:#8B92A3;border-radius:8px;width:30px;height:30px;cursor:pointer}
+  .vox-search{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line,#2A2D34)}
+  .vox-search input{flex:1;background:#14161B;border:1px solid var(--line,#2A2D34);color:#fff;border-radius:8px;padding:8px 11px;font-size:13px;outline:none}
+  .vox-search input:focus{border-color:#1F8AFF}
+  .vox-search .f{width:34px;border:1px solid var(--line,#2A2D34);border-radius:8px;background:#14161B;color:#8B92A3;cursor:pointer}
+  .vox-ctrls{display:flex;gap:8px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line,#2A2D34);flex-wrap:wrap}
+  .vox-ctrls select{background:#14161B;border:1px solid var(--line,#2A2D34);color:#fff;border-radius:7px;padding:5px 8px;font-size:11.5px;outline:none}
+  .vox-ctrls .lbl{font-size:11px;color:#8B92A3}
+  .vox-seg-toggle{display:flex;border:1px solid var(--line,#2A2D34);border-radius:8px;overflow:hidden}
+  .vox-seg-toggle button{background:transparent;border:0;color:#8B92A3;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer}
+  .vox-seg-toggle button.on{background:#1F8AFF;color:#fff}
+  .vox-status{font-size:11px;color:#8B92A3;padding:7px 14px;border-bottom:1px solid var(--line,#2A2D34)}
+  .vox-status b{color:#22c55e}
+  .vox-list{flex:1;overflow:auto;padding:14px}
+  .vox-clip{margin-bottom:18px}
+  .vox-clip-h{display:flex;align-items:center;gap:7px;margin-bottom:6px;position:relative}
+  .vox-chip{font-size:11px;padding:2px 8px;border-radius:7px;border:1px solid var(--line,#2A2D34);background:#14161B;color:#8B92A3}
+  .vox-chip.num{color:#fff;font-variant-numeric:tabular-nums}
+  .vox-chip.voice{color:#A78BFA;border-color:rgba(167,139,250,.4);padding:1px 6px}
+  .vox-chip.voice select{background:transparent;border:0;color:#A78BFA;font-size:11px;outline:none}
+  .vox-clip-h .sp{flex:1}
+  .vox-ib{width:26px;height:26px;border-radius:7px;border:1px solid var(--line,#2A2D34);background:#14161B;color:#4DA3FF;cursor:pointer;font-size:12px}
+  .vox-ib:hover{border-color:#3A3E47}
+  .vox-body{font-size:14.5px;line-height:1.7;color:#d6dae3;outline:none;border-radius:8px;padding:5px 4px;min-height:30px}
+  .vox-body:empty:before{content:attr(data-ph);color:#5b6373}
+  .vox-body:focus{background:rgba(31,138,255,.05)}
+  .vox-body.dirty{box-shadow:inset 2px 0 0 #FFD43B;padding-left:9px}
+  .vox-sync{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:1px 7px;margin:0 3px;border-radius:6px;border:1px solid #1F8AFF;color:#4DA3FF;background:rgba(31,138,255,.1);vertical-align:1px;user-select:none;cursor:pointer}
+  .vox-state{font-size:11px;margin-top:6px}
+  .vox-badge{font-size:10.5px;padding:2px 8px;border-radius:20px;border:1px solid var(--line,#2A2D34);color:#8B92A3}
+  .vox-badge.stale{color:#FFD43B;border-color:rgba(255,212,59,.4)}
+  .vox-badge.fresh{color:#22c55e;border-color:rgba(34,197,94,.4)}
+  .vox-badge.cached{color:#4DA3FF}
+  .vox-badge.gen{color:#1F8AFF}
+  .vox-foot{display:flex;align-items:center;gap:7px;padding:10px 14px;border-top:1px solid var(--line,#2A2D34)}
+  .vox-foot .sp{flex:1}
+  .vox-btn{background:#14161B;border:1px solid var(--line,#2A2D34);color:#fff;border-radius:8px;padding:7px 11px;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .vox-btn:hover{border-color:#3A3E47}
+  .vox-btn.pri{background:#fff;color:#111;border-color:#fff}
+  .vox-spin{display:inline-block;width:11px;height:11px;border:2px solid #345;border-top-color:#1F8AFF;border-radius:50%;animation:voxsp .7s linear infinite;vertical-align:-1px}
+  @keyframes voxsp{to{transform:rotate(360deg)}}
+</style>
+  <!-- ============ DBX CLEAN RE-SKIN (Phase 1, CSS-only, additive) ============ -->
+  <style id="dbx-reskin">
+    /* Palette swap to clean near-black + Darwinbox cobalt. Editor is token-driven,
+       so re-declaring values here re-skins every panel without touching structure. */
+    :root{
+      --bg:#0A0B0D; --panel:#121316; --panel-2:#0E0F12; --panel-3:#1A1D24;
+      --line:#23262C; --line-hover:#33373F;
+      --accent:#0183FF; --accent-hover:#4DA6FF;
+      --text:#EDEFF3; --text-dim:#8A909C;
+      --danger:#F87171; --success:#34D399; --warning:#FBBF24;
+      --audio-color:#7C9CFF;
+    }
+    /* --- minimal, low-risk polish --- */
+    .btn, .tool-btn, .add-slide-btn{ border-radius:10px; }
+    .tl-track{ border-radius:9px; }
+    /* cobalt-tint the lane backgrounds so nothing reads purple/yellow/green */
+    .tl-track.segment-track{ background:rgba(1,131,255,0.045); }
+    .tl-track.audio-track{ background:rgba(124,156,255,0.06); }
+    .tl-track.effects-track{ background:rgba(1,131,255,0.05); }
+    .tl-track.callout-track{ background:rgba(1,131,255,0.04); }
+    .tl-track.textoverlay-track{ background:rgba(124,156,255,0.06); }
+    /* clean scrollbars */
+    .left-rail::-webkit-scrollbar, .right-rail::-webkit-scrollbar,
+    .timeline-zone ::-webkit-scrollbar{ width:9px; height:9px; }
+    .left-rail::-webkit-scrollbar-thumb, .right-rail::-webkit-scrollbar-thumb,
+    .timeline-zone ::-webkit-scrollbar-thumb{ background:var(--line-hover); border-radius:6px; }
+    .left-rail::-webkit-scrollbar-track, .right-rail::-webkit-scrollbar-track,
+    .timeline-zone ::-webkit-scrollbar-track{ background:transparent; }
+  </style>
+  <!-- ============ /DBX CLEAN RE-SKIN ============ -->
 </head>
 <body>
 
@@ -1754,6 +1849,35 @@
 
 <div class="audio-meta-loader" id="audioMetaLoader"></div>
 <div class="toast" id="toast"></div>
+
+<!-- ===== Right-rail tabs: Properties | Transcript ===== -->
+<div id="voxTabs">
+  <button class="vtab on" id="voxTabProps">Properties</button>
+  <button class="vtab" id="voxTabTr">Transcript</button>
+</div>
+<!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
+<div id="voxPanel">
+  <div class="vox-h">
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match.</div></div>
+    <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
+  </div>
+  <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
+  <div class="vox-ctrls">
+    <span class="lbl">model</span>
+    <div class="vox-seg-toggle"><button class="on" id="voxFlash">Flash</button><button id="voxV2">v2</button></div>
+    <span class="lbl">voice</span><select id="voxDefVoice"></select>
+    <select id="voxLang" title="Localize"><option value="en">EN</option><option value="es">ES</option><option value="hi">HI</option><option value="ar">AR</option><option value="fr">FR</option></select>
+  </div>
+  <div class="vox-status" id="voxStatus">connecting…</div>
+  <div class="vox-list" id="voxList"></div>
+  <div class="vox-foot">
+    <button class="vox-btn" id="voxAdd">＋ Clip</button>
+    <button class="vox-btn" id="voxRewrite">✎ AI Rewrite</button>
+    <span class="sp"></span>
+    <span class="lbl" id="voxDirty" style="font-size:11px;color:#8B92A3"></span>
+    <button class="vox-btn pri" id="voxGenAll">🎙 Generate speech</button>
+  </div>
+</div>
 
 <!-- v3.28b.68: AI Assistant — non-destructive chat panel. Drives the SAME
      state-mutation functions the UI buttons call. No special powers. -->
@@ -8588,7 +8712,7 @@ async function handleBulkFileUpload(fileList, kind) {
   // Pre-flight validation per file
   const valid = [];
   const skipped = [];   // [{ name, reason, dim? }]
-  const MAX_SIZE = 500 * 1024 * 1024;
+  const MAX_SIZE = 3 * 1024 * 1024 * 1024;
   for (const file of files) {
     if (kind === 'video' && !file.type.startsWith('video/')) {
       skipped.push({ name: file.name, reason: 'Not a video file' });
@@ -8599,7 +8723,7 @@ async function handleBulkFileUpload(fileList, kind) {
       continue;
     }
     if (file.size > MAX_SIZE) {
-      skipped.push({ name: file.name, reason: 'File too large (max 500MB)' });
+      skipped.push({ name: file.name, reason: 'File too large (max 3GB)' });
       continue;
     }
     if (kind === 'video') {
@@ -8774,9 +8898,9 @@ async function handleFileUpload(file, kind) {
   $(inputId).value = '';
 
   // Validate file
-  const MAX_SIZE = 500 * 1024 * 1024; // 500MB
+  const MAX_SIZE = 3 * 1024 * 1024 * 1024; // 3GB
   if (file.size > MAX_SIZE) {
-    showToast('File too large (max 500MB)', 'error');
+    showToast('File too large (max 3GB)', 'error');
     return;
   }
   if (kind === 'video' && !file.type.startsWith('video/')) {
@@ -12311,5 +12435,117 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     <div class="tl-context-item" data-action="copy">Copy</div>
     <div class="tl-context-item" data-action="delete">Delete</div>
   </div>
+<!-- ===== VoxScript module (left dock, contenteditable transcript, live worker) ===== -->
+<script>
+(function(){
+  const VOX_WORKER='https://voxscript-worker.girishreddy262.workers.dev';
+  let VOICES=[], model='flash', lang='en', defVoice='';
+  let clips=[];
+  const $=id=>document.getElementById(id);
+  const app=()=>document.querySelector('.app');
+
+  function newClip(t){return {id:Math.random().toString(36).slice(2,8),html:t||'',voice:defVoice,audioUrl:null,aMs:0,dirty:!!t,gen:false,busy:false,err:null,cache:''};}
+
+  function setTab(t){ var p=$('voxTabProps'),r=$('voxTabTr'); if(p)p.classList.toggle('on',t==='props'); if(r)r.classList.toggle('on',t==='tr'); }
+  function open(){ app().classList.add('vox-open'); setTab('tr'); if(!clips.length){clips=[newClip('')];render();} try{fitCanvasToViewport&&fitCanvasToViewport();}catch(e){} }
+  function close(){ app().classList.remove('vox-open'); setTab('props'); try{fitCanvasToViewport&&fitCanvasToViewport();}catch(e){} }
+  var _tt=$('voxTabTr'); if(_tt)_tt.addEventListener('click',open);
+  var _tp=$('voxTabProps'); if(_tp)_tp.addEventListener('click',close);
+  var _ob=$('voxOpenBtn'); if(_ob)_ob.addEventListener('click',open);
+  $('voxClose').addEventListener('click',close);
+
+  $('voxFlash').addEventListener('click',()=>setModel('flash'));
+  $('voxV2').addEventListener('click',()=>setModel('v2'));
+  function setModel(m){model=m;$('voxFlash').classList.toggle('on',m==='flash');$('voxV2').classList.toggle('on',m==='v2');markAllDirty();}
+  $('voxLang').addEventListener('change',e=>{lang=e.target.value;markAllDirty();});
+  $('voxDefVoice').addEventListener('change',e=>{defVoice=e.target.value;});
+  $('voxAdd').addEventListener('click',()=>{clips.push(newClip(''));render();});
+  $('voxGenAll').addEventListener('click',async()=>{for(const c of clips) await gen(c);});
+  $('voxRewrite').addEventListener('click',()=>{/* AI rewrite hooks into Worker /vox/clean when ANTHROPIC key lands */});
+
+  function markAllDirty(){clips.forEach(c=>{if(c.gen)c.dirty=true;});render();}
+
+  async function boot(){
+    try{const h=await(await fetch(VOX_WORKER+'/')).json();
+      $('voxStatus').innerHTML=h.live&&h.live.tts?'<b>● voiceover live</b> — type, then Generate speech':'worker on, TTS off (set ELEVENLABS_API_KEY)';
+    }catch(e){$('voxStatus').textContent='worker unreachable from this origin (deploy to GitHub Pages, or run on localhost)';}
+    try{const j=await(await fetch(VOX_WORKER+'/vox/voices')).json();
+      VOICES=(j.voices||[]).map(v=>({id:v.voiceId,n:v.name}));defVoice=(VOICES[0]||{}).id||'';
+      $('voxDefVoice').innerHTML=VOICES.map(v=>`<option value="${v.id}">${v.n}</option>`).join('');
+    }catch(e){$('voxDefVoice').innerHTML='<option>voices unavailable</option>';}
+  }
+
+  function bodyEl(id){return document.querySelector('.vox-body[data-id="'+id+'"]');}
+  function clipText(id){const el=bodyEl(id);if(!el)return '';const c=el.cloneNode(true);c.querySelectorAll('.vox-sync').forEach(n=>n.remove());return (c.textContent||'').replace(/\s+/g,' ').trim();}
+  function durationOf(url){return new Promise(r=>{const a=new Audio();a.preload='metadata';a.onloadedmetadata=()=>r(a.duration||0);a.onerror=()=>r(0);a.src=url;});}
+
+  async function gen(c){
+    const text=clipText(c.id); if(!text){return;}
+    c.busy=true;c.err=null;renderStates();
+    try{
+      const res=await fetch(VOX_WORKER+'/vox/tts',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text,voiceId:c.voice||defVoice,model,lang})});
+      if(!res.ok){let e={};try{e=await res.json();}catch{} throw new Error(e.error||('HTTP '+res.status));}
+      c.cache=res.headers.get('X-VoxScript-Cache')||'';
+      const buf=await res.arrayBuffer();
+      if(c.audioUrl)URL.revokeObjectURL(c.audioUrl);
+      c.audioUrl=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));
+      c.aMs=Math.round((await durationOf(c.audioUrl))*1000);
+      c.gen=true;c.dirty=false;
+    }catch(err){c.err=String(err.message||err);}
+    c.busy=false;renderStates();
+  }
+
+  window._voxVoice=(id,v)=>{const c=clips.find(x=>x.id===id);c.voice=v;c.dirty=true;renderStates();};
+  window._voxGen=id=>{const c=clips.find(x=>x.id===id);if(c)gen(c);};
+  window._voxPlay=id=>{const c=clips.find(x=>x.id===id);if(c&&c.audioUrl)new Audio(c.audioUrl).play();};
+  window._voxDel=id=>{clips=clips.filter(x=>x.id!==id);render();};
+  window._voxDirty=id=>{const c=clips.find(x=>x.id===id);if(c){c.dirty=true;c.gen=c.gen;}renderStates();};
+  window._voxSync=id=>{ // insert a Sync Point chip at the caret
+    const el=bodyEl(id);if(!el)return;el.focus();
+    const sel=window.getSelection();const chip=document.createElement('span');chip.className='vox-sync';chip.contentEditable='false';chip.textContent='⌨ Sync Point';
+    if(sel&&sel.rangeCount){const r=sel.getRangeAt(0);r.collapse(false);r.insertNode(chip);r.setStartAfter(chip);r.setEndAfter(chip);sel.removeAllRanges();sel.addRange(r);}else{el.appendChild(chip);}
+    const c=clips.find(x=>x.id===id);if(c){c.dirty=true;renderStates();}
+  };
+
+  function fmt(ms){return (ms/1000).toFixed(1)+'s';}
+  function badgeHtml(c){
+    if(c.busy)return '<span class="vox-badge gen"><span class="vox-spin"></span> generating</span>';
+    if(c.err)return '<span class="vox-badge stale">error: '+c.err+'</span>';
+    if(c.dirty&&clipText(c.id))return '<span class="vox-badge stale">⟳ needs Generate speech</span>';
+    if(c.gen)return '<span class="vox-badge fresh">✓ voiceover in sync · '+fmt(c.aMs)+'</span>'+(c.cache==='HIT'?' <span class="vox-badge cached">cached</span>':'');
+    return '';
+  }
+  function renderStates(){ // update badges/voice/dirty WITHOUT touching contenteditable (keeps caret)
+    clips.forEach(c=>{
+      const el=bodyEl(c.id);if(el)el.classList.toggle('dirty',c.dirty);
+      const st=document.querySelector('.vox-state[data-id="'+c.id+'"]');if(st)st.innerHTML=badgeHtml(c);
+    });
+    const d=clips.filter(c=>c.dirty&&clipText(c.id)).length;$('voxDirty').textContent=d?d+' to generate':'';
+  }
+  function render(){
+    const L=$('voxList');L.innerHTML='';
+    clips.forEach((c,i)=>{
+      const d=document.createElement('div');d.className='vox-clip';
+      const vo=VOICES.map(v=>`<option value="${v.id}" ${v.id===c.voice?'selected':''}>${v.n}</option>`).join('');
+      d.innerHTML=`<div class="vox-clip-h">
+          <span class="vox-chip num">${i+1}</span>
+          <span class="vox-chip voice">🎙 <select onchange="_voxVoice('${c.id}',this.value)">${vo}</select></span>
+          <span class="sp"></span>
+          <button class="vox-ib" title="Insert sync point" onclick="_voxSync('${c.id}')">⌨</button>
+          <button class="vox-ib" title="Generate speech" onclick="_voxGen('${c.id}')">🎙</button>
+          <button class="vox-ib" title="Delete clip" onclick="_voxDel('${c.id}')">✕</button>
+        </div>
+        <div class="vox-body${c.dirty?' dirty':''}" data-id="${c.id}" data-ph="Type narration… (use ⌨ to drop a Sync Point)" contenteditable="true"
+             oninput="_voxDirty('${c.id}')">${c.html||''}</div>
+        <div class="vox-state" data-id="${c.id}">${badgeHtml(c)}</div>`;
+      L.appendChild(d);
+    });
+    renderStates();
+  }
+
+  boot();
+})();
+</script>
 </body>
 </html>
