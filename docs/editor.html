@@ -6604,6 +6604,8 @@ function onHandleMouseDown(e, item, kind, side) {
   const startX = e.clientX;
   const startMs0 = item.startMs;
   const dur0 = item.durationMs;
+  const src0 = item.sourceStartMs || 0;        // in-point (video clips only)
+  const isVid = isRecordingSegment(item);      // only video clips have a source in-point to shift
   const px = getEffectivePxPerMs();
   // v3.28b.92: no-overlap clamps removed from resize — clips can now be sized
   // freely, including past their neighbors. Pair this with the drag-side
@@ -6625,10 +6627,18 @@ function onHandleMouseDown(e, item, kind, side) {
       const newDur = Math.max(100, newEnd - startMs0);
       item.durationMs = newDur;
     } else {
-      let newStart = Math.max(0, startMs0 + dms);
-      // Keep the right edge fixed: durationMs shrinks/grows opposite to delta
-      const delta = newStart - startMs0;
-      item.startMs = newStart;
+      // Left edge = the clip's IN-POINT. Clamp the shift, then for video clips move
+      // sourceStartMs by the same amount so dragging LEFT restores earlier footage and
+      // dragging RIGHT trims the start. The source out-point (end) stays fixed.
+      let delta = dms;
+      if (startMs0 + delta < 0) delta = -startMs0;            // start can't go below 0
+      if (dur0 - delta < 100) delta = dur0 - 100;             // can't shrink below 100ms
+      if (isVid) {
+        const spd = item.speed || 1.0;
+        if (src0 + Math.round(delta * spd) < 0) delta = Math.round(-src0 / spd); // can't reveal earlier than source start
+        item.sourceStartMs = src0 + Math.round(delta * spd);
+      }
+      item.startMs = Math.max(0, startMs0 + delta);
       item.durationMs = Math.max(100, dur0 - delta);
     }
     sched();
