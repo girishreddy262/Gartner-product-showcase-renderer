@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p3d</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p3e</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -12573,6 +12573,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:c.voAid,startMs:Math.round(clipStart),durationMs:Math.round(c.aMs),volume:1.0});
       }
     });
+    try{var _rs=state.segments.filter(function(s){return s.kind==='recording';});console.log('[voxResync] '+_rs.length+' recording segs, '+Math.round(_rs.reduce(function(a,s){return a+s.durationMs;},0))+'ms total');}catch(e){}
     try{setupAudioElements&&setupAudioElements();}catch(e){}
     try{renderLeftRail&&renderLeftRail();}catch(e){}
     try{rebuildAll&&rebuildAll();}catch(e){}
@@ -12648,9 +12649,11 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       var _allw=[]; segs.forEach(function(s){(s.words||[]).forEach(function(w){_allw.push(w);});});
       for(var k=0;k<_allw.length;k++){
         var pe=(k===0?0:_allw[k-1].end), cs=_allw[k].start, ce=_allw[k].end, ns=(k===_allw.length-1?(_D||ce):_allw[k+1].start);
-        _allw[k].tileStart=(k===0?0:Math.round((pe+cs)/2));
-        _allw[k].tileEnd=(k===_allw.length-1?Math.max(ce,_D||ce):Math.round((ce+ns)/2));
-        _allw[k].del=false;
+        var ts=(k===0?0:Math.round((pe+cs)/2));
+        var te=(k===_allw.length-1?Math.max(ce,_D||ce):Math.round((ce+ns)/2));
+        if(!isFinite(ts)||ts<0)ts=(isFinite(cs)?Math.max(0,cs):0);
+        if(!isFinite(te)||te<=ts)te=ts+Math.max(1,Math.round((isFinite(ce)&&isFinite(cs))?(ce-cs):200));
+        _allw[k].tileStart=ts; _allw[k].tileEnd=te; _allw[k].del=false;
       }
       clips=segs.map(function(s,i){
         var c=newClip(s.text);
@@ -12658,6 +12661,13 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         c.srcStartMs=s.startMs; c.srcEndMs=s.endMs;
         c.dirty=true; c.gen=false; return c;
       });
+      // auto-place the recording on the timeline (if not already) so transcript edits actually cut it
+      try{
+        if(typeof state!=='undefined' && state.segments && !state.segments.some(function(s){return s.kind==='recording'&&s.videoId===videoId;}) && typeof addVideoSegment==='function'){
+          var endMs=state.segments.reduce(function(m,s){return Math.max(m,(s.startMs||0)+(s.durationMs||0));},0);
+          addVideoSegment(videoId, endMs);
+        }
+      }catch(e){ console.warn('auto-place failed',e); }
       render();
       $('voxStatus').textContent=segs.length+' segment'+(segs.length>1?'s':'')+' · edit the words, then Generate speech';
     }catch(e){ $('voxStatus').textContent='Transcribe failed: '+((e&&e.message)?e.message:e); }
