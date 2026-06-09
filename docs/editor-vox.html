@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p4b</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p5</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -12535,15 +12535,25 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     clips=clips.filter(function(x){return x.id!==id;});
     render();
     if(vid&&window._voxRebuildVideo)window._voxRebuildVideo(vid);
+    _voxScheduleRegen();
   };
   // voice mode: 'original' = keep the recorded voice (auto-cut to transcript), 'ai' = replace with TTS
   var _voxVoiceMode='original';
+  // auto-regenerate the AI voiceover after transcript edits (debounced) so a deleted word is NEVER still spoken
+  var _voxRegenTimer=null;
+  function _voxScheduleRegen(){
+    if(_voxVoiceMode!=='ai')return; // 'original' mode plays the recorded voice cut to the video — no TTS to regenerate
+    if(_voxRegenTimer)clearTimeout(_voxRegenTimer);
+    try{$('voxStatus').textContent='Transcript edited — updating AI voiceover…';}catch(e){}
+    _voxRegenTimer=setTimeout(function(){ _voxRegenTimer=null; if(window._voxAddVO)window._voxAddVO(); },700);
+  }
   // Word-level: toggle one word deleted and cut its time from the video
   window._voxWordDel=function(cid,wi){
     var c=clips.find(function(x){return x.id===cid;});
     if(!c||!c.words||!c.words[wi])return;
     c.words[wi].del=!c.words[wi].del; c.dirty=true; c.voUrl=null; render(); // dirty+clear stale VO so AI voiceover regenerates from surviving words
     if(c.srcVideoId&&window._voxResync)window._voxResync(c.srcVideoId);
+    _voxScheduleRegen();
   };
   // Resync: rebuild a recording's timeline so each sentence's footage fills its voiceover length
   // (speed-fit per clip; engine maps sourceT = sourceStart + localTimelineT*speed) and place the
