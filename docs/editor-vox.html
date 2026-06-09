@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p4</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p4b</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -7538,6 +7538,7 @@ function tick() {
   const active = state.segments.find(s => view.curTimeMs >= s.startMs && view.curTimeMs < s.startMs + s.durationMs);
   const activeId = active ? active.id : null;
   if (activeId !== _lastActiveSegmentId) {
+    const _voxPrevSegId = _lastActiveSegmentId; // VoxScript: outgoing segment, used to detect a transcript cut
     _lastActiveSegmentId = activeId;
     // v3.28b.87: SEAMLESS cut/speed-change. If the new active segment is a video
     // from the SAME source video as the element we already have playing, do NOT
@@ -7566,10 +7567,18 @@ function tick() {
       // is contiguous so drift is near-zero, and the wider window prevents the
       // tiny seek that was producing the .001s black flash at segment boundary.
       const drift = Math.abs((v.currentTime || 0) - targetT);
+      // VoxScript: detect a transcript CUT by data — this segment's source start is not
+      // contiguous with the previous segment's source end (same source video). Force the
+      // seek for any real cut so even short (<100ms) deleted words actually skip, in both
+      // the video and the original recorded voice. Contiguous boundaries keep the looser
+      // 100ms tolerance so seamless sentence joins don't get a decode flash.
+      var _voxPrev = state.segments.find(function(s){return s.id===_voxPrevSegId;});
+      var _voxIsCut = _voxPrev && _voxPrev.videoId===active.videoId &&
+        Math.abs((active.sourceStartMs||0) - ((_voxPrev.sourceStartMs||0)+(_voxPrev.durationMs||0))) > 30;
       if (Math.abs((v.playbackRate || 1) - spd) > 0.001) {
         v.playbackRate = spd;
       }
-      if (drift > 0.1) {
+      if (drift > 0.1 || _voxIsCut) {
         try { v.currentTime = clamp(targetT, 0, v.duration || 0); } catch(_) {}
       }
       // overlays still need refreshing for the new segment context
