@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p3e</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p4</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -1879,7 +1879,8 @@
     <button class="vox-btn" id="voxRewrite">✎ AI Rewrite</button>
     <span class="sp"></span>
     <span class="lbl" id="voxDirty" style="font-size:11px;color:#8B92A3"></span>
-    <button class="vox-btn" id="voxUseVO" title="Upload the generated voiceover to the timeline and mute source audio">🎬 Use as voiceover</button>
+    <button class="vox-btn" id="voxUseOrig" title="Use your original recorded voice, automatically cut to the edited transcript">🎤 Keep my voice</button>
+    <button class="vox-btn" id="voxUseVO" title="Replace with an AI voice generated from the edited transcript, and mute the original audio">🤖 Use AI voiceover</button>
     <button class="vox-btn pri" id="voxGenAll">🎙 Generate speech</button>
   </div>
 </div>
@@ -12471,6 +12472,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   $('voxAdd').addEventListener('click',()=>{clips.push(newClip(''));render();});
   $('voxGenAll').addEventListener('click',async()=>{for(const c of clips) await gen(c); if(window._voxAddVO) await window._voxAddVO();});
   (function(){var b=document.getElementById('voxUseVO'); if(b)b.addEventListener('click',function(){window._voxAddVO&&window._voxAddVO();});})();
+  (function(){var b=document.getElementById('voxUseOrig'); if(b)b.addEventListener('click',function(){window._voxUseOriginal&&window._voxUseOriginal();});})();
   $('voxRewrite').addEventListener('click',()=>{/* AI rewrite hooks into Worker /vox/clean when ANTHROPIC key lands */});
 
   function markAllDirty(){clips.forEach(c=>{if(c.gen)c.dirty=true;});render();}
@@ -12525,11 +12527,13 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
     render();
     if(vid&&window._voxRebuildVideo)window._voxRebuildVideo(vid);
   };
+  // voice mode: 'original' = keep the recorded voice (auto-cut to transcript), 'ai' = replace with TTS
+  var _voxVoiceMode='original';
   // Word-level: toggle one word deleted and cut its time from the video
   window._voxWordDel=function(cid,wi){
     var c=clips.find(function(x){return x.id===cid;});
     if(!c||!c.words||!c.words[wi])return;
-    c.words[wi].del=!c.words[wi].del; c.dirty=true; render();
+    c.words[wi].del=!c.words[wi].del; c.dirty=true; c.voUrl=null; render(); // dirty+clear stale VO so AI voiceover regenerates from surviving words
     if(c.srcVideoId&&window._voxResync)window._voxResync(c.srcVideoId);
   };
   // Resync: rebuild a recording's timeline so each sentence's footage fills its voiceover length
@@ -12564,10 +12568,10 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         seg.id=(typeof uid==='function'?uid('seg'):'seg'+Math.random().toString(36).slice(2,8));
         seg.kind='recording'; seg.videoId=canonical;
         seg.sourceStartMs=Math.round(r.start); seg.durationMs=tlDur; seg.startMs=Math.round(running);
-        seg.speed=1; seg.muteSourceAudio=true;
+        seg.speed=1; seg.muteSourceAudio=(_voxVoiceMode==='ai'); // keep recorded voice in 'original' mode
         state.segments.push(seg); running+=tlDur;
       });
-      if(c.gen&&c.voUrl&&c.aMs&&!c.dirty){
+      if(_voxVoiceMode==='ai'&&c.gen&&c.voUrl&&c.aMs&&!c.dirty){
         if(!(state.audios||[]).some(function(a){return a.id===c.voAid;})){ state.audios.push({id:c.voAid,filename:'VO',url:c.voUrl}); }
         audioDurations[c.voAid]=Math.round(c.aMs);
         state.audioPlacements.push({id:(typeof uid==='function'?uid('ap'):'ap'+Math.random().toString(36).slice(2,8)),audioId:c.voAid,startMs:Math.round(clipStart),durationMs:Math.round(c.aMs),volume:1.0});
@@ -12589,24 +12593,46 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
   // Phase 3: upload generated voiceover to S3, place on the timeline, mute source audio (renders via existing audio path)
   window._voxAddVO=async function(){
     if(typeof state==='undefined'){return;}
-    var gen=clips.filter(function(c){return c.gen&&c.audioUrl;});
-    if(!gen.length){ $('voxStatus').textContent='Generate speech first, then Use as voiceover'; return; }
-    $('voxStatus').textContent='Uploading voiceover…';
+    _voxVoiceMode='ai';
+    var speak=clips.filter(function(c){return (clipText(c.id)||'').length>0;});
+    if(!speak.length){ $('voxStatus').textContent='Transcript is empty — nothing to voice'; return; }
     try{
-      for(var i=0;i<gen.length;i++){
-        var c=gen[i];
-        if(!c.voUrl){
-          var blob=await(await fetch(c.audioUrl)).blob();
-          var file=new File([blob],'vo_'+c.id+'.mp3',{type:'audio/mpeg'});
-          c.voUrl=await uploadToS3(file,'audio',function(){});
-          c.voAid='audio_vo_'+c.id;
+      // 1. (re)generate TTS for any clip that is new or was edited since last gen, from the SURVIVING words
+      $('voxStatus').textContent='Generating AI voiceover from the current transcript…';
+      for(var i=0;i<speak.length;i++){
+        var c=speak[i];
+        if(c.dirty||!c.gen||!c.audioUrl){ c.voUrl=null; await gen(c); }
+      }
+      // 2. upload fresh audio for any clip missing an uploaded URL
+      $('voxStatus').textContent='Uploading voiceover…';
+      for(var j=0;j<speak.length;j++){
+        var c2=speak[j];
+        if(c2.gen&&c2.audioUrl&&!c2.voUrl){
+          var blob=await(await fetch(c2.audioUrl)).blob();
+          var file=new File([blob],'vo_'+c2.id+'.mp3',{type:'audio/mpeg'});
+          c2.voAid='audio_vo_'+c2.id;
+          c2.voUrl=await uploadToS3(file,'audio',function(){});
         }
       }
+      // 3. place on the timeline + mute source (resync reads _voxVoiceMode)
       var vids={}; clips.forEach(function(c){if(c.srcVideoId)vids[c.srcVideoId]=1;});
-      Object.keys(vids).forEach(function(vid){ if(window._voxResync)window._voxResync(vid); });
+      var ks=Object.keys(vids);
+      if(ks.length){ ks.forEach(function(vid){ if(window._voxResync)window._voxResync(vid); }); }
+      else if(window._voxResync){ window._voxResync(); }
       try{pushHistory&&pushHistory();}catch(e){}
-      $('voxStatus').textContent='Voiceover synced to the video · Approve & render to bake in';
-    }catch(e){ $('voxStatus').textContent='Use as voiceover failed: '+((e&&e.message)?e.message:e); }
+      $('voxStatus').textContent='AI voiceover synced to the edited transcript · Approve & render to bake in';
+    }catch(e){ $('voxStatus').textContent='AI voiceover failed: '+((e&&e.message)?e.message:e); }
+  };
+  // Keep the original recorded voice, automatically cut to the edited transcript (no TTS)
+  window._voxUseOriginal=function(){
+    if(typeof state==='undefined'){return;}
+    _voxVoiceMode='original';
+    var vids={}; clips.forEach(function(c){if(c.srcVideoId)vids[c.srcVideoId]=1;});
+    var ks=Object.keys(vids);
+    if(ks.length){ ks.forEach(function(vid){ if(window._voxResync)window._voxResync(vid); }); }
+    else if(window._voxResync){ window._voxResync(); }
+    try{pushHistory&&pushHistory();}catch(e){}
+    $('voxStatus').textContent='Using your original recorded voice, cut to the transcript · Approve & render to bake in';
   };
   console.log('VoxScript build: PHASE3 — Use as voiceover places TTS on timeline + mutes source; renders via existing audio path. _voxDebug() to inspect');
   // Phase 1: split AssemblyAI words into timed sentence segments
@@ -12667,6 +12693,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
           var endMs=state.segments.reduce(function(m,s){return Math.max(m,(s.startMs||0)+(s.durationMs||0));},0);
           addVideoSegment(videoId, endMs);
         }
+        if(window._voxResync)window._voxResync(videoId); // normalize to tile-based segments with original voice live (default mode)
       }catch(e){ console.warn('auto-place failed',e); }
       render();
       $('voxStatus').textContent=segs.length+' segment'+(segs.length>1?'s':'')+' · edit the words, then Generate speech';
