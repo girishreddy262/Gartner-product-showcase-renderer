@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p6</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p7</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -8728,7 +8728,7 @@ async function handleBulkFileUpload(fileList, kind) {
   // Pre-flight validation per file
   const valid = [];
   const skipped = [];   // [{ name, reason, dim? }]
-  const MAX_SIZE = 500 * 1024 * 1024;
+  const MAX_SIZE = Infinity; // upload size limit removed
   for (const file of files) {
     if (kind === 'video' && !file.type.startsWith('video/')) {
       skipped.push({ name: file.name, reason: 'Not a video file' });
@@ -8914,7 +8914,7 @@ async function handleFileUpload(file, kind) {
   $(inputId).value = '';
 
   // Validate file
-  const MAX_SIZE = 500 * 1024 * 1024; // 500MB
+  const MAX_SIZE = Infinity; // upload size limit removed
   if (file.size > MAX_SIZE) {
     showToast('File too large (max 500MB)', 'error');
     return;
@@ -10183,6 +10183,67 @@ function scheduleAutoSave() {
   scheduleCloudSave();
 }
 
+// ── VoxScript local projects (opened via ?vox=<id>; managed from vox.html) ──────────
+var _voxProjId = (function(){ try { return new URLSearchParams(location.search).get('vox') || null; } catch(e){ return null; } })();
+var VOX_PROJ_PREFIX = 'voxscript.proj.';
+var VOX_PROJ_INDEX  = 'voxscript.projects';
+function _voxReadIndex(){ try { return JSON.parse(localStorage.getItem(VOX_PROJ_INDEX) || '[]'); } catch(e){ return []; } }
+function _voxWriteIndex(ix){ try { localStorage.setItem(VOX_PROJ_INDEX, JSON.stringify(ix)); } catch(e){} }
+function _voxProjName(){ return (state.module && state.module.name) ? state.module.name : 'Untitled recording'; }
+function _voxSaveProject(){
+  if (!_voxProjId) return;
+  try {
+    var proj = buildProjectJson(); proj._voxProjectId = _voxProjId;
+    localStorage.setItem(VOX_PROJ_PREFIX + _voxProjId, JSON.stringify(proj));
+    var ix = _voxReadIndex();
+    var now = new Date().toISOString();
+    var segCount = (state.segments || []).filter(function(s){ return s.kind === 'recording'; }).length;
+    var e = ix.find(function(p){ return p.id === _voxProjId; });
+    if (e) { e.name = _voxProjName(); e.updatedAt = now; e.segments = segCount; }
+    else { ix.push({ id: _voxProjId, name: _voxProjName(), createdAt: now, updatedAt: now, segments: segCount }); }
+    _voxWriteIndex(ix);
+  } catch(e){ console.warn('vox project save failed', e); }
+}
+// piggyback the existing autosave trigger so vox projects save on every edit
+scheduleAutoSave = (function(orig){ return function(){ orig.apply(this, arguments); if (_voxProjId) _voxSaveProject(); }; })(scheduleAutoSave);
+function _voxLoadProject(){
+  if (!_voxProjId) return;
+  var raw = null; try { raw = localStorage.getItem(VOX_PROJ_PREFIX + _voxProjId); } catch(e){}
+  if (!raw) { _voxSaveProject(); return; } // brand-new project — just seed the index entry
+  try {
+    var proj = JSON.parse(raw); var p = proj.payload || {};
+    if (p.module) state.module = p.module;
+    if (Array.isArray(p.videos)) state.videos = p.videos;
+    if (Array.isArray(p.audios)) state.audios = p.audios;
+    state.audioPlacements = p.audioPlacements || [];
+    state.segments = p.segments || [];
+    state.callouts = p.callouts || [];
+    state.effects = p.effects || [];
+    state.textOverlays = p.textOverlays || [];
+    state.customerCards = p.customerCards || [];
+    state.shapes = p.shapes || [];
+    try { normalizeSegmentTiling && normalizeSegmentTiling(); } catch(e){}
+    view.selectedId = null; view.selectedKind = null;
+    rebuildAll();
+    try { if (window._voxResync) window._voxResync(); } catch(e){}
+  } catch(e){ console.warn('vox project load failed', e); }
+}
+window._voxSaveProjectNow = _voxSaveProject;
+// inject a "Projects" back-link into the toolbar when in a vox project
+window.addEventListener('load', function(){
+  if (!_voxProjId) return;
+  try {
+    var dl = document.getElementById('btnDownloadProject');
+    if (dl && dl.parentNode && !document.getElementById('voxBackHome')) {
+      var b = document.createElement('a');
+      b.id = 'voxBackHome'; b.href = 'vox.html'; b.textContent = '\u2190 Projects';
+      b.className = dl.className; b.title = 'Back to your VoxScript projects';
+      b.style.textDecoration = 'none'; b.style.display = 'inline-flex'; b.style.alignItems = 'center';
+      dl.parentNode.insertBefore(b, dl);
+    }
+  } catch(e){}
+});
+
 // ────────────────────────────────────────────────────────────────────
 // v3.28b.12 — Cloud save (Cloudflare KV via Worker)
 // Activated only when the editor was loaded with ?project=ID. Otherwise
@@ -11393,8 +11454,13 @@ async function init() {
   document.addEventListener('click', earlyUnlock);
   document.addEventListener('keydown', earlyUnlock);
   rebuildAll();
-  // v3.24: check for unsaved auto-save snapshot and offer restore
-  setTimeout(maybeShowRestorePrompt, 500);
+  // VoxScript: if opened from the projects page (?vox=<id>), load that project and skip the generic restore banner
+  if (typeof _voxProjId !== 'undefined' && _voxProjId) {
+    setTimeout(function(){ try { _voxLoadProject(); } catch(e){ console.warn('vox load', e); } }, 300);
+  } else {
+    // v3.24: check for unsaved auto-save snapshot and offer restore
+    setTimeout(maybeShowRestorePrompt, 500);
+  }
   // v3.24.1: update indicator label based on storage mode (localStorage vs memory)
   setTimeout(updateAutoSaveIndicatorLabel, 100);
   Promise.all([preloadAudioDurations(), preloadVideoDurations()]).then(() => {
