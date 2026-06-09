@@ -1862,7 +1862,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p3c</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p3d</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -12647,8 +12647,9 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       // tile every word across the whole recording: word k owns [k? word.start : 0 , nextWord.start) (last → D)
       var _allw=[]; segs.forEach(function(s){(s.words||[]).forEach(function(w){_allw.push(w);});});
       for(var k=0;k<_allw.length;k++){
-        _allw[k].tileStart=(k===0?0:_allw[k].start);
-        _allw[k].tileEnd=(k===_allw.length-1?Math.max(_allw[k].end,_D||_allw[k].end):_allw[k+1].start);
+        var pe=(k===0?0:_allw[k-1].end), cs=_allw[k].start, ce=_allw[k].end, ns=(k===_allw.length-1?(_D||ce):_allw[k+1].start);
+        _allw[k].tileStart=(k===0?0:Math.round((pe+cs)/2));
+        _allw[k].tileEnd=(k===_allw.length-1?Math.max(ce,_D||ce):Math.round((ce+ns)/2));
         _allw[k].del=false;
       }
       clips=segs.map(function(s,i){
