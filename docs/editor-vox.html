@@ -14,12 +14,12 @@
   :root {
     --page-bg:#EBF3FE; --navy-900:#0A0B0D; --navy-700:#0E0F12; --navy-500:#0E0F12;
     --blue-400:#0183FF; --grey-text:#666769; --border:#C7E3FF; --white:#FFFFFF;
-    --bg:#14161B; --panel:#1A1D24; --panel-2:#14161B;
-    --line:#2A2D34; --line-hover:#3A3E47;
-    --accent:#1F8AFF; --accent-hover:#4DA3FF;
-    --text:#fff; --text-dim:#8B92A3;
-    --danger:#ef4444; --success:#22c55e; --warning:#FFD43B;
-    --audio-color:#A78BFA;
+    --bg:#0c0c0d; --panel:#161618; --panel-2:#1c1c1f;
+    --line:#262629; --line-hover:#313137;
+    --accent:#6258c4; --accent-hover:#7269cf;
+    --text:#ececf0; --text-dim:#8b8b92;
+    --danger:#d96b6b; --success:#46b27c; --warning:#d6c14a;
+    --audio-color:#7e77b8;
   }
   * { box-sizing:border-box; margin:0; padding:0; }
   html, body {
@@ -366,10 +366,10 @@
     background:var(--panel-2); padding:0 3px;
   }
   .tl-track { background:rgba(0,0,0,0.2); border-radius:4px; position:relative; overflow:visible; }
-  .tl-track.callout-track { height:24px; background:rgba(255,215,59,0.04); }
-  .tl-track.segment-track { height:32px; background:rgba(31,138,255,0.04); }
-  .tl-track.audio-track { height:36px; background:rgba(167,139,250,0.05); }
-  .tl-track.effects-track { height:28px; background:rgba(255,149,0,0.05); }
+  .tl-track.callout-track { height:24px; background:rgba(255,255,255,0.025); }
+  .tl-track.segment-track { height:32px; background:rgba(255,255,255,0.03); }
+  .tl-track.audio-track { height:36px; background:rgba(70,178,124,0.06); }
+  .tl-track.effects-track { height:28px; background:rgba(126,119,184,0.06); }
   .tl-track-empty {
     position:absolute; inset:0;
     display:flex; align-items:center; justify-content:center;
@@ -441,7 +441,7 @@
   }
   .tl-context-item:hover { background:rgba(123,179,255,0.15); }
   .tl-context-divider { height:1px; background:rgba(255,255,255,0.08); margin:4px 0; }
-  .tl-block.seg-recording { background:linear-gradient(180deg, var(--accent), #1768D9); }
+  .tl-block.seg-recording { background:linear-gradient(180deg, #23232a, #141418); }
   .tl-block.seg-slide-intro { background:linear-gradient(180deg, var(--navy-700), var(--navy-500)); }
   .tl-block.seg-slide-journey { background:linear-gradient(180deg, var(--navy-500), var(--accent)); }
   .tl-block.seg-slide-focus { background:linear-gradient(180deg, #1A4D80, #2F6FB8); }
@@ -1606,6 +1606,42 @@
   </style>
   <!-- ============ /DBX CLEAN RE-SKIN ============ -->
   <script src="./ffmpeg/ffmpeg.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.2.0/dist/tabler-icons.min.css">
+<style id="vox-skin2">
+  #backToProjects{ display:inline-block !important; }
+  #meta-info{ display:none !important; }
+  #editorTitle{ font-weight:600; }
+  .tl-controls{ height:auto !important; padding:4px 0; flex-wrap:wrap; }
+  .tl-transport{ display:flex; align-items:center; gap:6px; }
+  .tl-transport .btn{ padding:6px 9px; line-height:1; }
+  .tl-transport .ti{ font-size:15px; }
+  .tl-transport .tl-sep{ width:1px; height:16px; background:var(--line-hover); margin:0 4px; display:inline-block; }
+  .tl-transport #btnToolSelect{ display:none !important; }
+  .tl-transport .tool-group{ display:flex; gap:4px; }
+  #btnSnap{ display:none !important; }
+  .left-rail .rail-section:has(#audiosList){ display:none !important; }
+  .left-rail .rail-section-head{ display:flex; flex-direction:column; align-items:stretch; gap:8px; }
+  .left-rail .rail-section-head h3{ order:3; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-dim); margin:4px 0 0; }
+  .left-rail #vrecOpen{ order:1; }
+  .left-rail #btnUploadVideo{ order:2; }
+  .left-rail .rail-upload-btn{ width:100%; justify-content:center; padding:10px; }
+  .tl-label-cell.effects{ display:flex !important; }
+  #effectsTrack{ display:block !important; }
+  .vox-btn{ flex:1; }
+  #voxOrb{ position:fixed; right:22px; bottom:18px; width:50px; height:50px; border-radius:50%;
+    background:radial-gradient(circle at 50% 38%,#b89bff,#7b4dff 40%,#4b1fb0 80%);
+    box-shadow:0 0 0 1px #ffffff14, 0 0 16px 3px #7b4dff3a, 0 6px 18px #00000088;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:60; }
+  #voxOrb i{ font-size:22px; color:#fff; }
+</style>
+<style id="vox-declutter">
+  /* hide the old top-bar clutter (buttons stay in DOM so their wiring is intact) */
+  #status-text,#meta-info,#btnReset,#btnCloseGaps,#btnInsertGap,
+  #btnSaveProject,#btnDownloadProject,#btnOpenProject,
+  #cloudSaveIndicator,#autoSaveIndicator,#btnCancel{ display:none !important; }
+  .header .h-controls{ gap:8px; }
+  #btnApprove.btn.primary{ font-weight:600; }
+</style>
 </head>
 <body>
 
@@ -1619,14 +1655,6 @@
     </div>
     <div class="h-controls">
       <span id="status-text" style="color:var(--text-dim); font-size:12px;">Ready</span>
-      <div class="tool-group">
-        <button class="tool-btn active" id="btnToolSelect" title="Select tool (V)" data-tool="select">▣ Select</button>
-        <button class="tool-btn" id="btnToolCut" title="Cut at playhead (X), or click to enter cut mode (C)" data-tool="cut">✂ Cut</button>
-      </div>
-      <button class="btn" id="btnUndo" title="Undo (Cmd+Z)" disabled>↶ Undo</button>
-      <button class="btn" id="btnRedo" title="Redo (Cmd+Shift+Z)" disabled>↷ Redo</button>
-      <button class="btn" id="btnPlay">▶ Play</button>
-      <button class="btn" id="btnPause">⏸ Pause</button>
       <button class="btn" id="btnReset">↺ Reset</button>
       <button class="btn" id="btnCloseGaps" title="Close all gaps between segments">⇆ Close gaps</button>
       <button class="btn" id="btnInsertGap" title="Insert a 10-second gap at the playhead — everything after the playhead shifts forward by 10s">⏸ +10s Gap</button>
@@ -1636,7 +1664,7 @@
       <span id="cloudSaveIndicator" style="display:none;font-size:11px;color:#6da6c4;align-self:center;font-family:Satoshi,system-ui,sans-serif;transition:opacity 0.3s;"></span>
       <span id="autoSaveIndicator" style="font-size:11px;color:#6da6c4;opacity:0.5;align-self:center;font-family:Satoshi,system-ui,sans-serif;transition:opacity 0.3s;">Auto-save on</span>
       <button class="btn" id="btnCancel">Cancel</button>
-      <button class="btn primary" id="btnApprove">Approve and render</button>
+      <button class="btn primary" id="btnApprove">Export</button>
     </div>
   </div>
 
@@ -1650,9 +1678,9 @@
 
     <div class="rail-section">
       <div class="rail-section-head">
-        <h3>Your Videos</h3>
-        <button class="rail-upload-btn" id="btnUploadVideo" title="Upload a video">+ Upload</button>
-        <button class="rail-upload-btn" id="vrecOpen" title="Record your screen">● Record</button>
+        <h3>Recordings</h3>
+        <button class="rail-upload-btn" id="btnUploadVideo" title="Add media">+ Add media</button>
+        <button class="rail-upload-btn" id="vrecOpen" title="Record your screen">● Record screen</button>
       </div>
       <input type="file" id="uploadVideoInput" accept="video/*" multiple style="display:none;">
       <div id="videosList">
@@ -1799,6 +1827,17 @@
     <!-- v3.28b.21: tl-summary block (Total length + count pills) removed entirely.
          Current/total time still shown in tl-controls below. -->
     <div class="tl-controls">
+      <div class="tl-transport">
+        <button class="btn" id="btnUndo" title="Undo (Cmd+Z)" disabled><i class="ti ti-arrow-back-up"></i></button>
+        <button class="btn" id="btnRedo" title="Redo (Cmd+Shift+Z)" disabled><i class="ti ti-arrow-forward-up"></i></button>
+        <span class="tl-sep"></span>
+        <button class="btn pp" id="btnPlay" title="Play"><i class="ti ti-player-play-filled"></i></button>
+        <button class="btn pp" id="btnPause" title="Pause"><i class="ti ti-player-pause-filled"></i></button>
+        <div class="tool-group">
+          <button class="tool-btn active" id="btnToolSelect" title="Select tool (V)" data-tool="select">Select</button>
+          <button class="tool-btn" id="btnToolCut" title="Cut (X)" data-tool="cut"><i class="ti ti-cut"></i></button>
+        </div>
+      </div>
       <div class="tl-time">
         <strong id="curTime">0:00</strong> / <span id="totalTime">0:00</span>
       </div>
@@ -1818,13 +1857,13 @@
     <div class="tl-grid">
       <div class="tl-labels">
         <div class="tl-label-cell ruler">Time</div>
-        <div class="tl-label-cell effects">Effects</div>
+        <div class="tl-label-cell effects">Zoom</div>
         <div class="tl-label-cell textoverlays">Text</div>
         <div class="tl-label-cell callouts">Callouts</div>
         <div class="tl-label-cell customercards" style="height:24px;">Customer Cards</div>
         <div class="tl-label-cell shapes" style="height:24px;">Shapes</div>
-        <div class="tl-label-cell segments">Segments</div>
-        <div class="tl-label-cell audios">Audios</div>
+        <div class="tl-label-cell segments">Video</div>
+        <div class="tl-label-cell audios">Audio</div>
       </div>
       <div class="tl-content" id="tlContent">
         <div class="tl-inner" id="tlInner">
@@ -12982,5 +13021,10 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
 })();
 </script>
 <!-- ===== /Screen Recording module ===== -->
+<div id="voxOrb" title="Ask AI"><i class="ti ti-sparkles"></i></div>
+<script>
+  window.addEventListener('load',function(){ setTimeout(function(){ try{ var t=document.getElementById('voxTabTr'); if(t && !document.getElementById('voxPanel').classList.contains('vox-show')) t.click(); }catch(e){} },600); });
+  (function(){ var o=document.getElementById('voxOrb'); if(o) o.addEventListener('click',function(){ try{ document.getElementById('voxTabTr').click(); }catch(e){} }); })();
+</script>
 </body>
 </html>
