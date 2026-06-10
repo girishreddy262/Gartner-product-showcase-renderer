@@ -1968,7 +1968,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p12</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p13</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -13236,10 +13236,20 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
           '<button id="voxZIn" title="Zoom in"><i class="ti ti-plus"></i></button>';
         sw.appendChild(cz);
         var pct=document.getElementById('voxZPct');
-        function refl(){ if(pct&&window.view) pct.textContent=Math.round((view.canvasZoom||1)*100)+'%'; }
-        document.getElementById('voxZFit').addEventListener('click',function(){ if(typeof fitCanvasToViewport==='function'){ fitCanvasToViewport(); } else { setCanvasZoom(1); } refl(); });
-        document.getElementById('voxZOut').addEventListener('click',function(){ setCanvasZoom((view.canvasZoom||1)/1.25); refl(); });
-        document.getElementById('voxZIn').addEventListener('click',function(){ setCanvasZoom((view.canvasZoom||1)*1.25); refl(); });
+        var _vpEl=document.getElementById('stageViewport');
+        var _stScale=1, _stBase=null;
+        function refl(){ if(pct) pct.textContent=Math.round(_stScale*100)+'%'; }
+        function applyStage(){
+          if(!_vpEl) return;
+          if(!_stBase){ var r=_vpEl.getBoundingClientRect(); _stBase={w:r.width,h:r.height}; }
+          if(_stScale===1){ _vpEl.style.width=''; _vpEl.style.height=''; }
+          else { _vpEl.style.width=Math.round(_stBase.w*_stScale)+'px'; _vpEl.style.height=Math.round(_stBase.h*_stScale)+'px'; }
+          try{ if(typeof fitCanvasToViewport==='function') fitCanvasToViewport(); if(typeof rebuildCanvas==='function') rebuildCanvas(); }catch(e){}
+          refl();
+        }
+        document.getElementById('voxZFit').addEventListener('click',function(){ _stScale=1; applyStage(); });
+        document.getElementById('voxZOut').addEventListener('click',function(){ _stScale=Math.max(0.4,_stScale/1.2); applyStage(); });
+        document.getElementById('voxZIn').addEventListener('click',function(){ _stScale=Math.min(2.5,_stScale*1.2); applyStage(); });
         refl();
       }
 
@@ -13280,6 +13290,183 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       }
     }catch(e){ console.warn('[vox stage2] skipped:', e); }
   }, 700); });
+})();
+</script>
+<style id="vox-stage3">
+  /* ===== approved theme: bg 161618, lines 2F2E31, text FFFFFD, blue selected ===== */
+  :root{
+    --panel:#161618; --line:#2F2E31; --line-hover:#3a393d;
+    --text:#FFFFFD; --text-dim:#9a9aa0;
+    --accent:#3566d6; --accent-hover:#4a78e0;
+    --vox-field:#202024; --vox-field2:#26262a;
+    --vox-sel:linear-gradient(100deg,#1d1d21 0%,#1f2740 52%,#294f9e 84%,#3566d6 100%);
+    --vox-glow:0 0 0 1px #34343a, 0 0 18px -3px #3566d655;
+    --layout-left-w:58px;
+  }
+  body.vox-fly{ --layout-left-w:312px; }
+  body{ background:var(--panel); }
+
+  /* ===== de-box: fills not borders; borders only for focus/active ===== */
+  .btn{ background:transparent !important; border:1px solid transparent !important; border-radius:7px !important; box-shadow:none !important; }
+  .btn:hover:not(:disabled){ background:var(--vox-field) !important; }
+  .btn.primary,#btnApprove{ background:var(--vox-field2) !important; border:1px solid var(--line) !important; font-weight:600; }
+  .btn.primary:hover:not(:disabled){ background:#2c2c31 !important; }
+  .tool-btn{ background:transparent; border:1px solid transparent; border-radius:7px; }
+  .tool-btn:hover{ background:var(--vox-field); }
+  .tool-btn.active{ background:var(--vox-sel) !important; box-shadow:var(--vox-glow) !important; color:#fff !important; border:1px solid transparent !important; }
+  input[type="text"],input[type="number"],textarea,select{ background:var(--vox-field); border:1px solid transparent; border-radius:7px; }
+  input[type="text"]:focus,input[type="number"]:focus,textarea:focus,select:focus{ outline:none; border-color:var(--accent); }
+  .tl-curtime-input{ background:var(--vox-field) !important; border:1px solid transparent !important; font-weight:600 !important; }
+  .tl-curtime-input:focus{ border-color:var(--accent) !important; background:var(--vox-field) !important; }
+  .vtab{ border:none; background:transparent; }
+  .vtab.on{ background:var(--vox-sel) !important; box-shadow:var(--vox-glow) !important; color:#fff !important; }
+  .vox-btn{ background:var(--vox-field); border:1px solid transparent; border-radius:7px; }
+  .vox-btn:hover{ background:var(--vox-field2); }
+
+  /* ===== per-type timeline colours (approved: different colour per layer) ===== */
+  .tl-block{ border-radius:6px !important; }
+  .tl-block.seg-recording{ background:linear-gradient(180deg,#2e3c78,#1d2444) !important; border:1px solid #3e5cc0 !important; color:#eef0ff !important; }
+  .tl-block.audio-block{ background:linear-gradient(180deg,#3FAE6A,#2c7a4c) !important; border:1px solid #57c98a !important; color:#eafff2 !important; }
+  .tl-block.textoverlay-block{ background:linear-gradient(180deg,#2FA6B8,#1d6a76) !important; border:1px solid #4cc4d6 !important; color:#fff !important; }
+  .tl-block.callout-block{ background:linear-gradient(180deg,#3A9BD6,#226089) !important; border:1px solid #5cb4e8 !important; color:#fff !important; }
+  .tl-block.customercard-block{ background:linear-gradient(180deg,#4FB39A,#2f7361) !important; border:1px solid #6cc9b1 !important; color:#fff !important; }
+  .tl-block.shape-block{ background:linear-gradient(180deg,#7C8190,#4d515c) !important; border:1px solid #979caa !important; color:#fff !important; }
+  .tl-block.zoom-block,.tl-block.spotlight-block,.tl-block.effect-block,.tl-track.effects-track .tl-block{ background:linear-gradient(180deg,#C2487E,#7e2a4f) !important; border:1px solid #d96a9b !important; color:#fff !important; }
+  .tl-track.callout-track{ background:rgba(58,155,214,0.06) !important; }
+  .tl-track.customercard-track{ background:rgba(79,179,154,0.06) !important; }
+  .tl-track.shape-track{ background:rgba(124,129,144,0.06) !important; }
+  .tl-track.effects-track{ background:rgba(194,72,126,0.06) !important; }
+  .tl-track.textoverlay-track{ background:rgba(47,166,184,0.06) !important; }
+  .tl-track.segment-track{ background:rgba(62,92,192,0.06) !important; }
+  .tl-track.audio-track{ background:rgba(63,174,106,0.07) !important; }
+  .tl-playhead{ background:#FFFFFD !important; }
+  .tl-playhead-handle{ background:#FFFFFD !important; border-color:#FFFFFD !important; }
+
+  /* add-layer menu retired: the icon rail adds things, layers self-create */
+  #voxAddMenu,.vox-addlayer{ display:none !important; }
+
+  /* ===== icon rail (collapsed by default; flyout opens, canvas shifts) ===== */
+  #btnRailCollapse{ display:none !important; }
+  .left-rail{ padding:0 !important; }
+  body.vox-fly .left-rail{ padding:14px 12px 14px 70px !important; }
+  #voxRail{ position:fixed; left:0; top:57px; bottom:calc(var(--layout-timeline-h) + 2px); width:58px; z-index:45;
+    background:var(--panel); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 0; overflow:auto; }
+  #voxRail .vr{ width:44px; min-height:44px; border-radius:9px; border:none; background:transparent; color:var(--text-dim);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:9px; cursor:pointer; }
+  #voxRail .vr i{ font-size:19px; }
+  #voxRail .vr:hover{ background:var(--vox-field); color:var(--text); }
+  #voxRail .vr.active{ background:var(--vox-sel); box-shadow:var(--vox-glow); color:#fff; }
+  #voxRail .vsep{ width:26px; height:1px; background:var(--line); margin:4px 0; flex:none; }
+  /* flyout shows only the chosen section */
+  .left-rail .rail-section{ display:none !important; }
+  body.vox-fly-media .left-rail .rail-section:has(#videosList){ display:block !important; }
+  body.vox-fly-audio .left-rail .rail-section:has(#audiosList){ display:block !important; }
+
+  /* ===== top bar ===== */
+  .header{ border-bottom:1px solid var(--line); }
+  #editorTitle{ font-weight:600; padding:5px 8px; border-radius:7px; border:1px solid transparent; cursor:text; }
+  #editorTitle:hover{ border-color:var(--line); }
+  #editorTitle:focus{ outline:none; border-color:var(--accent); background:var(--vox-field); }
+  #autoSaveIndicator{ display:inline-flex !important; align-items:center; gap:6px; color:#6a6a70 !important; opacity:1 !important; font-size:12px !important; }
+  #voxAvatars{ display:flex; align-items:center; margin-right:4px; }
+  #voxAvatars .av{ width:28px; height:28px; border-radius:50%; border:2px solid var(--panel); margin-left:-8px;
+    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; background:var(--accent); }
+  #voxAvatars .av:first-child{ margin-left:0; }
+  #voxShare{ display:inline-flex; align-items:center; gap:7px; background:transparent; border:1px solid var(--line); border-radius:8px;
+    padding:7px 13px; font-size:13px; font-weight:500; color:var(--text); cursor:pointer; }
+  #voxShare:hover{ background:var(--vox-field); }
+
+  /* whole-stage zoom can outgrow the area: allow scroll */
+  .stage-wrap{ overflow:auto; }
+</style>
+<script>
+/* VoxScript stage three: icon rail, top bar, rename, self-creating layers. Additive, guarded. */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){ setTimeout(function(){
+    try{
+      // ---- icon rail ----
+      if(!document.getElementById('voxRail')){
+        var rail=document.createElement('div'); rail.id='voxRail';
+        function ic(id,icon,label,extra){ return '<button class="vr" data-r="'+id+'" title="'+label+'"><i class="ti '+icon+'"'+(extra||'')+'></i>'+label+'</button>'; }
+        rail.innerHTML =
+          ic('record','ti-circle-filled','Record',' style="color:#ff5b5b;font-size:11px"')+
+          ic('media','ti-photo','Media')+
+          ic('audio','ti-volume','Audio')+
+          '<span class="vsep"></span>'+
+          ic('text','ti-typography','Text')+
+          ic('zoom','ti-zoom-scan','Zoom')+
+          ic('spotlight','ti-bulb','Spot')+
+          ic('callout','ti-message-2','Callout')+
+          ic('card','ti-id-badge-2','Card')+
+          ic('shape','ti-square','Shape');
+        document.body.appendChild(rail);
+        var FLY={media:'vox-fly-media',audio:'vox-fly-audio'};
+        function closeFly(){ document.body.classList.remove('vox-fly','vox-fly-media','vox-fly-audio');
+          rail.querySelectorAll('.vr').forEach(function(x){x.classList.remove('active');}); }
+        rail.addEventListener('click',function(e){
+          var b=e.target.closest('.vr'); if(!b) return; var k=b.dataset.r;
+          if(k==='record'){ closeFly(); var r=document.getElementById('vrecOpen'); if(r) r.click(); return; }
+          if(FLY[k]){
+            var was=b.classList.contains('active'); closeFly();
+            if(!was){ document.body.classList.add('vox-fly',FLY[k]); b.classList.add('active'); }
+            return;
+          }
+          // one-click adds at the playhead; the layer track self-creates
+          try{
+            if(k==='text'&&typeof addTextOverlay==='function') addTextOverlay();
+            if(k==='zoom'&&typeof addEffect==='function') addEffect('zoom');
+            if(k==='spotlight'&&typeof addEffect==='function') addEffect('spotlight');
+            if(k==='callout'&&typeof addCallout==='function') addCallout();
+            if(k==='card'&&typeof addCustomerCard==='function') addCustomerCard();
+            if(k==='shape'&&typeof addShape==='function') addShape();
+          }catch(err){ console.warn('[vox rail add]',err); }
+        });
+      }
+
+      // ---- layers self-create: hide overlay tracks until they have content ----
+      var MAP=[['calloutsTrack','callouts'],['customerCardsTrack','customercards'],['shapesTrack','shapes'],['effectsTrack','effects'],['textOverlaysTrack','textoverlays']];
+      function syncTracks(){
+        MAP.forEach(function(m){
+          var tr=document.getElementById(m[0]); if(!tr) return;
+          var lb=document.querySelector('.tl-label-cell.'+m[1]);
+          var has=!!tr.querySelector('.tl-block');
+          tr.style.setProperty('display', has?'block':'none','important');
+          if(lb) lb.style.setProperty('display', has?'flex':'none','important');
+        });
+      }
+      syncTracks();
+      var inner=document.getElementById('tlInner');
+      if(inner && window.MutationObserver){ new MutationObserver(syncTracks).observe(inner,{childList:true,subtree:true}); }
+
+      // ---- top bar: rename, saved, avatar, share ----
+      var title=document.getElementById('editorTitle');
+      if(title && !title.isContentEditable){
+        title.setAttribute('contenteditable','true'); title.setAttribute('spellcheck','false');
+        if(window.state && state.module && state.module.name) title.textContent=state.module.name;
+        function commit(){
+          var n=(title.textContent||'').trim()||'Untitled';
+          title.textContent=n; document.title=n+' · VoxScript';
+          try{ if(window.state){ state.module=state.module||{}; state.module.name=n; if(typeof scheduleAutoSave==='function') scheduleAutoSave(); } }catch(e){}
+        }
+        title.addEventListener('blur',commit);
+        title.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); title.blur(); } });
+      }
+      var asi=document.getElementById('autoSaveIndicator');
+      if(asi){ asi.innerHTML='<i class="ti ti-cloud-check"></i> Saved'; }
+      var ctr=document.querySelector('.h-controls');
+      if(ctr && !document.getElementById('voxShare')){
+        var av=document.createElement('div'); av.id='voxAvatars'; av.innerHTML='<div class="av" title="You">Y</div>';
+        var sh=document.createElement('button'); sh.id='voxShare'; sh.innerHTML='<i class="ti ti-share-2" style="font-size:15px"></i> Share';
+        sh.addEventListener('click',function(){
+          try{ navigator.clipboard.writeText(location.href); if(typeof showToast==='function') showToast('Link copied','success'); }catch(e){}
+        });
+        var exp=document.getElementById('btnApprove');
+        ctr.insertBefore(av, exp||null); ctr.insertBefore(sh, exp||null);
+      }
+    }catch(e){ console.warn('[vox stage3] skipped:', e); }
+  }, 800); });
 })();
 </script>
 </body>
