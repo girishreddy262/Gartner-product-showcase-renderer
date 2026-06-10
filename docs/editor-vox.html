@@ -1599,7 +1599,7 @@
     #voxGenAll{ display:none !important; }
     /* VoxScript: hide Product Showcase UI; keep only Your Videos + Your Audios */
     .left-rail .rail-section{ display:none !important; }
-    .left-rail .rail-section:has(#videosList), .left-rail .rail-section:has(#audiosList){ display:block !important; }
+    /* p14: rail sections are controlled by the icon-rail flyouts now */
     #btnCloseGaps, #btnInsertGap, #btnAddSlide{ display:none !important; }
     .tl-label-cell.effects, .tl-label-cell.textoverlays, .tl-label-cell.callouts, .tl-label-cell.customercards, .tl-label-cell.shapes{ display:none !important; }
     #effectsTrack, #textOverlaysTrack, #calloutsTrack, #customerCardsTrack, #shapesTrack{ display:none !important; }
@@ -1968,7 +1968,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p13</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p14</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -5123,14 +5123,14 @@ function renderSegmentPanel(panel) {
     '<div class="align-section">' +
       '<div class="align-label">Align in canvas</div>' +
       '<div class="align-grid">' +
-        '<button class="align-btn" data-align="seg-left">⇤ L</button>' +
-        '<button class="align-btn" data-align="seg-hcenter">⇔ C</button>' +
-        '<button class="align-btn" data-align="seg-right">⇥ R</button>' +
+        '<button class="align-btn" data-align="seg-left" title="Align left"><i class="ti ti-layout-align-left"></i></button>' +
+        '<button class="align-btn" data-align="seg-hcenter" title="Center horizontally"><i class="ti ti-layout-align-center"></i></button>' +
+        '<button class="align-btn" data-align="seg-right" title="Align right"><i class="ti ti-layout-align-right"></i></button>' +
       '</div>' +
       '<div class="align-grid">' +
-        '<button class="align-btn" data-align="seg-top">⇡ T</button>' +
-        '<button class="align-btn" data-align="seg-vcenter">⇕ M</button>' +
-        '<button class="align-btn" data-align="seg-bottom">⇣ B</button>' +
+        '<button class="align-btn" data-align="seg-top" title="Align top"><i class="ti ti-layout-align-top"></i></button>' +
+        '<button class="align-btn" data-align="seg-vcenter" title="Center vertically"><i class="ti ti-layout-align-middle"></i></button>' +
+        '<button class="align-btn" data-align="seg-bottom" title="Align bottom"><i class="ti ti-layout-align-bottom"></i></button>' +
       '</div>' +
       '<div class="align-grid">' +
         '<button class="align-btn" data-align="seg-fit-canvas" style="grid-column:1/-1;">Fill canvas (1920×1080)</button>' +
@@ -12922,16 +12922,16 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       const vo=VOICES.map(v=>`<option value="${v.id}" ${v.id===c.voice?'selected':''}>${v.n}</option>`).join('');
       d.innerHTML=`<div class="vox-clip-h">
           <span class="vox-chip num">${i+1}</span>
-          <span class="vox-chip voice">🎙 <select onchange="_voxVoice('${c.id}',this.value)">${vo}</select></span>
+          <span class="vox-chip voice"><i class="ti ti-microphone" style="font-size:12px"></i> <select onchange="_voxVoice('${c.id}',this.value)">${vo}</select></span>
           <span class="sp"></span>
-          <button class="vox-ib" title="Insert sync point" onclick="_voxSync('${c.id}')">⌨</button>
-          <button class="vox-ib" title="Play voiceover" onclick="_voxPlay('${c.id}')">▶</button>
-          <button class="vox-ib" title="Make voice" onclick="_voxGen('${c.id}')">🎙</button>
-          <button class="vox-ib" title="Delete line" onclick="_voxDel('${c.id}')">✕</button>
+          <button class="vox-ib" title="Insert sync point" onclick="_voxSync('${c.id}')"><i class="ti ti-keyboard"></i></button>
+          <button class="vox-ib" title="Play voiceover" onclick="_voxPlay('${c.id}')"><i class="ti ti-player-play-filled"></i></button>
+          <button class="vox-ib" title="Make voice" onclick="_voxGen('${c.id}')"><i class="ti ti-microphone"></i></button>
+          <button class="vox-ib" title="Delete line" onclick="_voxDel('${c.id}')"><i class="ti ti-x"></i></button>
         </div>
         ${c.words
           ? `<div class="vox-body words" data-id="${c.id}" title="Click a word to cut it from the video">${c.words.map((w,wi)=>`<span class="vw${w.del?' del':''}" onclick="_voxWordDel('${c.id}',${wi})">${_esc(w.text)}</span>`).join(' ')}</div>`
-          : `<div class="vox-body${c.dirty?' dirty':''}" data-id="${c.id}" data-ph="Type narration… (use ⌨ to drop a Sync Point)" contenteditable="true" oninput="_voxDirty('${c.id}')">${c.html||''}</div>`
+          : `<div class="vox-body${c.dirty?' dirty':''}" data-id="${c.id}" data-ph="Type narration here" contenteditable="true" oninput="_voxDirty('${c.id}')">${c.html||''}</div>`
         }
         <div class="vox-state" data-id="${c.id}">${badgeHtml(c)}</div>`;
       L.appendChild(d);
@@ -13245,6 +13245,8 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
           if(_stScale===1){ _vpEl.style.width=''; _vpEl.style.height=''; }
           else { _vpEl.style.width=Math.round(_stBase.w*_stScale)+'px'; _vpEl.style.height=Math.round(_stBase.h*_stScale)+'px'; }
           try{ if(typeof fitCanvasToViewport==='function') fitCanvasToViewport(); if(typeof rebuildCanvas==='function') rebuildCanvas(); }catch(e){}
+          var wrap=_vpEl.closest('.stage-wrap')||_vpEl.parentElement;
+          if(wrap){ wrap.scrollLeft=(wrap.scrollWidth-wrap.clientWidth)/2; wrap.scrollTop=(wrap.scrollHeight-wrap.clientHeight)/2; }
           refl();
         }
         document.getElementById('voxZFit').addEventListener('click',function(){ _stScale=1; applyStage(); });
@@ -13253,41 +13255,7 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
         refl();
       }
 
-      // ---- Add layer menu ----
-      var labels=document.querySelector('.tl-labels');
-      if(labels && !document.getElementById('voxAddMenu')){
-        var add=document.createElement('div'); add.className='tl-label-cell vox-addlayer';
-        add.innerHTML='<i class="ti ti-plus" style="font-size:13px"></i> Add layer';
-        labels.appendChild(add);
-
-        var menu=document.createElement('div'); menu.id='voxAddMenu';
-        var items=[
-          ['Text','ti-typography',function(){ addTextOverlay&&addTextOverlay(); }],
-          ['Zoom','ti-zoom-scan',function(){ addEffect&&addEffect('zoom'); }],
-          ['Spotlight','ti-bulb',function(){ addEffect&&addEffect('spotlight'); }],
-          ['Callout','ti-message-2',function(){ addCallout&&addCallout(); }],
-          ['Customer card','ti-id-badge-2',function(){ addCustomerCard&&addCustomerCard(); }],
-          ['Shape','ti-square',function(){ addShape&&addShape(); }]
-        ];
-        items.forEach(function(it){
-          var b=document.createElement('button');
-          b.innerHTML='<i class="ti '+it[1]+'"></i> '+it[0];
-          b.addEventListener('click',function(){ try{ it[2](); }catch(e){ console.warn('[vox add]',e); } menu.classList.remove('open'); });
-          menu.appendChild(b);
-        });
-        document.body.appendChild(menu);
-
-        add.addEventListener('click',function(e){
-          e.stopPropagation();
-          var r=add.getBoundingClientRect();
-          menu.style.left=r.left+'px';
-          menu.style.top=(r.top - menu.offsetHeight - 6)+'px';
-          menu.classList.toggle('open');
-          // reposition now that it has height
-          if(menu.classList.contains('open')){ menu.style.top=(r.top - menu.offsetHeight - 6)+'px'; }
-        });
-        document.addEventListener('click',function(ev){ if(menu.classList.contains('open') && !menu.contains(ev.target) && ev.target!==add) menu.classList.remove('open'); });
-      }
+      // p14: add-layer retired — the icon rail adds items and layers self-create
     }catch(e){ console.warn('[vox stage2] skipped:', e); }
   }, 700); });
 })();
@@ -13467,6 +13435,257 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
       }
     }catch(e){ console.warn('[vox stage3] skipped:', e); }
   }, 800); });
+})();
+</script>
+<style id="vox-stage4">
+  /* ===== p14: taller controls, calmer surfaces ===== */
+  .btn,.vox-btn{ min-height:36px !important; padding:8px 14px !important; }
+  .pp,.tb{ width:34px; height:34px; }
+  #btnApprove,#voxShare{ padding:9px 16px !important; border-radius:9px !important; }
+  #voxTabs{ display:flex; gap:4px; background:var(--vox-field); border-radius:10px; padding:4px; }
+  #voxTabs .vtab{ flex:1; min-height:34px; border-radius:7px; font-size:13px; }
+  .align-btn{ height:36px !important; background:var(--vox-field) !important; border:none !important; border-radius:8px !important; color:#c9c9ce !important; }
+  .align-btn:hover{ background:#2a2a2f !important; color:#fff !important; }
+  .align-btn i{ font-size:16px; }
+  .right-rail input,.right-rail select{ min-height:36px; background:var(--vox-field) !important; border:1px solid transparent !important; border-radius:8px !important; }
+  .right-rail input:focus,.right-rail select:focus{ border-color:var(--accent) !important; }
+  .asset-card{ background:var(--vox-field) !important; border:1px solid transparent !important; border-radius:10px !important; }
+  .asset-card:hover{ background:var(--vox-field2) !important; }
+  .asset-card .ac-icon{ border-radius:8px !important; }
+
+  /* ===== floating left panel (reference style) ===== */
+  body.vox-fly{ --layout-left-w:58px; }
+  .left-rail{ visibility:hidden; }
+  body.vox-fly .left-rail{
+    visibility:visible; position:fixed; left:68px; top:66px;
+    bottom:calc(var(--layout-timeline-h) + 14px); width:302px; z-index:46;
+    background:#1b1b1d; border:1px solid var(--line); border-radius:14px;
+    box-shadow:0 18px 50px rgba(0,0,0,0.6); padding:14px !important; overflow-y:auto;
+  }
+  #voxFlyHead{ display:none; }
+  body.vox-fly #voxFlyHead{ display:block; margin-bottom:12px; }
+  #voxFlyHead .t{ display:flex; align-items:center; justify-content:space-between; font-size:14px; font-weight:600; margin-bottom:10px; }
+  #voxFlyHead .x{ background:transparent; border:none; color:var(--text-dim); width:28px; height:28px; border-radius:7px; }
+  #voxFlyHead .x:hover{ background:var(--vox-field); color:var(--text); }
+  #voxFlyHead .tabs{ display:flex; gap:4px; background:var(--vox-field); border-radius:10px; padding:4px; }
+  #voxFlyHead .tabs button{ flex:1; min-height:32px; border:none; border-radius:7px; background:transparent; color:var(--text-dim); font-size:12.5px; }
+  #voxFlyHead .tabs button.on{ background:var(--vox-sel); box-shadow:var(--vox-glow); color:#fff; }
+  .vox-cards{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .vox-card{ position:relative; background:var(--vox-field); border:none; border-radius:12px; padding:16px 12px; display:flex; flex-direction:column; align-items:center; gap:8px; color:var(--text); font-size:12px; cursor:pointer; }
+  .vox-card:hover{ background:var(--vox-field2); }
+  .vox-card i{ font-size:21px; color:#c9c9ce; }
+  .vox-card .cs{ position:absolute; top:8px; right:8px; font-size:9px; background:#2a2a2f; color:#9a9aa0; border-radius:99px; padding:2px 7px; }
+  .vox-card.soon{ opacity:.55; cursor:default; }
+  .vox-row{ display:flex; align-items:center; gap:10px; background:var(--vox-field); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .vox-row .nm{ flex:1; font-size:12.5px; }
+  .vox-row .ad{ background:var(--vox-field2); border:none; border-radius:7px; color:var(--text); width:30px; height:30px; }
+  .vox-row .ad:hover{ background:#2f2f35; }
+  .vox-row .tnv{ width:52px; height:32px; border-radius:6px; background:#000 center/cover; flex:none; }
+
+  /* AI orb docks at the bottom of the icon rail (violet stays, orb only) */
+  #aiToggleBtn{ position:fixed !important; left:8px !important; right:auto !important;
+    bottom:calc(var(--layout-timeline-h) + 14px) !important; width:42px !important; height:42px !important; z-index:46 !important; }
+
+  /* ===== timeline: filmstrip labels stay readable ===== */
+  .tl-block.vox-strip{ color:#fff !important; text-shadow:0 1px 3px rgba(0,0,0,0.85); }
+
+  /* ===== simple transcript ===== */
+  #voxPanel{ width:300px !important; }
+  .vox-search,.vox-status{ display:none !important; }
+  .vox-ctrls{ gap:6px !important; }
+  .vox-ctrls .lbl{ display:none !important; }
+  .vox-ctrls select,.vox-seg-toggle button{ min-height:30px; font-size:11.5px; }
+  .vox-clip{ background:transparent !important; border:none !important; border-bottom:1px solid var(--line) !important; border-radius:0 !important; padding:12px 2px !important; margin:0 !important; }
+  .vox-clip-h .vox-ib{ background:transparent !important; border:none !important; color:#8a8a90 !important; width:28px; height:28px; border-radius:7px !important; }
+  .vox-clip-h .vox-ib:hover{ background:var(--vox-field) !important; color:#fff !important; }
+  .vox-clip-h .vox-ib i{ font-size:14px; }
+  .vox-chip.num{ background:var(--vox-field) !important; border:none !important; border-radius:6px !important; color:#9a9aa0 !important; }
+  .vox-body.words{ line-height:2 !important; font-size:14px !important; }
+  .vw{ background:transparent !important; border:none !important; padding:1px 2px !important; border-radius:4px !important; }
+  .vw:hover{ background:#2a2a30 !important; }
+  .vw.del{ color:#5a5a60 !important; text-decoration:line-through; }
+</style>
+<script>
+/* VoxScript stage four: floating panels, groups, library + stock BGM, thumbnails, auto-height. */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){ setTimeout(function(){
+    try{
+      var lr=document.getElementById('leftRail');
+      // fly head + custom container
+      var head=document.getElementById('voxFlyHead');
+      if(!head && lr){ head=document.createElement('div'); head.id='voxFlyHead'; lr.insertBefore(head, lr.firstChild);
+        var cust=document.createElement('div'); cust.id='voxFlyCustom'; lr.insertBefore(cust, head.nextSibling); }
+      var cust=document.getElementById('voxFlyCustom');
+
+      // rebuild icon rail with groups
+      var old=document.getElementById('voxRail'); if(old) old.remove();
+      var rail=document.createElement('div'); rail.id='voxRail';
+      rail.innerHTML=
+        '<button class="vr" data-r="record" title="Record your screen"><i class="ti ti-circle-filled" style="color:#ff5b5b;font-size:11px"></i>Record</button>'+
+        '<button class="vr" data-r="media" title="Videos"><i class="ti ti-photo"></i>Media</button>'+
+        '<button class="vr" data-r="audio" title="Voice and music"><i class="ti ti-volume"></i>Audio</button>'+
+        '<span class="vsep"></span>'+
+        '<button class="vr" data-r="effects" title="Zoom, spotlight, transitions"><i class="ti ti-sparkles"></i>Effects</button>'+
+        '<button class="vr" data-r="elements" title="Text, callouts, cards, shapes"><i class="ti ti-category"></i>Elements</button>';
+      document.body.appendChild(rail);
+
+      var FLY={ media:{title:'Media',tabs:['Uploaded','Library']}, audio:{title:'Audio',tabs:['Uploaded','Music']},
+                effects:{title:'Effects'}, elements:{title:'Elements'} };
+      var cur={fly:null,tab:0};
+      var BGM=[['Bright corporate','https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'],
+               ['Soft pads','https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'],
+               ['Upbeat drive','https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'],
+               ['Calm focus','https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'],
+               ['Warm acoustic','https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3']];
+      function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+      function libVideos(){
+        var out={}; (window.state&&state.videos||[]).forEach(function(v){ if(v&&v.url&&!/^blob:/.test(v.url)) out[v.url]={name:v.name||'Video',url:v.url}; });
+        try{ Object.keys(localStorage).forEach(function(k){ if(k.indexOf('voxscript.proj.')!==0) return;
+          var p=JSON.parse(localStorage.getItem(k)); ((p&&p.payload&&p.payload.videos)||[]).forEach(function(v){
+            if(v&&v.url&&!/^blob:/.test(v.url)&&!out[v.url]) out[v.url]={name:v.name||'Video',url:v.url}; }); }); }catch(e){}
+        return Object.keys(out).map(function(u){return out[u];});
+      }
+      function render(){
+        var f=cur.fly;
+        document.body.classList.remove('vox-fly','vox-fly-media','vox-fly-audio');
+        rail.querySelectorAll('.vr').forEach(function(x){ x.classList.toggle('active', x.dataset.r===f); });
+        if(!f){ if(cust) cust.innerHTML=''; return; }
+        document.body.classList.add('vox-fly');
+        var def=FLY[f], tabs='';
+        if(def.tabs){ tabs='<div class="tabs">'+def.tabs.map(function(t,i){return '<button data-t="'+i+'" class="'+(i===cur.tab?'on':'')+'">'+t+'</button>';}).join('')+'</div>'; }
+        head.innerHTML='<div class="t">'+def.title+'<button class="x" id="voxFlyX"><i class="ti ti-x"></i></button></div>'+tabs;
+        var h='';
+        if(f==='media'){
+          if(cur.tab===0){ document.body.classList.add('vox-fly-media'); }
+          else { h=libVideos().map(function(v){ return '<div class="vox-row" data-act="lib" data-url="'+esc(v.url)+'" data-name="'+esc(v.name)+'"><span class="tnv" data-th="'+esc(v.url)+'"></span><span class="nm">'+esc(v.name)+'</span><button class="ad"><i class="ti ti-plus"></i></button></div>'; }).join('') || '<div style="color:#6a6a70;font-size:12px;padding:18px;text-align:center">Nothing in your library yet. Videos you upload are saved here.</div>'; }
+        }
+        if(f==='audio'){
+          if(cur.tab===0){ document.body.classList.add('vox-fly-audio'); }
+          else { h=BGM.map(function(t,i){ return '<div class="vox-row" data-act="bgm" data-i="'+i+'"><i class="ti ti-music" style="color:#9a9aa0"></i><span class="nm">'+t[0]+'</span><button class="ad"><i class="ti ti-plus"></i></button></div>'; }).join(''); }
+        }
+        if(f==='effects'){
+          h='<div class="vox-cards">'+
+            '<button class="vox-card" data-act="zoom"><i class="ti ti-zoom-scan"></i>Zoom</button>'+
+            '<button class="vox-card" data-act="spotlight"><i class="ti ti-bulb"></i>Spotlight</button>'+
+            '<button class="vox-card soon"><span class="cs">Coming soon</span><i class="ti ti-transition-right"></i>Transitions</button>'+
+            '</div>';
+        }
+        if(f==='elements'){
+          h='<div class="vox-cards">'+
+            '<button class="vox-card" data-act="text"><i class="ti ti-typography"></i>Text</button>'+
+            '<button class="vox-card" data-act="callout"><i class="ti ti-message-2"></i>Callout</button>'+
+            '<button class="vox-card" data-act="card"><i class="ti ti-id-badge-2"></i>Customer card</button>'+
+            '<button class="vox-card" data-act="shape"><i class="ti ti-square"></i>Shape</button>'+
+            '</div>';
+        }
+        if(cust) cust.innerHTML=h;
+        if(cust) cust.querySelectorAll('.tnv[data-th]').forEach(function(el){ mkThumb(el.dataset.th,function(d){ if(d) el.style.backgroundImage='url('+d+')'; }); });
+      }
+      rail.addEventListener('click',function(e){
+        var b=e.target.closest('.vr'); if(!b) return; var k=b.dataset.r;
+        if(k==='record'){ cur.fly=null; render(); var r=document.getElementById('vrecOpen'); if(r) r.click(); return; }
+        cur.fly=(cur.fly===k)?null:k; cur.tab=0; render();
+      });
+      document.addEventListener('click',function(e){
+        if(e.target.closest('#voxFlyX')){ cur.fly=null; render(); return; }
+        var tb=e.target.closest('#voxFlyHead .tabs button'); if(tb){ cur.tab=+tb.dataset.t; render(); return; }
+        var card=e.target.closest('.vox-card[data-act]');
+        if(card){ var a=card.dataset.act;
+          try{
+            if(a==='zoom') addEffect('zoom'); if(a==='spotlight') addEffect('spotlight');
+            if(a==='text') addTextOverlay(); if(a==='callout') addCallout();
+            if(a==='card') addCustomerCard(); if(a==='shape') addShape();
+          }catch(err){}
+          return;
+        }
+        var row=e.target.closest('.vox-row[data-act]');
+        if(row && e.target.closest('.ad')){
+          if(row.dataset.act==='lib'){
+            var url=row.dataset.url, nm=row.dataset.name;
+            if((state.videos||[]).some(function(v){return v.url===url;})){ if(typeof showToast==='function') showToast('Already in this project','warning'); return; }
+            state.videos.push({ id:(typeof uid==='function'?uid('vid'):'vid'+Date.now()), name:nm, url:url });
+            if(typeof rebuildAll==='function') rebuildAll();
+            if(typeof showToast==='function') showToast('Added to this project','success');
+          }
+          if(row.dataset.act==='bgm'){
+            var t=BGM[+row.dataset.i], au=new Audio(); au.crossOrigin='anonymous'; au.preload='metadata'; au.src=t[1];
+            au.addEventListener('loadedmetadata',function(){
+              var id=(typeof uid==='function'?uid('aud'):'aud'+Date.now());
+              try{ if(window.audioDurations) audioDurations[id]=Math.round(au.duration*1000); }catch(e){}
+              state.audios.push({ id:id, name:t[0], url:t[1] });
+              try{ addAudioPlacement(id, (window.view&&view.curTimeMs)||0); }catch(e){ if(typeof rebuildAll==='function') rebuildAll(); }
+              if(typeof showToast==='function') showToast('Added '+t[0],'success');
+            },{once:true});
+            au.addEventListener('error',function(){ if(typeof showToast==='function') showToast('Could not load that track','warning'); },{once:true});
+          }
+        }
+      });
+
+      // ===== thumbnails (media list + timeline filmstrip) =====
+      var _voxTh={};
+      function mkThumb(url,cb){
+        if(_voxTh[url]!==undefined){ cb(_voxTh[url]); return; }
+        _voxTh[url]=null;
+        try{
+          var v=document.createElement('video'); v.crossOrigin='anonymous'; v.muted=true; v.preload='auto'; v.src=url;
+          var pts=[0.12,0.4,0.65,0.88], idx=0, c=document.createElement('canvas'); c.width=384; c.height=54;
+          v.addEventListener('loadedmetadata',function(){ if(!isFinite(v.duration)||!v.duration){ cb(null); return; } v.currentTime=Math.max(0.1,v.duration*pts[0]); });
+          v.addEventListener('seeked',function(){
+            try{ c.getContext('2d').drawImage(v, idx*96, 0, 96, 54); idx++;
+              if(idx<pts.length){ v.currentTime=v.duration*pts[idx]; }
+              else { var d=c.toDataURL('image/jpeg',0.6); _voxTh[url]=d; cb(d); v.src=''; }
+            }catch(e){ cb(null); }
+          });
+          v.addEventListener('error',function(){ cb(null); });
+        }catch(e){ cb(null); }
+      }
+      function paintSegs(){
+        document.querySelectorAll('#segmentsTrack .tl-block.seg-recording').forEach(function(b){
+          if(b.dataset.voxTh) return;
+          var seg=(state.segments||[]).find(function(s){ return s.id===b.dataset.id; });
+          if(!seg){ seg=(state.segments||[]).find(function(s){ return s.kind==='recording' && b.textContent.indexOf(s.videoId)>=0; }); }
+          if(!seg) return;
+          var vid=(state.videos||[]).find(function(v){ return v.id===seg.videoId; });
+          if(!vid||!vid.url) return;
+          b.dataset.voxTh='1';
+          mkThumb(vid.url,function(d){ if(!d) return;
+            b.style.backgroundImage='linear-gradient(rgba(10,12,20,0.35),rgba(10,12,20,0.35)),url('+d+')';
+            b.style.backgroundSize='auto 100%,auto 100%'; b.style.backgroundRepeat='repeat-x'; b.classList.add('vox-strip'); });
+        });
+      }
+      function paintCards(){
+        document.querySelectorAll('#videosList .asset-card').forEach(function(card,i){
+          var vid=(state.videos||[])[i], ic=card.querySelector('.ac-icon');
+          if(!vid||!vid.url||!ic||ic.dataset.voxTh) return; ic.dataset.voxTh='1';
+          mkThumb(vid.url,function(d){ if(d){ ic.style.background='url('+d+') center/cover'; ic.textContent=''; } });
+        });
+      }
+
+      // ===== timeline hugs its content (until the user drags it) =====
+      var _man=false;
+      var rh=document.querySelector('.vox-rh.row'); if(rh) rh.addEventListener('pointerdown',function(){ _man=true; });
+      function fitTl(){
+        if(_man) return;
+        var rows=Array.prototype.filter.call(document.querySelectorAll('#tlInner .tl-track'),function(t){ return getComputedStyle(t).display!=='none'; }).length;
+        var h=Math.min(340, Math.max(168, 118 + rows*34));
+        document.documentElement.style.setProperty('--layout-timeline-h', h+'px');
+      }
+      var deb=null;
+      function onTl(){ clearTimeout(deb); deb=setTimeout(function(){ fitTl(); paintSegs(); },150); }
+      var inner=document.getElementById('tlInner');
+      if(inner) new MutationObserver(onTl).observe(inner,{childList:true,subtree:true});
+      var vl=document.getElementById('videosList');
+      if(vl) new MutationObserver(function(){ paintCards(); }).observe(vl,{childList:true});
+      fitTl(); paintSegs(); paintCards();
+
+      // ===== small icon swaps =====
+      var back=document.getElementById('backToProjects'); if(back) back.innerHTML='<i class="ti ti-arrow-left"></i>';
+      var exp=document.getElementById('btnApprove'); if(exp) exp.innerHTML='<i class="ti ti-upload" style="font-size:15px"></i> Export';
+      var va=document.getElementById('voxAdd'); if(va) va.innerHTML='<i class="ti ti-plus" style="font-size:14px"></i> Add clip';
+      var vr=document.getElementById('voxRewrite'); if(vr) vr.innerHTML='<i class="ti ti-wand" style="font-size:14px"></i> Rewrite';
+    }catch(e){ console.warn('[vox stage4] skipped:', e); }
+  }, 900); });
 })();
 </script>
 </body>
