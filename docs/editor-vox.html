@@ -1642,6 +1642,62 @@
   .header .h-controls{ gap:8px; }
   #btnApprove.btn.primary{ font-weight:600; }
 </style>
+<style id="vox-clueso-colors">
+  /* ===== Clueso-style timeline palette ===== */
+  :root{ --accent:#6d5efc; --accent-hover:#7d70ff; --audio-color:#3FAE6A; }
+  /* Audio track = green */
+  .tl-block.audio-block{ background:linear-gradient(180deg,#41B36E,#2C7A4C) !important; border:1px solid #57c98a !important; color:#eafff2 !important; }
+  .tl-track.audio-track{ background:rgba(63,174,106,0.08) !important; }
+  /* Video track = dark screen frames, subtle lift */
+  .tl-block.seg-recording{ background:linear-gradient(180deg,#1b1d24,#121419) !important; border:1px solid #2c3140 !important; }
+  .tl-track.segment-track{ background:rgba(255,255,255,0.03) !important; }
+  /* Text overlays = violet (matches the Clueso transcript-clip tone) */
+  .tl-block.textoverlay-block{ background:linear-gradient(180deg,#7d6cff,#4a2fb0) !important; border:1px solid #9b86ff !important; color:#fff !important; }
+  .tl-track.textoverlay-track{ background:rgba(125,108,255,0.07) !important; }
+  /* Zoom / effects lane in the violet family */
+  .tl-block.effect-block, .tl-track.effects-track .tl-block{ border:1px solid #8b5cff !important; }
+  /* AI orb glow tuned to Clueso violet */
+  #voxOrb{ background:radial-gradient(circle at 50% 38%,#b89bff,#6d5efc 42%,#3a1fa0 82%) !important; }
+</style><style id="vox-stage1">
+  /* ===== VoxScript stage one: lively timeline + orb ===== */
+  /* show every layer (was hidden previously) */
+  .tl-label-cell.effects,.tl-label-cell.textoverlays,.tl-label-cell.callouts,.tl-label-cell.customercards,.tl-label-cell.shapes{ display:flex !important; }
+  #effectsTrack,#textOverlaysTrack,#calloutsTrack,#customerCardsTrack,#shapesTrack{ display:block !important; }
+
+  /* lively block colours, reference violet/indigo family + green audio, glassy */
+  .tl-block.seg-recording{ background:linear-gradient(180deg,#3a4090,#20244e) !important; border:1px solid #5560e0 !important; color:#eef0ff !important; }
+  .tl-block.audio-block{ background:linear-gradient(180deg,#41b36e,#2c7a4c) !important; border:1px solid #57c98a !important; color:#eafff2 !important; }
+  .tl-block.textoverlay-block{ background:linear-gradient(180deg,#8f7dff,#4a2fb0) !important; border:1px solid #ab9bff !important; color:#fff !important; }
+  .tl-block.callout-block{ background:linear-gradient(180deg,#7d8bff,#3b41a8) !important; border:1px solid #98a2ff !important; color:#fff !important; }
+  .tl-block.callout-block.selected{ box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 0 2px #c9d0ff !important; }
+  .tl-block.customercard-block{ background:linear-gradient(180deg,#8f6cff,#4a28aa) !important; border:1px solid #ad94ff !important; color:#fff !important; }
+  .tl-block.shape-block{ background:linear-gradient(180deg,#7468c8,#3f3878) !important; border:1px solid #8e83d8 !important; color:#fff !important; }
+  .tl-block.shape-block.selected{ box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 0 2px #c2bbf0 !important; }
+  .tl-block.zoom-block,.tl-block.spotlight-block,.tl-block.effect-block,.tl-track.effects-track .tl-block{ background:linear-gradient(180deg,#9a6cff,#5826bd) !important; border:1px solid #bba0ff !important; color:#fff !important; }
+  .tl-block{ box-shadow:inset 0 1px 0 #ffffff2e, 0 1px 3px #00000055; }
+  .tl-block.selected{ box-shadow:inset 0 1px 0 #ffffff2e, 0 0 0 1px rgba(0,0,0,.4), 0 0 0 2px var(--accent) !important; }
+
+  /* faint lane tints so the timeline reads alive, not dead */
+  .tl-track.callout-track{ background:rgba(125,139,255,0.10) !important; }
+  .tl-track.customercard-track{ background:rgba(143,108,255,0.10) !important; }
+  .tl-track.shape-track{ background:rgba(116,104,200,0.10) !important; }
+  .tl-track.effects-track{ background:rgba(154,108,255,0.10) !important; }
+  .tl-track.textoverlay-track{ background:rgba(143,125,255,0.10) !important; }
+  .tl-track.segment-track{ background:rgba(85,96,224,0.09) !important; }
+  .tl-track.audio-track{ background:rgba(65,179,110,0.11) !important; }
+
+  /* typeable current time */
+  .tl-curtime-input{ width:48px; background:rgba(255,255,255,0.05); border:1px solid var(--line-hover,#303035); border-radius:4px; color:#fff; font:inherit; font-weight:700; text-align:center; padding:3px 0; }
+  .tl-curtime-input:focus{ outline:none; border-color:#7b4dff; background:rgba(123,77,255,0.12); }
+
+  /* AI assistant button -> glowing violet orb (reference style) */
+  #aiToggleBtn.ai-toggle-btn, button#aiToggleBtn{
+    background:radial-gradient(circle at 50% 38%, #b89bff 0%, #7b4dff 38%, #4b1fb0 78%, #2a0a66 100%) !important;
+    box-shadow:0 0 0 1px #ffffff22, 0 0 26px 5px #7b4dff66, 0 8px 22px #00000088 !important;
+    border:none !important; color:#fff !important;
+  }
+  #aiToggleBtn.ai-toggle-btn svg{ filter:drop-shadow(0 0 5px #ffffffaa); }
+</style>
 </head>
 <body>
 
@@ -1831,15 +1887,18 @@
         <button class="btn" id="btnUndo" title="Undo (Cmd+Z)" disabled><i class="ti ti-arrow-back-up"></i></button>
         <button class="btn" id="btnRedo" title="Redo (Cmd+Shift+Z)" disabled><i class="ti ti-arrow-forward-up"></i></button>
         <span class="tl-sep"></span>
+        <button class="btn pp" id="btnSkipBack" title="Back 10 seconds"><i class="ti ti-rewind-backward-10"></i></button>
         <button class="btn pp" id="btnPlay" title="Play"><i class="ti ti-player-play-filled"></i></button>
         <button class="btn pp" id="btnPause" title="Pause"><i class="ti ti-player-pause-filled"></i></button>
+        <button class="btn pp" id="btnSkipFwd" title="Forward 10 seconds"><i class="ti ti-rewind-forward-10"></i></button>
+        <span class="tl-sep"></span>
         <div class="tool-group">
           <button class="tool-btn active" id="btnToolSelect" title="Select tool (V)" data-tool="select">Select</button>
           <button class="tool-btn" id="btnToolCut" title="Cut (X)" data-tool="cut"><i class="ti ti-cut"></i></button>
         </div>
       </div>
       <div class="tl-time">
-        <strong id="curTime">0:00</strong> / <span id="totalTime">0:00</span>
+        <input id="curTime" class="tl-curtime-input" value="0:00" title="Type a time and press Enter to jump"> / <span id="totalTime">0:00</span>
       </div>
       <!-- v3.28b.44: Snap button — closes gaps between selected clips.
            Disabled until 2+ items are selected (via Shift-click on timeline). -->
@@ -1857,34 +1916,34 @@
     <div class="tl-grid">
       <div class="tl-labels">
         <div class="tl-label-cell ruler">Time</div>
-        <div class="tl-label-cell effects">Zoom</div>
-        <div class="tl-label-cell textoverlays">Text</div>
         <div class="tl-label-cell callouts">Callouts</div>
-        <div class="tl-label-cell customercards" style="height:24px;">Customer Cards</div>
+        <div class="tl-label-cell customercards" style="height:24px;">Cards</div>
         <div class="tl-label-cell shapes" style="height:24px;">Shapes</div>
+        <div class="tl-label-cell effects">Effects</div>
+        <div class="tl-label-cell textoverlays">Text</div>
         <div class="tl-label-cell segments">Video</div>
         <div class="tl-label-cell audios">Audio</div>
       </div>
       <div class="tl-content" id="tlContent">
         <div class="tl-inner" id="tlInner">
           <div class="tl-ruler" id="tlRuler"></div>
+          <div class="tl-track callout-track" id="calloutsTrack">
+            <div class="tl-track-empty" id="calloutsEmpty">No callouts yet</div>
+          </div>
+          <div class="tl-track customercard-track" id="customerCardsTrack" style="height:24px;">
+            <div class="tl-track-empty" id="customerCardsEmpty">No cards yet</div>
+          </div>
+          <div class="tl-track shape-track" id="shapesTrack" style="height:24px;">
+            <div class="tl-track-empty" id="shapesEmpty">No shapes yet</div>
+          </div>
           <div class="tl-track effects-track" id="effectsTrack">
-            <div class="tl-track-empty" id="effectsEmpty">Click Zoom or Spotlight in the left rail, then click on the canvas</div>
+            <div class="tl-track-empty" id="effectsEmpty">No effects yet</div>
           </div>
           <div class="tl-track textoverlay-track" id="textOverlaysTrack">
-            <div class="tl-track-empty" id="textOverlaysEmpty">Click "Add Text" in the left rail</div>
-          </div>
-          <div class="tl-track callout-track" id="calloutsTrack">
-            <div class="tl-track-empty" id="calloutsEmpty">Drag callouts here or onto the canvas</div>
-          </div>
-          <div class="tl-track customercard-track" id="customerCardsTrack" style="height:24px; background:rgba(31,138,255,0.06);">
-            <div class="tl-track-empty" id="customerCardsEmpty">Drag customer card here or onto the canvas</div>
-          </div>
-          <div class="tl-track shape-track" id="shapesTrack" style="height:24px; background:rgba(255,170,71,0.06);">
-            <div class="tl-track-empty" id="shapesEmpty">Click "+ Shape" in the left rail</div>
+            <div class="tl-track-empty" id="textOverlaysEmpty">No text yet</div>
           </div>
           <div class="tl-track segment-track" id="segmentsTrack">
-            <div class="tl-track-empty" id="segmentsEmpty">Your recording shows here</div>
+            <div class="tl-track-empty" id="segmentsEmpty">Record your screen to get started</div>
           </div>
           <div class="tl-track audio-track" id="audiosTrack">
             <div class="tl-track-empty" id="audiosEmpty">Voice shows here</div>
@@ -1909,7 +1968,7 @@
 <!-- ===== VoxScript right transcript panel (Transcript tab) ===== -->
 <div id="voxPanel">
   <div class="vox-h">
-    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p9</div></div>
+    <div><div class="t">Voice<b>Script</b></div><div class="sub">Edit the words. Voiceover re-renders to match. · build p12</div></div>
     <div class="sp"></div><button class="vox-x" id="voxClose">×</button>
   </div>
   <div class="vox-search"><input id="voxSearch" placeholder="Search in transcript"><button class="f">⚙</button></div>
@@ -6701,7 +6760,8 @@ function onHandleMouseDown(e, item, kind, side) {
 function updatePlayhead() {
   const ph = $('playhead');
   ph.style.left = (view.curTimeMs * getEffectivePxPerMs()) + 'px';
-  $('curTime').textContent = fmtTime(view.curTimeMs);
+  var _ct = $('curTime');
+  if (_ct) { if (_ct.tagName === 'INPUT') { if (document.activeElement !== _ct) _ct.value = fmtTime(view.curTimeMs); } else { _ct.textContent = fmtTime(view.curTimeMs); } }
 }
 
 let _activeVideoElement = null;
@@ -13025,6 +13085,202 @@ window.addEventListener('DOMContentLoaded', _aiSetupUI);
 <script>
   window.addEventListener('load',function(){ setTimeout(function(){ try{ var t=document.getElementById('voxTabTr'); if(t && !document.getElementById('voxPanel').classList.contains('vox-show')) t.click(); }catch(e){} },600); });
   (function(){ var o=document.getElementById('voxOrb'); if(o) o.addEventListener('click',function(){ try{ document.getElementById('voxTabTr').click(); }catch(e){} }); })();
+</script><script>
+/* VoxScript stage one wiring: skip 10s buttons + typeable time. Reuses the engine's own seek path. */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){
+    setTimeout(function(){
+      try{
+        function seekTo(ms){
+          var tot = (typeof getTotalDurationMs==='function') ? getTotalDurationMs() : ((view&&view.curTimeMs||0)+1);
+          if(!view) return;
+          view.curTimeMs = Math.max(0, Math.min(tot, ms||0));
+          view.userSeeked = true;
+          if(typeof updatePlayhead==='function') updatePlayhead();
+          if(typeof rebuildCanvas==='function') rebuildCanvas();
+        }
+        var b=document.getElementById('btnSkipBack'); if(b) b.addEventListener('click',function(){ seekTo((view.curTimeMs||0)-10000); });
+        var f=document.getElementById('btnSkipFwd'); if(f) f.addEventListener('click',function(){ seekTo((view.curTimeMs||0)+10000); });
+        var t=document.getElementById('curTime');
+        if(t && t.tagName==='INPUT'){
+          var commit=function(){
+            var ms = (typeof _aiParseTime==='function') ? _aiParseTime(t.value) : null;
+            if(ms==null){ var p=(t.value||'').split(':').map(Number); ms = p.length===2 ? (p[0]*60+(p[1]||0))*1000 : (p[0]||0)*1000; }
+            seekTo(ms||0);
+          };
+          t.addEventListener('change', commit);
+          t.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); commit(); t.blur(); } });
+        }
+      }catch(e){ console.warn('[vox stage1] wiring skipped:', e); }
+    }, 500);
+  });
+})();
+</script>
+<style id="vox-stage1b">
+  /* one orb only: keep the AI assistant (#aiToggleBtn ✦), drop the duplicate transcript orb */
+  #voxOrb{ display:none !important; }
+
+  /* audio into the violet family (was green) so the whole timeline shares one tone */
+  .tl-block.audio-block{ background:linear-gradient(180deg,#6e44d6,#3a1f8f) !important; border:1px solid #8c63e8 !important; color:#f3f0ff !important; }
+  .tl-track.audio-track{ background:rgba(110,68,214,0.11) !important; }
+
+  /* fullscreen button on the preview */
+  #voxFsBtn{ position:absolute; right:14px; bottom:12px; z-index:30;
+    background:rgba(20,20,22,0.8); border:1px solid var(--line-hover,#303035); border-radius:4px;
+    color:#d7d7dd; padding:5px 7px; cursor:pointer; display:flex; align-items:center; }
+  #voxFsBtn:hover{ color:#fff; background:rgba(30,30,34,0.9); }
+  #voxFsBtn i{ font-size:15px; }
+
+  /* drag handles for the three sections (grid vars do the actual resizing) */
+  .vox-rh{ position:fixed; z-index:55; }
+  .vox-rh.col{ width:7px; cursor:col-resize; }
+  .vox-rh.row{ height:7px; cursor:row-resize; }
+  .vox-rh::after{ content:""; position:absolute; background:transparent; }
+  .vox-rh.col::after{ left:3px; top:0; bottom:0; width:1px; }
+  .vox-rh.row::after{ top:3px; left:0; right:0; height:1px; }
+  .vox-rh:hover::after{ background:#45454c; }
+  .vox-rh.col:hover::after{ width:2px; }
+  .vox-rh.row:hover::after{ height:2px; }
+</style>
+<script>
+/* VoxScript stage 1b: fullscreen preview + resizable sections (left rail, right rail, timeline height). Additive, guarded. */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){ setTimeout(function(){
+    try{
+      // ---- fullscreen on the preview ----
+      var sw = document.querySelector('.stage-wrap');
+      var vp = document.getElementById('stageViewport') || document.getElementById('stage');
+      if(sw && vp && !document.getElementById('voxFsBtn')){
+        if(getComputedStyle(sw).position==='static') sw.style.position='relative';
+        var fb=document.createElement('button');
+        fb.id='voxFsBtn'; fb.title='Full screen preview'; fb.setAttribute('aria-label','Full screen preview');
+        fb.innerHTML='<i class="ti ti-maximize"></i>';
+        fb.addEventListener('click',function(){
+          try{
+            if(document.fullscreenElement){ document.exitFullscreen(); }
+            else if(vp.requestFullscreen){ vp.requestFullscreen(); }
+          }catch(e){}
+        });
+        document.addEventListener('fullscreenchange',function(){
+          var i=fb.querySelector('i'); if(!i) return;
+          i.className = document.fullscreenElement ? 'ti ti-minimize' : 'ti ti-maximize';
+        });
+        sw.appendChild(fb);
+      }
+
+      // ---- resizable sections via the grid CSS vars ----
+      var root=document.documentElement;
+      var left=document.getElementById('leftRail');
+      var right=document.getElementById('editPanel');
+      var tl=document.querySelector('.timeline-zone');
+      function cssVar(n){ return getComputedStyle(root).getPropertyValue(n); }
+      var hL=mk('col'), hR=mk('col'), hT=mk('row');
+      function mk(kind){ var d=document.createElement('div'); d.className='vox-rh '+kind; document.body.appendChild(d); return d; }
+      function place(){
+        if(left){ var r=left.getBoundingClientRect(); hL.style.left=(r.right-3)+'px'; hL.style.top=r.top+'px'; hL.style.height=r.height+'px'; }
+        if(right){ var rr=right.getBoundingClientRect(); hR.style.left=(rr.left-3)+'px'; hR.style.top=rr.top+'px'; hR.style.height=rr.height+'px'; }
+        if(tl){ var rt=tl.getBoundingClientRect(); hT.style.top=(rt.top-3)+'px'; hT.style.left=rt.left+'px'; hT.style.width=rt.width+'px'; }
+      }
+      place(); window.addEventListener('resize',place);
+      var drag=null;
+      function down(kind){ return function(e){ drag=kind; e.preventDefault(); document.body.style.userSelect='none'; }; }
+      hL.addEventListener('pointerdown',down('left'));
+      hR.addEventListener('pointerdown',down('right'));
+      hT.addEventListener('pointerdown',down('tl'));
+      window.addEventListener('pointermove',function(e){
+        if(!drag) return;
+        if(drag==='left'){ root.style.setProperty('--layout-left-w', Math.max(160,Math.min(480,e.clientX))+'px'); }
+        if(drag==='right'){ root.style.setProperty('--layout-right-w', Math.max(220,Math.min(540,window.innerWidth-e.clientX))+'px'); }
+        if(drag==='tl'){ root.style.setProperty('--layout-timeline-h', Math.max(150,Math.min(window.innerHeight-220,window.innerHeight-e.clientY))+'px'); }
+        place();
+      });
+      window.addEventListener('pointerup',function(){ if(drag){ drag=null; document.body.style.userSelect=''; place(); } });
+    }catch(e){ console.warn('[vox stage1b] skipped:', e); }
+  }, 600); });
+})();
+</script>
+<style id="vox-stage2">
+  /* canvas zoom controls on the preview (bottom-left; fullscreen sits bottom-right) */
+  #voxCanvasZoom{ position:absolute; left:14px; bottom:12px; z-index:30; display:flex; align-items:center; gap:6px;
+    background:rgba(20,20,22,0.8); border:1px solid var(--line-hover,#303035); border-radius:4px; padding:3px 7px; color:#d7d7dd; font-size:12px; }
+  #voxCanvasZoom button{ background:transparent; border:none; color:#aeaeb6; cursor:pointer; font-size:15px; line-height:1; display:flex; padding:2px; }
+  #voxCanvasZoom button:hover{ color:#fff; }
+  #voxCanvasZoom .zlabel{ min-width:34px; text-align:center; font-variant-numeric:tabular-nums; }
+
+  /* Add layer entry + popup */
+  .tl-label-cell.vox-addlayer{ display:flex !important; align-items:center; justify-content:center; gap:6px; cursor:pointer;
+    color:#a89fe0; border:1px dashed #3a3550; border-radius:4px; margin:4px 4px 0; height:24px; font-size:11px; }
+  .tl-label-cell.vox-addlayer:hover{ color:#cdc6ff; border-color:#544c78; background:rgba(125,108,255,0.08); }
+  #voxAddMenu{ position:fixed; z-index:80; min-width:148px; background:#161618; border:1px solid #303035; border-radius:6px; padding:5px; display:none; box-shadow:0 10px 28px #000000aa; }
+  #voxAddMenu.open{ display:block; }
+  #voxAddMenu button{ display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:transparent; border:none; color:#c9c9ce; font:inherit; font-size:12.5px; padding:8px 9px; border-radius:4px; cursor:pointer; }
+  #voxAddMenu button:hover{ background:#212124; color:#fff; }
+  #voxAddMenu i{ font-size:15px; color:#9a90d8; }
+</style>
+<script>
+/* VoxScript stage two: canvas zoom controls + Add layer menu (wired to the real engine). Additive, guarded. */
+(function(){
+  function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded',fn); }
+  ready(function(){ setTimeout(function(){
+    try{
+      var sw=document.querySelector('.stage-wrap');
+      // ---- canvas zoom controls ----
+      if(sw && typeof setCanvasZoom==='function' && !document.getElementById('voxCanvasZoom')){
+        if(getComputedStyle(sw).position==='static') sw.style.position='relative';
+        var cz=document.createElement('div'); cz.id='voxCanvasZoom';
+        cz.innerHTML='<button id="voxZFit" title="Fit to screen">Fit</button>'+
+          '<button id="voxZOut" title="Zoom out"><i class="ti ti-minus"></i></button>'+
+          '<span class="zlabel" id="voxZPct">100%</span>'+
+          '<button id="voxZIn" title="Zoom in"><i class="ti ti-plus"></i></button>';
+        sw.appendChild(cz);
+        var pct=document.getElementById('voxZPct');
+        function refl(){ if(pct&&window.view) pct.textContent=Math.round((view.canvasZoom||1)*100)+'%'; }
+        document.getElementById('voxZFit').addEventListener('click',function(){ if(typeof fitCanvasToViewport==='function'){ fitCanvasToViewport(); } else { setCanvasZoom(1); } refl(); });
+        document.getElementById('voxZOut').addEventListener('click',function(){ setCanvasZoom((view.canvasZoom||1)/1.25); refl(); });
+        document.getElementById('voxZIn').addEventListener('click',function(){ setCanvasZoom((view.canvasZoom||1)*1.25); refl(); });
+        refl();
+      }
+
+      // ---- Add layer menu ----
+      var labels=document.querySelector('.tl-labels');
+      if(labels && !document.getElementById('voxAddMenu')){
+        var add=document.createElement('div'); add.className='tl-label-cell vox-addlayer';
+        add.innerHTML='<i class="ti ti-plus" style="font-size:13px"></i> Add layer';
+        labels.appendChild(add);
+
+        var menu=document.createElement('div'); menu.id='voxAddMenu';
+        var items=[
+          ['Text','ti-typography',function(){ addTextOverlay&&addTextOverlay(); }],
+          ['Zoom','ti-zoom-scan',function(){ addEffect&&addEffect('zoom'); }],
+          ['Spotlight','ti-bulb',function(){ addEffect&&addEffect('spotlight'); }],
+          ['Callout','ti-message-2',function(){ addCallout&&addCallout(); }],
+          ['Customer card','ti-id-badge-2',function(){ addCustomerCard&&addCustomerCard(); }],
+          ['Shape','ti-square',function(){ addShape&&addShape(); }]
+        ];
+        items.forEach(function(it){
+          var b=document.createElement('button');
+          b.innerHTML='<i class="ti '+it[1]+'"></i> '+it[0];
+          b.addEventListener('click',function(){ try{ it[2](); }catch(e){ console.warn('[vox add]',e); } menu.classList.remove('open'); });
+          menu.appendChild(b);
+        });
+        document.body.appendChild(menu);
+
+        add.addEventListener('click',function(e){
+          e.stopPropagation();
+          var r=add.getBoundingClientRect();
+          menu.style.left=r.left+'px';
+          menu.style.top=(r.top - menu.offsetHeight - 6)+'px';
+          menu.classList.toggle('open');
+          // reposition now that it has height
+          if(menu.classList.contains('open')){ menu.style.top=(r.top - menu.offsetHeight - 6)+'px'; }
+        });
+        document.addEventListener('click',function(ev){ if(menu.classList.contains('open') && !menu.contains(ev.target) && ev.target!==add) menu.classList.remove('open'); });
+      }
+    }catch(e){ console.warn('[vox stage2] skipped:', e); }
+  }, 700); });
+})();
 </script>
 </body>
 </html>
