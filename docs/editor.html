@@ -8555,33 +8555,9 @@ async function validateVideo(file) {
   });
   if (!dimCheck.ok) return dimCheck;
 
-  // Step 2: moov atom position check (faststart). Read first 1MB; if no `moov`
-  // marker is found, the index is at the end of the file → not faststart.
-  // This is the REAL Lambda blocker — strict regardless of dimensions.
-  try {
-    const headSize = Math.min(file.size, 1024 * 1024);
-    const headBuf = await file.slice(0, headSize).arrayBuffer();
-    const bytes = new Uint8Array(headBuf);
-    let hasMoovAtStart = false;
-    for (let i = 0; i < bytes.length - 4; i++) {
-      if (bytes[i] === 0x6d && bytes[i+1] === 0x6f && bytes[i+2] === 0x6f && bytes[i+3] === 0x76) {
-        hasMoovAtStart = true;
-        break;
-      }
-    }
-    if (!hasMoovAtStart) {
-      return {
-        ok: false,
-        width: dimCheck.width,
-        height: dimCheck.height,
-        notFaststart: true,
-        error: 'Video metadata is at the END of the file (not "faststart"). The Lambda renderer requires faststart mp4s.',
-      };
-    }
-  } catch (e) {
-    console.warn('Faststart check failed (passing anyway):', e);
-  }
-
+  // Step 2 (faststart / Handbrake gate): REMOVED. We no longer reject
+  // non-faststart mp4s before upload — raw screen recordings can be uploaded
+  // directly. Dimension validation above still applies.
   return dimCheck;
 }
 
@@ -9178,6 +9154,61 @@ async function loadAudioDuration(a) {
   console.warn('Could not read duration for ' + a.id + ' after 5 attempts. Will retry on first drag.');
 }
 
+// v3.29: server-side video normalization gate.
+// Every uploaded video is transcoded to a render-safe H.264 mp4 by the
+// transcode Lambda (S3 uploads/ -> media/ mirror + a <key>.ready marker).
+// Before a render we swap each video's URL to its media/ mp4, but only once
+// the .ready marker exists, so the renderer never receives a file it can't
+// decode. Falls back to the original URL after a timeout (or if an .error.json
+// marker appears) so the tool still works if normalization is unavailable.
+function _normalizedUrlFor(rawUrl) {
+  // https://<bucket>.s3.<region>.amazonaws.com/uploads/<job>/<file>.<ext>
+  //   -> https://<bucket>.s3.<region>.amazonaws.com/media/<job>/<file>.mp4
+  try {
+    const u = new URL(rawUrl);
+    if (!u.pathname.startsWith('/uploads/')) return null; // bundled/other asset
+    const mediaPath = u.pathname.replace('/uploads/', '/media/').replace(/\.[^./]+$/, '.mp4');
+    return u.origin + mediaPath;
+  } catch (e) { return null; }
+}
+
+async function _waitForNormalized(rawUrl, opts) {
+  const o = opts || {};
+  const timeoutMs = o.timeoutMs || 180000;   // 3 min ceiling
+  const intervalMs = o.intervalMs || 2000;
+  const mediaUrl = _normalizedUrlFor(rawUrl);
+  if (!mediaUrl) return rawUrl;               // not an uploads/ URL -> leave as is
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(mediaUrl + '.ready', { method: 'GET', cache: 'no-store' });
+      if (r.ok) return mediaUrl;              // normalized file is ready
+    } catch (e) { /* keep polling */ }
+    try {
+      const er = await fetch(mediaUrl + '.error.json', { method: 'GET', cache: 'no-store' });
+      if (er.ok) { console.warn('Normalization failed for', rawUrl, '— using original'); return rawUrl; }
+    } catch (e) { /* ignore */ }
+    await new Promise(res => setTimeout(res, intervalMs));
+  }
+  console.warn('Normalization timed out for', rawUrl, '— using original');
+  return rawUrl;
+}
+
+// Returns a copy of state.videos with each url swapped to its normalized
+// media/ URL where available. Updates the status line as it goes.
+async function _normalizeVideosForRender() {
+  const vids = state.videos || [];
+  const out = [];
+  for (let i = 0; i < vids.length; i++) {
+    if (vids.length > 0) {
+      $('status-text').textContent = 'Optimizing video ' + (i + 1) + '/' + vids.length + '...';
+    }
+    const url = await _waitForNormalized(vids[i].url);
+    out.push(Object.assign({}, vids[i], { url }));
+  }
+  return out;
+}
+
 async function approve() {
   if (!confirm('Send to render? This will trigger the GitHub Actions render pipeline.')) return;
   $('btnApprove').disabled = true;
@@ -9197,6 +9228,17 @@ async function approve() {
     } catch (e) {
       console.warn('Cloud save before render failed (continuing anyway):', e);
     }
+  }
+  $('status-text').textContent = 'Submitting...';
+
+  // v3.29: gate the render on server-side video normalization. Swaps each
+  // video URL to its render-safe media/ mp4 (waits for the .ready marker).
+  let videosForRender = state.videos;
+  try {
+    videosForRender = await _normalizeVideosForRender();
+  } catch (e) {
+    console.warn('Normalization gate threw (using originals):', e);
+    videosForRender = state.videos;
   }
   $('status-text').textContent = 'Submitting...';
 
@@ -9228,7 +9270,7 @@ async function approve() {
     decision: 'approved',
     jobId: freshJobId,
     module: state.module,
-    videos: state.videos,
+    videos: videosForRender,
     audios: state.audios,
     audioPlacements: state.audioPlacements,
     segments: state.segments,
